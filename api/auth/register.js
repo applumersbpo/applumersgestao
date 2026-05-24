@@ -35,9 +35,33 @@ export default async function handler(req, res) {
     const { rows } = await db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [id] });
     const user = rowsToObjects(rows)[0];
     const { password_hash: _, ...safeUser } = user;
+
+    // Enviar boas-vindas pelo WhatsApp (não bloqueia o registro)
+    if (phone) _enviarBoasVindasWhatsApp(safeUser).catch(() => {});
+
     return res.status(201).json({ user: safeUser });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Erro ao criar conta' });
   }
+}
+
+async function _enviarBoasVindasWhatsApp(user) {
+  const url  = process.env.EVOLUTION_URL;
+  const key  = process.env.EVOLUTION_APIKEY;
+  if (!url || !key || !user.phone) return;
+  const nome = (user.name || '').split(' ')[0] || 'você';
+  const msg  =
+    `Olá, ${nome}! 👋 Aqui é a assistente da *Lumers BPO*!\n\n` +
+    `Estou aqui para facilitar o seu controle financeiro direto pelo WhatsApp.\n\n` +
+    `💸 *Despesa:* "gastei 35 no almoço"\n` +
+    `💳 *Parcelamento:* "comprei tênis 300 em 3x"\n` +
+    `💚 *Receita:* "recebi 2000 de salário"\n` +
+    `🔔 *Conta:* "conta de luz 150 vence dia 20"\n\n` +
+    `Pode testar agora! 🚀`;
+  await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: key },
+    body: JSON.stringify({ number: user.phone, text: msg }),
+  });
 }

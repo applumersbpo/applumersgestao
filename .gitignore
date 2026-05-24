@@ -1,8 +1,7 @@
 # macOS
 .DS_Store
 
-# Configuração local com credenciais reais (não commitar)
-js/config.js
+# (config.js agora é vazio e seguro para commitar)
 
 # Exportação do N8N (contém credenciais)
 automacao-visibill-n8n.json
