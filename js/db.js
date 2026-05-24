@@ -1,49 +1,173 @@
-const PB_URL = 'https://app.visibill.com.br';
-const pb = new PocketBase(PB_URL);
+// js/db.js — Lumers Gestão Financeira
+// Backend: Vercel API + Turso
 
+const _API = '/api';
+
+// ── Auth Store ────────────────────────────────────────────────────────────────
+const _store = {
+  get token()  { return localStorage.getItem('lg_token'); },
+  setToken(v)  { v ? localStorage.setItem('lg_token', v) : localStorage.removeItem('lg_token'); },
+  get model()  {
+    try { return JSON.parse(localStorage.getItem('lg_user') || 'null'); }
+    catch { return null; }
+  },
+  setModel(v)  { v ? localStorage.setItem('lg_user', JSON.stringify(v)) : localStorage.removeItem('lg_user'); },
+  get isValid(){ return !!this.token && !!this.model; },
+  clear()      { localStorage.removeItem('lg_token'); localStorage.removeItem('lg_user'); }
+};
+
+// ── API Request ───────────────────────────────────────────────────────────────
+async function _api(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (_store.token) headers['Authorization'] = 'Bearer ' + _store.token;
+  const res = await fetch(_API + path, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    _store.clear();
+    showAuthScreen();
+    throw Object.assign(new Error('Unauthorized'), { response: { message: 'Sessão expirada' } });
+  }
+  if (!res.ok) {
+    throw Object.assign(new Error(data.error || 'Erro'), {
+      response: { message: data.error || 'Erro', data: data.fields || {} }
+    });
+  }
+  return data;
+}
+
+// ── PocketBase Compatibility Shim ─────────────────────────────────────────────
+const pb = {
+  authStore: {
+    get model()   { return _store.model; },
+    get record()  { return _store.model; },
+    get isValid() { return _store.isValid; },
+    clear()       { _store.clear(); }
+  },
+
+  collection(name) {
+    return {
+      async getFullList(opts = {}) {
+        if (name === 'users') return _api('GET', '/admin/users');
+        if (name === 'user_plans') {
+          const all = await _api('GET', '/admin/user-plans');
+          if (opts.filter) {
+            const em = opts.filter.match(/email\s*=\s*"([^"]*)"/);
+            if (em) return all.filter(p => p.email === em[1]);
+            const ui = opts.filter.match(/user_id\s*=\s*'([^']*)'/);
+            if (ui) return all.filter(p => p.user_id === ui[1]);
+          }
+          return all;
+        }
+        return _api('GET', `/data/${name}`);
+      },
+
+      async getOne(id) {
+        return _api('GET', `/data/${name}/${id}`);
+      },
+
+      async create(data) {
+        if (name === 'users') {
+          const res = await _api('POST', '/auth/register', data);
+          return res.user;
+        }
+        if (name === 'user_plans') {
+          const res = await _api('POST', '/admin/user-plans', data);
+          return res;
+        }
+        const res = await _api('POST', `/data/${name}`, data);
+        return { id: res.id };
+      },
+
+      async update(id, data) {
+        if (name === 'users') {
+          if (data.oldPassword !== undefined) {
+            return _api('POST', '/user/password', data);
+          }
+          const res = await _api('PUT', '/user/profile', data);
+          const user = _store.model;
+          if (user) { Object.assign(user, data); _store.setModel(user); }
+          return res;
+        }
+        if (name === 'user_plans') return _api('PUT', `/admin/user-plans/${id}`, data);
+        return _api('PUT', `/data/${name}/${id}`, data);
+      },
+
+      async delete(id) {
+        if (name === 'users')      return _api('DELETE', `/admin/users/${id}`);
+        if (name === 'user_plans') return _api('DELETE', `/admin/user-plans/${id}`);
+        return _api('DELETE', `/data/${name}/${id}`);
+      },
+
+      async authWithPassword(email, password) {
+        const res = await _api('POST', '/auth/login', { email, password });
+        _store.setToken(res.token);
+        _store.setModel(res.user);
+        return res;
+      },
+
+      async requestPasswordReset(email) {
+        return _api('POST', '/auth/forgot', { email });
+      },
+
+      async confirmPasswordReset(token, password, passwordConfirm) {
+        return _api('POST', '/auth/reset', { token, password, passwordConfirm });
+      },
+    };
+  }
+};
+
+// ── Filter Parser ─────────────────────────────────────────────────────────────
+function _parseFilter(filterStr, record) {
+  try {
+    const js = filterStr
+      .replace(/(\w+)\s*!=\s*""/g,         (_, f) => `(record["${f}"] !== '' && record["${f}"] != null)`)
+      .replace(/(\w+)\s*=\s*'([^']*)'/g,   (_, f, v) => `record["${f}"] === '${v}'`)
+      .replace(/(\w+)\s*!=\s*'([^']*)'/g,  (_, f, v) => `record["${f}"] !== '${v}'`)
+      .replace(/(\w+)\s*=\s*true\b/g,      (_, f) => `(record["${f}"] === true || record["${f}"] === 1)`)
+      .replace(/(\w+)\s*=\s*false\b/g,     (_, f) => `(record["${f}"] === false || record["${f}"] === 0)`)
+      .replace(/(\w+)\s*!=\s*(-?\d+\.?\d*)/g,(_, f, v) => `record["${f}"] != ${v}`)
+      .replace(/(\w+)\s*=\s*(-?\d+\.?\d*)/g, (_, f, v) => `record["${f}"] == ${v}`);
+    return new Function('record', `return !!(${js})`)(record);
+  } catch { return true; }
+}
+
+// ── Collection Factory ────────────────────────────────────────────────────────
 function makeCollection(name) {
-  const uid  = () => (pb.authStore.model?.id) ?? (pb.authStore.record?.id);
-  const strip = obj => {
-    if (!obj) return obj;
-    const { id: _i, user: _u, created: _c, updated: _up,
-            collectionId: _ci, collectionName: _cn, expand: _e, ...rest } = obj;
-    return rest;
-  };
-
   return {
     async toArray() {
-      return pb.collection(name).getFullList();
+      return _api('GET', `/data/${name}`);
     },
     async get(id) {
-      try { return await pb.collection(name).getOne(String(id)); }
+      try { return await _api('GET', `/data/${name}/${id}`); }
       catch { return undefined; }
     },
     async add(record) {
       const { id: _id, ...data } = record;
-      const res = await pb.collection(name).create({ ...data, user: uid() });
+      const res = await _api('POST', `/data/${name}`, data);
       return res.id;
     },
     async update(id, changes) {
-      await pb.collection(name).update(String(id), strip(changes));
+      const { id: _i, user: _u, created: _c, updated: _up,
+              collectionId: _ci, collectionName: _cn, expand: _e, ...data } = changes;
+      await _api('PUT', `/data/${name}/${id}`, data);
     },
     async delete(id) {
-      await pb.collection(name).delete(String(id));
+      await _api('DELETE', `/data/${name}/${id}`);
     },
     filter(predicate) {
       const isStr = typeof predicate === 'string';
       return {
         async toArray() {
-          if (isStr) return pb.collection(name).getFullList({ filter: predicate });
-          const all = await pb.collection(name).getFullList();
-          return all.filter(predicate);
+          const all = await _api('GET', `/data/${name}`);
+          return isStr ? all.filter(r => _parseFilter(predicate, r)) : all.filter(predicate);
         },
         async count() {
-          if (isStr) {
-            const res = await pb.collection(name).getList(1, 1, { filter: predicate });
-            return res.totalItems;
-          }
-          const all = await pb.collection(name).getFullList();
-          return all.filter(predicate).length;
+          const arr = await this.toArray();
+          return arr.length;
         }
       };
     },
@@ -52,22 +176,22 @@ function makeCollection(name) {
         equals(value) {
           return {
             async toArray() {
-              return pb.collection(name).getFullList({ filter: `${field} = '${value}'` });
+              const all = await _api('GET', `/data/${name}`);
+              return all.filter(r => r[field] === value);
             }
           };
         }
       };
     },
     async bulkAdd(records) {
-      const userId = uid();
       for (const record of records) {
         const { id: _id, ...data } = record;
-        await pb.collection(name).create({ ...data, user: userId });
+        await _api('POST', `/data/${name}`, data);
       }
     },
     async count() {
-      const res = await pb.collection(name).getList(1, 1);
-      return res.totalItems;
+      const all = await _api('GET', `/data/${name}`);
+      return all.length;
     }
   };
 }
@@ -81,7 +205,7 @@ const db = {
   goals:        makeCollection('goals'),
 };
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// ── Auth UI ───────────────────────────────────────────────────────────────────
 function showAuthScreen() {
   document.getElementById('auth-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
@@ -147,11 +271,8 @@ function _restoreLoginMode() {
 async function submitForgotPassword() {
   const email = document.getElementById('auth-email').value.trim();
   if (!email) { _authError('Informe seu e-mail'); return; }
-
   const btn = document.getElementById('auth-submit');
-  btn.disabled = true;
-  btn.textContent = 'Enviando...';
-
+  btn.disabled = true; btn.textContent = 'Enviando...';
   try {
     await pb.collection('users').requestPasswordReset(email);
     const card = document.querySelector('#auth-screen .card');
@@ -164,11 +285,9 @@ async function submitForgotPassword() {
           Verifique sua caixa de entrada (e o spam).
         </p>
         <button class="btn btn-ghost" style="width:100%" onclick="_rebuildAuthCard()">← Voltar ao login</button>
-      </div>
-    `;
+      </div>`;
   } catch(err) {
-    btn.disabled = false;
-    btn.textContent = 'Enviar link de redefinição';
+    btn.disabled = false; btn.textContent = 'Enviar link de redefinição';
     _authError('E-mail não encontrado');
   }
 }
@@ -204,20 +323,18 @@ function _rebuildAuthCard() {
     <p style="text-align:center;margin-top:16px;font-size:.88rem;color:var(--text-muted)">
       <span id="auth-toggle-text">Não tem conta?</span>
       <a href="#" id="auth-toggle" onclick="toggleAuthMode(event)" style="color:var(--primary);margin-left:4px">Criar conta</a>
-    </p>
-  `;
+    </p>`;
   _authMode = 'login';
 }
 
 function _checkResetToken() {
-  // Hash-based: #/reset/TOKEN (preferred — survives PWA navigation on Windows)
   const hashMatch = location.hash.match(/^#\/reset\/(.+)$/);
   const params = new URLSearchParams(window.location.search);
   const token = (hashMatch ? decodeURIComponent(hashMatch[1]) : null)
     || params.get('token')
-    || sessionStorage.getItem('_vb_reset_token');
+    || sessionStorage.getItem('_lg_reset_token');
   if (!token) return false;
-  sessionStorage.setItem('_vb_reset_token', token);
+  sessionStorage.setItem('_lg_reset_token', token);
   window.history.replaceState({}, '', window.location.pathname);
   _showResetForm(token);
   return true;
@@ -240,8 +357,7 @@ function _showResetForm(token) {
       <input id="reset-confirm" class="form-control" type="password" placeholder="Repita a nova senha" autocomplete="new-password">
     </div>
     <button id="reset-submit" class="btn btn-primary" style="width:100%;margin-top:8px;padding:12px" onclick="submitResetPassword('${token}')">Salvar nova senha</button>
-    <div id="reset-error" style="color:var(--expense);font-size:.83rem;margin-top:10px;text-align:center"></div>
-  `;
+    <div id="reset-error" style="color:var(--expense);font-size:.83rem;margin-top:10px;text-align:center"></div>`;
 }
 
 async function submitResetPassword(token) {
@@ -249,31 +365,25 @@ async function submitResetPassword(token) {
   const confirm = document.getElementById('reset-confirm').value;
   const errEl   = document.getElementById('reset-error');
   errEl.textContent = '';
-
-  if (pwd.length < 8)   { errEl.textContent = 'Senha mínima: 8 caracteres'; return; }
-  if (pwd !== confirm)  { errEl.textContent = 'As senhas não coincidem'; return; }
-
+  if (pwd.length < 8)  { errEl.textContent = 'Senha mínima: 8 caracteres'; return; }
+  if (pwd !== confirm) { errEl.textContent = 'As senhas não coincidem'; return; }
   const btn = document.getElementById('reset-submit');
-  btn.disabled = true;
-  btn.textContent = 'Salvando...';
-
+  btn.disabled = true; btn.textContent = 'Salvando...';
   try {
     await pb.collection('users').confirmPasswordReset(token, pwd, confirm);
-    sessionStorage.removeItem('_vb_reset_token');
+    sessionStorage.removeItem('_lg_reset_token');
     _rebuildAuthCard();
     const errDiv = document.getElementById('auth-error') || (() => {
       const el = document.createElement('p');
       el.id = 'auth-error';
       el.style.cssText = 'color:var(--income);font-size:.83rem;margin-top:10px;text-align:center;margin-bottom:0';
-      document.getElementById('auth-submit').after(el);
-      return el;
+      document.getElementById('auth-submit').after(el); return el;
     })();
     errDiv.style.color = 'var(--income)';
     errDiv.textContent = '✓ Senha atualizada! Faça login com a nova senha.';
   } catch(err) {
-    btn.disabled = false;
-    btn.textContent = 'Salvar nova senha';
-    errEl.textContent = 'Link inválido ou expirado. Solicite um novo.';
+    btn.disabled = false; btn.textContent = 'Salvar nova senha';
+    errEl.textContent = err?.response?.message || 'Link inválido ou expirado. Solicite um novo.';
   }
 }
 
@@ -281,13 +391,10 @@ async function submitAuth() {
   const email    = document.getElementById('auth-email').value.trim();
   const password = document.getElementById('auth-password').value;
   const btn      = document.getElementById('auth-submit');
-
   if (!email || !password) { _authError('Preencha todos os campos'); return; }
-
   btn.disabled = true;
   const origText = btn.textContent;
   btn.textContent = 'Aguarde...';
-
   try {
     if (_authMode === 'signup') {
       const name    = document.getElementById('auth-name').value.trim();
@@ -297,42 +404,28 @@ async function submitAuth() {
       if (!phone)               { _authError('Informe seu número de WhatsApp'); return; }
       if (password !== confirm) { _authError('As senhas não coincidem'); return; }
       if (password.length < 8)  { _authError('Senha mínima: 8 caracteres'); return; }
-      await pb.collection('users').create({ email, password, passwordConfirm: confirm, name, phone, emailVisibility: true });
+      await pb.collection('users').create({ email, password, passwordConfirm: confirm, name, phone });
     }
     const wasSignup = _authMode === 'signup';
     await pb.collection('users').authWithPassword(email, password);
-
     if (wasSignup) {
       const user = pb.authStore.model;
-      try {
-        await pb.collection('user_plans').create({
-          user_id:     user.id,
-          email:       user.email,
-          name:        user.name || '',
-          monthly_fee: 0,
-          active:      true,
-        });
-      } catch(_) {}
       _enviarBoasVindasWhatsApp(user);
     }
-
     hideAuthScreen();
     await app._start();
   } catch (err) {
-    const raw = err?.response?.message || err?.message || '';
+    const raw  = err?.response?.message || err?.message || '';
     const data = err?.response?.data || {};
     let msg = 'Erro ao autenticar';
     if (raw.toLowerCase().includes('failed to create')) {
       if (data.email) msg = 'Este e-mail já está cadastrado';
-      else if (data.phone) msg = 'Este número de WhatsApp já está em uso';
+      else if (data.phone) msg = 'Este número já está em uso';
       else msg = 'E-mail já cadastrado. Tente fazer login.';
-    } else if (raw) {
-      msg = raw;
-    }
+    } else if (raw) { msg = raw; }
     _authError(msg);
   } finally {
-    btn.disabled = false;
-    btn.textContent = origText;
+    btn.disabled = false; btn.textContent = origText;
   }
 }
 
@@ -348,20 +441,20 @@ function _authError(msg) {
 }
 
 async function _enviarBoasVindasWhatsApp(user) {
-  if (!user.phone) return;
+  if (!user || !user.phone) return;
   const nome = (user.name || '').split(' ')[0] || 'você';
-  const msg = `Olá, ${nome}! 👋 Aqui é a assistente do *Visibill*!\n\n` +
+  const msg = `Olá, ${nome}! 👋 Aqui é a assistente da *Lumers Gestão Financeira*!\n\n` +
     `Estou aqui para facilitar o seu controle financeiro direto pelo WhatsApp. ` +
     `É simples assim:\n\n` +
     `💸 *Despesa:* "gastei 35 no almoço"\n` +
     `💳 *Parcelamento:* "comprei tênis 300 em 3x"\n` +
     `💚 *Receita:* "recebi 2000 de salário"\n` +
     `🔔 *Conta:* "conta de luz 150 vence dia 20"\n\n` +
-    `Eu entendo do jeito que você escrever e registro tudo no app automaticamente. ` +
-    `Pode testar agora! 🚀`;
+    `Eu entendo do jeito que você escrever e registro tudo no app automaticamente. Pode testar agora! 🚀`;
   try {
-    const _cfg = window.VISIBILL_CONFIG || {};
-    await fetch(_cfg.EVOLUTION_URL || '', {
+    const _cfg = window.LUMERS_CONFIG || {};
+    if (!_cfg.EVOLUTION_URL) return;
+    await fetch(_cfg.EVOLUTION_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': _cfg.EVOLUTION_APIKEY || '' },
       body: JSON.stringify({ number: user.phone, text: msg })
@@ -370,14 +463,14 @@ async function _enviarBoasVindasWhatsApp(user) {
 }
 
 function logout() {
-  pb.authStore.clear();
+  _store.clear();
   _generatedMonths.clear();
   if (typeof clearCatsCache === 'function') clearCatsCache();
   location.hash = '#/';
   showAuthScreen();
 }
 
-// ── Seed & generate ───────────────────────────────────────────────────────────
+// ── Seed & Generate ───────────────────────────────────────────────────────────
 const SUGGESTED_CATEGORIES = [
   { name: 'Moradia',               type: 'expense', color: '#6366f1', icon: '🏠' },
   { name: 'Condomínio',            type: 'expense', color: '#8b5cf6', icon: '🏢' },
@@ -414,14 +507,12 @@ async function seedDefaultCategories() {
 }
 
 async function generateMonthTransactions(month, year) {
-  const templates = await db.templates.filter(`active = true`).toArray();
+  const templates = await db.templates.filter('active = true').toArray();
   if (templates.length === 0) return;
-
   const existingTplTx = await db.transactions.filter(
     `month = ${month} && year = ${year} && template_id != "" && transaction_type != 'installment'`
   ).toArray();
   const existingTplIds = new Set(existingTplTx.map(t => t.template_id));
-
   for (const tpl of templates) {
     if (existingTplIds.has(tpl.id)) continue;
     const day = Math.min(tpl.due_day || 1, new Date(year, month, 0).getDate());
@@ -429,16 +520,14 @@ async function generateMonthTransactions(month, year) {
     await db.transactions.add({
       template_id:      tpl.id,
       name:             tpl.name,
-      category_id:      tpl.category_id || null,
+      category_id:      tpl.category_id || '',
       transaction_type: tpl.transaction_type,
       kind:             tpl.kind,
       amount:           tpl.kind === 'fixed' ? tpl.amount : 0,
       due_date:         due.toISOString().split('T')[0],
-      paid_date:        null,
+      paid_date:        '',
       status:           'pending',
-      month,
-      year,
-      notes:            ''
+      month, year, notes: ''
     });
   }
 }
@@ -450,7 +539,6 @@ async function generateInstallmentTransactions(month, year) {
   ]);
   const active     = allInst.filter(i => (i.paid_installments || 0) < (i.installments || 1));
   const existingIds = new Set(existingTx.map(t => t.template_id));
-
   for (const inst of active) {
     if (existingIds.has(inst.id)) continue;
     const monthly = inst.total_amount / (inst.installments || 1);
@@ -459,16 +547,14 @@ async function generateInstallmentTransactions(month, year) {
     await db.transactions.add({
       template_id:      inst.id,
       name:             inst.name,
-      category_id:      inst.category_id || null,
+      category_id:      inst.category_id || '',
       transaction_type: 'installment',
       kind:             'variable',
       amount:           monthly,
       due_date:         due.toISOString().split('T')[0],
-      paid_date:        null,
+      paid_date:        '',
       status:           'pending',
-      month,
-      year,
-      notes:            inst.notes || '',
+      month, year, notes: inst.notes || '',
     });
   }
 }

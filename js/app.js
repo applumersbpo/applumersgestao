@@ -104,7 +104,7 @@ const app = {
 
     const adminLink = document.getElementById('admin-nav-link');
     if (adminLink) {
-      adminLink.style.display = user?.email === 'pedro.camarabsb@gmail.com' ? '' : 'none';
+      adminLink.style.display = user?.email === 'applumergestao@gmail.com' ? '' : 'none';
     }
   },
 
