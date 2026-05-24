@@ -119,10 +119,10 @@ export async function initDb() {
     await db.execute(sql);
   }
 
-  // Seed admin user
+  // Seed/ensure admin user with correct credentials
   const { rows } = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: ['applumergestao@gmail.com'] });
+  const hash = await bcrypt.hash('123lumers', 10);
   if (rows.length === 0) {
-    const hash = await bcrypt.hash('123lumers', 10);
     const id = crypto.randomUUID();
     await db.execute({
       sql: 'INSERT INTO users (id, email, password_hash, name, is_admin) VALUES (?, ?, ?, ?, 1)',
@@ -131,6 +131,11 @@ export async function initDb() {
     await db.execute({
       sql: 'INSERT INTO user_plans (id, user_id, email, name, monthly_fee, active) VALUES (?, ?, ?, ?, 0, 1)',
       args: [crypto.randomUUID(), id, 'applumergestao@gmail.com', 'Admin Lumers']
+    });
+  } else {
+    await db.execute({
+      sql: 'UPDATE users SET password_hash = ?, is_admin = 1 WHERE email = ?',
+      args: [hash, 'applumergestao@gmail.com']
     });
   }
 
