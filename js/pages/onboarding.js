@@ -42,7 +42,7 @@ function _onboardingStep1() {
           <path d="M7 14h14M14 7v14" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
         </svg>
       </div>
-      <div style="font-size:1.4rem;font-weight:700;margin-bottom:8px;color:var(--text)">Bem-vindo ao Visibill</div>
+      <div style="font-size:1.4rem;font-weight:700;margin-bottom:8px;color:var(--text)">Bem-vindo ao Lumers BPO</div>
       <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:28px;line-height:1.6">
         Controle suas finanças de forma simples e visual. Vamos configurar tudo em 2 passos rápidos.
       </p>
