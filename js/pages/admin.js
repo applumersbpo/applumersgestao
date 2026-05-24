@@ -72,6 +72,12 @@ function adminUserRow(u, plan) {
         <input type="number" class="form-control" style="width:100px;text-align:right;padding:6px 10px"
           value="${plan?.monthly_fee || 0}" min="0" step="0.01" placeholder="0,00"
           onchange="updateUserFee('${u.email}', this.value)">
+        ${phone ? `<button
+          id="wpp-test-${u.id}"
+          onclick="testWhatsApp('${u.id}', this)"
+          style="background:none;border:none;cursor:pointer;padding:6px;color:var(--income);font-size:1.1rem;line-height:1"
+          title="Testar conexão WhatsApp"
+        >✅</button>` : ''}
         <button
           onclick="deleteAdminUser('${u.id}', '${u.email}')"
           style="background:none;border:none;cursor:pointer;padding:6px;color:var(--expense);font-size:1.1rem;line-height:1"
@@ -94,6 +100,22 @@ async function deleteAdminUser(userId, email) {
     renderAdmin();
   } catch(e) {
     toast('Erro ao deletar: ' + e.message, 'error');
+  }
+}
+
+async function testWhatsApp(userId, btn) {
+  const original = btn.textContent;
+  btn.textContent = '⏳';
+  btn.disabled = true;
+  try {
+    const res = await _api('POST', `/api/admin/users/${userId}`, { action: 'test-whatsapp' });
+    toast(`✅ Mensagem de teste enviada para ${res.phone}`, 'success');
+    btn.textContent = '✅';
+  } catch(e) {
+    toast('Erro ao enviar teste: ' + (e.message || 'falha'), 'error');
+    btn.textContent = original;
+  } finally {
+    btn.disabled = false;
   }
 }
 
