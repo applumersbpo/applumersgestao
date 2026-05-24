@@ -9,7 +9,9 @@ export default async function handler(req, res) {
 
   try {
     await initDb();
-    const { email, password, passwordConfirm, name, phone } = req.body || {};
+    const { email, password, passwordConfirm, name } = req.body || {};
+    const phone = req.body?.phone ? req.body.phone.replace(/\D/g, '') : '';
+    const normalizedPhone = phone ? (phone.startsWith('55') ? phone : '55' + phone) : '';
     if (!email || !password) return res.status(400).json({ error: 'Preencha todos os campos', fields: {} });
     if (password !== passwordConfirm) return res.status(400).json({ error: 'As senhas não coincidem', fields: {} });
     if (password.length < 8) return res.status(400).json({ error: 'Senha mínima: 8 caracteres', fields: {} });
@@ -25,7 +27,7 @@ export default async function handler(req, res) {
     const now = new Date().toISOString();
     await db.execute({
       sql: 'INSERT INTO users (id, email, password_hash, name, phone, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      args: [id, email.toLowerCase().trim(), hash, name || '', phone || '', now]
+      args: [id, email.toLowerCase().trim(), hash, name || '', normalizedPhone, now]
     });
     await db.execute({
       sql: 'INSERT INTO user_plans (id, user_id, email, name, monthly_fee, active) VALUES (?, ?, ?, ?, 0, 1)',
@@ -37,13 +39,18 @@ export default async function handler(req, res) {
     const { password_hash: _, ...safeUser } = user;
 
     // Enviar boas-vindas pelo WhatsApp (não bloqueia o registro)
-    if (phone) _enviarBoasVindasWhatsApp(safeUser).catch(() => {});
+    if (normalizedPhone) _enviarBoasVindasWhatsApp(safeUser).catch(() => {});
 
     return res.status(201).json({ user: safeUser });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Erro ao criar conta' });
   }
+}
+
+function _normalizePhone(phone) {
+  const digits = phone.replace(/\D/g, '');
+  return digits.startsWith('55') ? digits : '55' + digits;
 }
 
 async function _enviarBoasVindasWhatsApp(user) {
@@ -62,6 +69,6 @@ async function _enviarBoasVindasWhatsApp(user) {
   await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: key },
-    body: JSON.stringify({ number: user.phone, text: msg }),
+    body: JSON.stringify({ number: _normalizePhone(user.phone), text: msg }),
   });
 }
