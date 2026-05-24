@@ -108,7 +108,7 @@ async function testWhatsApp(userId, btn) {
   btn.textContent = '⏳';
   btn.disabled = true;
   try {
-    const res = await _api('POST', `/api/admin/users/${userId}`, { action: 'test-whatsapp' });
+    const res = await _api('POST', `/admin/users/${userId}`, { action: 'test-whatsapp' });
     toast(`✅ Mensagem de teste enviada para ${res.phone}`, 'success');
     btn.textContent = '✅';
   } catch(e) {
