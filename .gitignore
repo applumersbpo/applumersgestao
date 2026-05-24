@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Configuração local com credenciais reais (não commitar)
+js/config.js
+
+# Exportação do N8N (contém credenciais)
+automacao-visibill-n8n.json
+
+# Dados de importação pessoais
+import_2026.json
+
+# Utilitários locais
+generate-icons.html
