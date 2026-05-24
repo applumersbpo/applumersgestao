@@ -26,7 +26,7 @@ async function _api(method, path, body) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401) {
+  if (res.status === 401 && !path.startsWith('/auth/')) {
     _store.clear();
     showAuthScreen();
     throw Object.assign(new Error('Unauthorized'), { response: { message: 'Sessão expirada' } });
@@ -306,11 +306,11 @@ function _rebuildAuthCard() {
     </div>
     <div class="form-group">
       <label class="form-label">E-mail</label>
-      <input id="auth-email" class="form-control" type="email" placeholder="seu@email.com" autocomplete="email">
+      <input id="auth-email" class="form-control" type="email" placeholder="seu@email.com" autocomplete="email" onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
     </div>
     <div id="auth-password-group" class="form-group">
       <label class="form-label">Senha</label>
-      <input id="auth-password" class="form-control" type="password" placeholder="••••••••" autocomplete="current-password">
+      <input id="auth-password" class="form-control" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
     </div>
     <div id="auth-forgot-link" style="text-align:right;margin-top:-4px;margin-bottom:8px">
       <a href="#" onclick="toggleForgotMode(event)" style="font-size:.82rem;color:var(--primary)">Esqueci minha senha</a>
