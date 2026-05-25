@@ -196,6 +196,22 @@ export async function initDb() {
     });
   }
 
+  // Seed top 30 banks if not present
+  const { rows: adminCheck } = await db.execute({ sql: 'SELECT id FROM users WHERE is_admin = 1 LIMIT 1' });
+  const adminId = (adminCheck[0] && adminCheck[0].id) ? adminCheck[0].id : '';
+  const topBanks = [
+    'Itaú', 'Bradesco', 'Banco do Brasil', 'Caixa Econômica Federal', 'Santander', 'Nubank', 'Banco Inter', 'Mercado Pago', 'Sicredi', 'Sicoob',
+    'BTG Pactual', 'XP Investimentos', 'Neon', 'C6 Bank', 'Original', 'Banrisul', 'Bancoob', 'Banco PAN', 'PicPay', 'Banco Modal',
+    'Volkswagen Bank', 'Agibank', 'Banco da Amazônia', 'BRB', 'Next', 'PagBank', 'BS2', 'Stone', 'Safra', 'Banco do Nordeste'
+  ];
+  for (const bname of topBanks) {
+    const code = bname.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+    const { rows: found } = await db.execute({ sql: 'SELECT id FROM banks WHERE name = ? OR code = ? LIMIT 1', args: [bname, code] });
+    if (found.length === 0) {
+      await db.execute({ sql: 'INSERT INTO banks (id, user_id, code, name, logo_url, published, approved_by, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)', args: [crypto.randomUUID(), '', code, bname, '', adminId, new Date().toISOString()] });
+    }
+  }
+
   _initialized = true;
 }
 
