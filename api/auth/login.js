@@ -27,7 +27,15 @@ export default async function handler(req, res) {
     return res.status(200).json({ token, user: safeUser });
   } catch (err) {
     console.error('LOGIN ERROR', err);
-    // TEMP DEBUG: return error message to help diagnose
-    return res.status(500).json({ error: err.message || 'Erro interno', stack: err.stack ? String(err.stack).slice(0,300) : undefined });
+    // TEMP DEBUG: return error message and DB context to help diagnose
+    const dbCtx = err && err.dbContext && err.dbContext.sqlOrObj ? err.dbContext.sqlOrObj : undefined;
+    let sqlPreview = undefined;
+    try {
+      if (dbCtx) {
+        if (typeof dbCtx === 'string') sqlPreview = dbCtx.slice(0,300);
+        else if (typeof dbCtx === 'object') sqlPreview = (dbCtx.sql ? String(dbCtx.sql).slice(0,300) : JSON.stringify({ args_len: (dbCtx.args||[]).length }));
+      }
+    } catch(e) { /* ignore */ }
+    return res.status(500).json({ error: err.message || 'Erro interno', stack: err.stack ? String(err.stack).slice(0,300) : undefined, dbContext: sqlPreview });
   }
 }
