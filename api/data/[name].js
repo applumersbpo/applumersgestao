@@ -33,14 +33,14 @@ export default async function handler(req, res) {
           sql: `SELECT * FROM banks WHERE published = 1 OR user_id = ? ORDER BY created_at DESC`,
           args: [user.sub]
         });
-        return res.status(200).json(rowsToObjects(rows));
+        return res.status(200).json((rows || []).map(r => r || {}));
       }
 
       const { rows } = await db.execute({
         sql: `SELECT * FROM ${name} WHERE user_id = ? ORDER BY created_at DESC`,
         args: [user.sub]
       });
-      return res.status(200).json(rowsToObjects(rows));
+      return res.status(200).json((rows || []).map(r => r || {}));
     }
 
     if (req.method === 'POST') {

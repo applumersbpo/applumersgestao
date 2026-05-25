@@ -26,7 +26,8 @@ export default async function handler(req, res) {
     const { password_hash: _, ...safeUser } = user;
     return res.status(200).json({ token, user: safeUser });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: 'Erro interno' });
+    console.error('LOGIN ERROR', err);
+    // TEMP DEBUG: return error message to help diagnose
+    return res.status(500).json({ error: err.message || 'Erro interno', stack: err.stack ? String(err.stack).slice(0,300) : undefined });
   }
 }
