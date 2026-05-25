@@ -50,7 +50,7 @@ function _onboardingStep1() {
         ${[
           ['📋', 'Categorias prontas para usar'],
           ['🔄', 'Lançamentos recorrentes automáticos'],
-          ['📊', 'Relatórios e metas de faturamento'],
+          ['📊', 'Relatórios e metas de receita'],
         ].map(([icon, text]) => `
           <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--surface);border-radius:var(--radius-sm)">
             <span style="font-size:1.1rem">${icon}</span>

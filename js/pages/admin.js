@@ -142,7 +142,7 @@ function _adminBrandSection(cfg) {
       </div>
       <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px">
         <div style="width:6px;height:6px;border-radius:50%;background:${_escHtml(c.sidebarText)};opacity:.6"></div>
-        <span style="font-size:.78rem;color:${_escHtml(c.sidebarText)};opacity:.9">Faturamento</span>
+        <span style="font-size:.78rem;color:${_escHtml(c.sidebarText)};opacity:.9">Receita</span>
       </div>
     </div>`;
 

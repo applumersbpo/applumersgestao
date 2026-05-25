@@ -84,7 +84,7 @@ async function renderDashboard(month, year) {
   if (!revenueGoal) {
     goalColor = 'var(--text-soft)';
     goalBorderColor = 'var(--border)';
-    goalStatus = 'Defina sua meta de faturamento mensal';
+    goalStatus = 'Defina sua meta de receita mensal';
   } else if (goalReached) {
     goalColor = 'var(--income-text)';
     goalBorderColor = 'var(--income)';
@@ -111,7 +111,7 @@ async function renderDashboard(month, year) {
         <div class="icon-wrap">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 3v14M6 7l4-4 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
-        <div class="label">Faturamento</div>
+        <div class="label">Receita</div>
         <div class="value">${fmt(totalIncome)}</div>
         <div class="sub">${fmt(received)} recebido · ${recvPct}%</div>
         <div class="progress-bar"><div class="progress-fill" style="width:${recvPct}%;background:var(--income)"></div></div>
@@ -183,11 +183,11 @@ async function renderDashboard(month, year) {
       <a href="#/bills" class="btn btn-sm btn-ghost" style="flex-shrink:0;align-self:center">Ver</a>
     </div>` : ''}
 
-    <!-- Meta de Faturamento -->
+    <!-- Meta de Receita -->
     <div class="card goal-revenue-card ${goalReached ? 'goal-reached' : ''}" style="margin-bottom:20px;border-color:${goalBorderColor}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <div style="flex:1;min-width:0">
-          <div class="card-title">Meta de Faturamento</div>
+          <div class="card-title">Meta de Receita</div>
           <div style="font-size:.9rem;font-weight:600;color:${goalColor};margin-top:2px">${goalStatus}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
@@ -234,7 +234,7 @@ async function renderDashboard(month, year) {
         <div class="progress-fill" style="width:${coveragePct}%;background:${coverOk ? 'var(--income)' : 'var(--warning)'}"></div>
       </div>
       <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:.78rem;color:var(--text-soft);flex-wrap:wrap;gap:4px">
-        <span>Faturamento: <strong style="color:var(--income-text)">${fmt(totalIncome)}</strong></span>
+        <span>Receita: <strong style="color:var(--income-text)">${fmt(totalIncome)}</strong></span>
         <span>Compromissos: <strong style="color:var(--expense)">${fmt(totalCommitted)}</strong></span>
       </div>
     </div>
@@ -290,7 +290,7 @@ function openRevenueGoalModal() {
   backdrop.innerHTML = `
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modal-header">
-        <span class="modal-title">Meta de Faturamento</span>
+        <span class="modal-title">Meta de Receita</span>
         <button class="btn btn-icon btn-ghost" id="goal-modal-close" aria-label="Fechar">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button>

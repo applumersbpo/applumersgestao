@@ -118,7 +118,7 @@ async function showImportMapper(headers, rows) {
           <label class="form-label">Tipo de Transação</label>
           <select id="imp-type" class="form-control">
             <option value="expense">Despesa (Contas a Pagar)</option>
-            <option value="income">Receita (Faturamento)</option>
+            <option value="income">Receita</option>
           </select>
         </div>
         <div class="form-group">
