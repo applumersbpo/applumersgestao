@@ -10,6 +10,38 @@ export function getDb() {
       url: process.env.TURSO_DATABASE_URL || 'libsql://placeholder.turso.io',
       authToken: process.env.TURSO_AUTH_TOKEN || '',
     });
+    // Wrap execute to add diagnostics and guard against malformed calls
+    try {
+      const origExecute = _client.execute && _client.execute.bind(_client);
+      if (origExecute) {
+        _client.execute = async function(sqlOrObj, ...rest) {
+          try {
+            let info = { sql: '', args: [] };
+            if (typeof sqlOrObj === 'string') {
+              info.sql = sqlOrObj;
+              if (rest && rest.length) info.args = rest[0];
+            } else if (sqlOrObj && typeof sqlOrObj === 'object') {
+              info.sql = sqlOrObj.sql;
+              info.args = sqlOrObj.args || [];
+            } else {
+              info.sql = String(sqlOrObj);
+            }
+            // Minimal logging to help debug problematic calls
+            console.debug('[db.execute] SQL preview:', info.sql ? (info.sql.length > 200 ? info.sql.slice(0,200) + '...' : info.sql) : '<none>', 'args_len:', (info.args || []).length);
+            const res = await origExecute(sqlOrObj, ...rest);
+            return res;
+          } catch (e) {
+            try { console.error('[db.execute] ERROR', e && (e.stack || e.message)); } catch(_) {}
+            // attach context and rethrow so upstream handlers can include it
+            e.dbContext = { sqlOrObj };
+            throw e;
+          }
+        };
+      }
+    } catch (wrapErr) {
+      // If wrapping fails, log but continue returning the original client so app can still run
+      try { console.error('[db.execute] wrapper setup failed', wrapErr && (wrapErr.stack || wrapErr.message)); } catch(_) {}
+    }
   }
   return _client;
 }
