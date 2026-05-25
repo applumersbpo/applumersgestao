@@ -64,11 +64,14 @@ export async function initDb() {
       template_id TEXT DEFAULT '',
       name TEXT NOT NULL,
       category_id TEXT DEFAULT '',
+      account_id TEXT DEFAULT '',
       transaction_type TEXT DEFAULT 'expense',
       kind TEXT DEFAULT 'fixed',
       amount REAL DEFAULT 0,
       due_date TEXT DEFAULT '',
       paid_date TEXT DEFAULT '',
+      cash_date TEXT DEFAULT '',
+      competence_date TEXT DEFAULT '',
       status TEXT DEFAULT 'pending',
       month INTEGER DEFAULT 0,
       year INTEGER DEFAULT 0,
@@ -113,16 +116,70 @@ export async function initDb() {
       used INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     )`,
+    `CREATE TABLE IF NOT EXISTS banks (
+      id TEXT PRIMARY KEY,
+      user_id TEXT DEFAULT '',
+      code TEXT DEFAULT '',
+      name TEXT NOT NULL,
+      logo_url TEXT DEFAULT '',
+      published INTEGER DEFAULT 0,
+      approved_by TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      bank_id TEXT DEFAULT '',
+      name TEXT NOT NULL,
+      bank_name TEXT DEFAULT '',
+      type TEXT DEFAULT 'checking',
+      currency TEXT DEFAULT 'BRL',
+      initial_balance REAL DEFAULT 0,
+      initial_balance_date TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {
     await db.execute(sql);
   }
 
+  // Ensure transactions have new columns (safe migration)
+  const { rows: tcols } = await db.execute({ sql: "PRAGMA table_info('transactions')" });
+  const existingCols = (tcols || []).map(r => r.name);
+  if (!existingCols.includes('account_id')) {
+    await db.execute({ sql: "ALTER TABLE transactions ADD COLUMN account_id TEXT DEFAULT ''" });
+  }
+  if (!existingCols.includes('cash_date')) {
+    await db.execute({ sql: "ALTER TABLE transactions ADD COLUMN cash_date TEXT DEFAULT ''" });
+  }
+  if (!existingCols.includes('competence_date')) {
+    await db.execute({ sql: "ALTER TABLE transactions ADD COLUMN competence_date TEXT DEFAULT ''" });
+  }
+
+  // Migrate existing transactions to a default 'Caixa' account per user
+  const { rows: users } = await db.execute({ sql: 'SELECT id FROM users' });
+  for (const u of users) {
+    const uid = u.id;
+    // check if user already has a 'Caixa' account
+    const { rows: exist } = await db.execute({ sql: 'SELECT id FROM accounts WHERE user_id = ? AND name = ?', args: [uid, 'Caixa'] });
+    let accId;
+    if (exist.length > 0) {
+      accId = exist[0].id;
+    } else {
+      accId = crypto.randomUUID();
+      await db.execute({ sql: 'INSERT INTO accounts (id, user_id, name, initial_balance, created_at) VALUES (?, ?, ?, ?, ?)', args: [accId, uid, 'Caixa', 0, new Date().toISOString()] });
+    }
+    // assign transactions without account_id to this account
+    await db.execute({ sql: "UPDATE transactions SET account_id = ? WHERE user_id = ? AND (account_id = '' OR account_id IS NULL)", args: [accId, uid] });
+  }
+
   // Seed/ensure admin user with correct credentials
-  const { rows } = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: ['applumergestao@gmail.com'] });
+  const { rows: adminRows } = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: ['applumergestao@gmail.com'] });
   const hash = await bcrypt.hash('123lumers', 10);
-  if (rows.length === 0) {
+  if (adminRows.length === 0) {
     const id = crypto.randomUUID();
     await db.execute({
       sql: 'INSERT INTO users (id, email, password_hash, name, is_admin) VALUES (?, ?, ?, ?, 1)',

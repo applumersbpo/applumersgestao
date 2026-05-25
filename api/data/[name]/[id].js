@@ -1,15 +1,17 @@
 import { getDb, initDb, rowsToObjects } from '../../lib/db.js';
 import { requireAuth, cors } from '../../lib/auth.js';
 
-const ALLOWED = ['categories', 'templates', 'transactions', 'settings', 'installments', 'goals'];
+const ALLOWED = ['categories', 'templates', 'transactions', 'settings', 'installments', 'goals', 'accounts', 'banks'];
 
 const FIELDS = {
   categories:   ['name', 'type', 'color', 'icon'],
   templates:    ['name', 'category_id', 'transaction_type', 'kind', 'amount', 'due_day', 'active'],
-  transactions: ['template_id', 'name', 'category_id', 'transaction_type', 'kind', 'amount', 'due_date', 'paid_date', 'status', 'month', 'year', 'notes'],
+  transactions: ['template_id', 'name', 'category_id', 'account_id', 'transaction_type', 'kind', 'amount', 'due_date', 'paid_date', 'cash_date', 'competence_date', 'status', 'month', 'year', 'notes'],
   settings:     ['key', 'value'],
   installments: ['name', 'category_id', 'total_amount', 'installments', 'paid_installments', 'due_day', 'notes'],
   goals:        ['name', 'target_amount', 'current_amount', 'deadline', 'color', 'icon'],
+  accounts:     ['bank_id', 'name', 'bank_name', 'type', 'currency', 'initial_balance', 'initial_balance_date', 'notes'],
+  banks:        ['code', 'name', 'logo_url', 'published', 'approved_by', 'notes'],
 };
 
 export default async function handler(req, res) {
@@ -25,6 +27,17 @@ export default async function handler(req, res) {
     const db = getDb();
 
     if (req.method === 'GET') {
+      if (name === 'banks') {
+        // banks can be fetched if published or owned by user
+        const { rows } = await db.execute({
+          sql: `SELECT * FROM banks WHERE id = ? AND (published = 1 OR user_id = ?)`,
+          args: [id, user.sub]
+        });
+        const items = rowsToObjects(rows);
+        if (items.length === 0) return res.status(404).json({ error: 'Not found' });
+        return res.status(200).json(items[0]);
+      }
+
       const { rows } = await db.execute({
         sql: `SELECT * FROM ${name} WHERE id = ? AND user_id = ?`,
         args: [id, user.sub]

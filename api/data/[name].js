@@ -1,15 +1,17 @@
 import { getDb, initDb, rowsToObjects } from '../lib/db.js';
 import { requireAuth, cors } from '../lib/auth.js';
 
-const ALLOWED = ['categories', 'templates', 'transactions', 'settings', 'installments', 'goals'];
+const ALLOWED = ['categories', 'templates', 'transactions', 'settings', 'installments', 'goals', 'accounts', 'banks'];
 
 const FIELDS = {
   categories:   ['name', 'type', 'color', 'icon'],
   templates:    ['name', 'category_id', 'transaction_type', 'kind', 'amount', 'due_day', 'active'],
-  transactions: ['template_id', 'name', 'category_id', 'transaction_type', 'kind', 'amount', 'due_date', 'paid_date', 'status', 'month', 'year', 'notes'],
+  transactions: ['template_id', 'name', 'category_id', 'account_id', 'transaction_type', 'kind', 'amount', 'due_date', 'paid_date', 'cash_date', 'competence_date', 'status', 'month', 'year', 'notes'],
   settings:     ['key', 'value'],
   installments: ['name', 'category_id', 'total_amount', 'installments', 'paid_installments', 'due_day', 'notes'],
   goals:        ['name', 'target_amount', 'current_amount', 'deadline', 'color', 'icon'],
+  accounts:     ['bank_id', 'name', 'bank_name', 'type', 'currency', 'initial_balance', 'initial_balance_date', 'notes'],
+  banks:        ['code', 'name', 'logo_url', 'published', 'approved_by', 'notes'],
 };
 
 export default async function handler(req, res) {
@@ -25,6 +27,15 @@ export default async function handler(req, res) {
     const db = getDb();
 
     if (req.method === 'GET') {
+      if (name === 'banks') {
+        // return published banks plus banks created by this user
+        const { rows } = await db.execute({
+          sql: `SELECT * FROM banks WHERE published = 1 OR user_id = ? ORDER BY created_at DESC`,
+          args: [user.sub]
+        });
+        return res.status(200).json(rowsToObjects(rows));
+      }
+
       const { rows } = await db.execute({
         sql: `SELECT * FROM ${name} WHERE user_id = ? ORDER BY created_at DESC`,
         args: [user.sub]
