@@ -200,6 +200,8 @@ const db = {
   categories:   makeCollection('categories'),
   templates:    makeCollection('templates'),
   transactions: makeCollection('transactions'),
+  accounts:     makeCollection('accounts'),
+  banks:        makeCollection('banks'),
   settings:     makeCollection('settings'),
   installments: makeCollection('installments'),
   goals:        makeCollection('goals'),
