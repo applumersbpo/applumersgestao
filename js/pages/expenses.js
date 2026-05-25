@@ -1,8 +1,9 @@
 async function renderExpenses(month, year) {
   const content = document.getElementById('content');
-  const [transactions, catsMap] = await Promise.all([
-    db.transactions.filter(`month = ${month} && year = ${year} && (transaction_type = 'general' || transaction_type = 'daily')`).toArray(),
-    getCategoriesMap()
+  const [transactions, catsMap, accounts] = await Promise.all([
+    db.transactions.filter(`month = ${month} && year = ${year} && (transaction_type = 'general' || transaction_type = 'daily' || transaction_type = 'expense' || transaction_type = 'installment')`).toArray(),
+    getCategoriesMap(),
+    db.accounts.toArray()
   ]);
 
   transactions.sort((a, b) => a.due_date > b.due_date ? -1 : 1);
@@ -35,7 +36,7 @@ async function renderExpenses(month, year) {
         <p>Nenhum gasto registrado neste mês</p>
       </div>` : `
       <div class="transaction-list" id="expenses-list">
-        ${transactions.map(t => expenseRow(t, catsMap)).join('')}
+    ${transactions.map(t => expenseRow(t, catsMap, accounts)).join('')}
       </div>`
     }
   `;
@@ -43,8 +44,9 @@ async function renderExpenses(month, year) {
   bindExpenseActions(month, year);
 }
 
-function expenseRow(t, catsMap) {
+function expenseRow(t, catsMap, accounts) {
   const cat = catsMap[t.category_id];
+  const acc = accounts?.find(a => a.id === t.account_id) || null;
   return `
     <div class="transaction-item" data-id="${t.id}">
       <div class="t-icon" style="background:${cat ? cat.color + '22' : '#FAEDE7'};color:${cat ? cat.color : '#C95A47'}">
@@ -54,6 +56,7 @@ function expenseRow(t, catsMap) {
         <div class="t-name">${t.name}</div>
         <div class="t-meta">
           ${cat ? catTag(cat) : ''}
+          ${acc ? `<span title="Conta">🏦 ${acc.name}</span>` : ''}
           <span>${fmtDate(t.due_date)}</span>
           ${t.notes ? `<span title="${t.notes}">📝 ${t.notes.substring(0, 30)}${t.notes.length > 30 ? '…' : ''}</span>` : ''}
         </div>
