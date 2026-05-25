@@ -129,23 +129,37 @@ const app = {
     const m = this.currentMonth;
     const y = this.currentYear;
 
-    switch (this.currentPage) {
-      case 'dashboard':  await renderDashboard(m, y);  break;
-      case 'bills':      await renderBills(m, y);      break;
-      case 'income':     await renderIncome(m, y);     break;
-      case 'expenses':   await renderExpenses(m, y);   break;
-      case 'transactions': await renderTransactions(); break; // kept for backward compatibility
-      case 'accounts':   await renderAccounts();       break;
-      case 'banks':      await renderBanksAdmin();     break;
-      case 'categories': await renderCategories();     break;
-      case 'goals':      await renderGoals();          break;
-      case 'reports':    await renderReports(m, y);    break;
-      case 'import':     renderImport();               break;
-      case 'settings':   await renderSettings();        break;
-      case 'admin':      await renderAdmin();           break;
-      default:           await renderDashboard(m, y);
+    try {
+      switch (this.currentPage) {
+        case 'dashboard':  await renderDashboard(m, y);  break;
+        case 'bills':      await renderBills(m, y);      break;
+        case 'income':     await renderIncome(m, y);     break;
+        case 'expenses':   await renderExpenses(m, y);   break;
+        case 'transactions': await renderTransactions(); break; // kept for backward compatibility
+        case 'accounts':   await renderAccounts();       break;
+        case 'banks':      await renderBanksAdmin();     break;
+        case 'categories': await renderCategories();     break;
+        case 'goals':      await renderGoals();          break;
+        case 'reports':    await renderReports(m, y);    break;
+        case 'import':     renderImport();               break;
+        case 'settings':   await renderSettings();        break;
+        case 'admin':      await renderAdmin();           break;
+        default:           await renderDashboard(m, y);
+      }
+    } catch (err) {
+      console.error('Render error:', err);
+      const content = document.getElementById('content');
+      if (content) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <svg width="40" height="40" viewBox="0 0 48 48" fill="none"><path d="M8 12h32M8 24h20M8 36h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <p>Erro ao carregar a página: ${err?.message || 'Erro inesperado'}</p>
+            <pre style="white-space:pre-wrap;color:var(--text-muted);font-size:.8rem;margin-top:8px">${(err && err.stack) ? String(err.stack).substring(0, 1000) : ''}</pre>
+          </div>`;
+      }
     }
   },
+
 
   updateNav() {
     document.querySelectorAll('[data-page]').forEach(el => {
