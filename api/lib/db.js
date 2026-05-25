@@ -182,13 +182,13 @@ export async function initDb() {
   const { rows: tcols } = await db.execute("PRAGMA table_info('transactions')");
   const existingCols = (tcols || []).map(r => r.name);
   if (!existingCols.includes('account_id')) {
-    await db.execute({ sql: "ALTER TABLE transactions ADD COLUMN account_id TEXT DEFAULT ''" });
+    await db.execute("ALTER TABLE transactions ADD COLUMN account_id TEXT DEFAULT ''");
   }
   if (!existingCols.includes('cash_date')) {
-    await db.execute({ sql: "ALTER TABLE transactions ADD COLUMN cash_date TEXT DEFAULT ''" });
+    await db.execute("ALTER TABLE transactions ADD COLUMN cash_date TEXT DEFAULT ''");
   }
   if (!existingCols.includes('competence_date')) {
-    await db.execute({ sql: "ALTER TABLE transactions ADD COLUMN competence_date TEXT DEFAULT ''" });
+    await db.execute("ALTER TABLE transactions ADD COLUMN competence_date TEXT DEFAULT ''");
   }
 
   // Migrate existing transactions to a default 'Caixa' account per user
