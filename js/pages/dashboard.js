@@ -180,7 +180,7 @@ async function renderDashboard(month, year) {
         <div class="insight-heading">Contas Pendentes — ${fmt(expPending)}</div>
         <div class="insight-desc">${expenses.filter(t => t.status !== 'paid').length} conta${expenses.filter(t => t.status !== 'paid').length !== 1 ? 's' : ''} em aberto</div>
       </div>
-      <a href="#/bills" class="btn btn-sm btn-ghost" style="flex-shrink:0;align-self:center">Ver</a>
+      <a href="#/expenses" class="btn btn-sm btn-ghost" style="flex-shrink:0;align-self:center">Ver</a>
     </div>` : ''}
 
     <!-- Meta de Receita -->
@@ -243,7 +243,7 @@ async function renderDashboard(month, year) {
     <div class="card" style="border-color:var(--expense);margin-bottom:20px">
       <div class="section-header">
         <div class="section-title" style="color:var(--expense)">Contas Vencidas (${overdue.length})</div>
-        <a href="#/bills" class="btn btn-sm btn-ghost">Ver todas</a>
+        <a href="#/expenses" class="btn btn-sm btn-ghost">Ver todas</a>
       </div>
       <div class="transaction-list">
         ${overdue.slice(0, 3).map(t => transactionRow(t, catsMap, false)).join('')}
@@ -254,7 +254,7 @@ async function renderDashboard(month, year) {
     <div class="card" style="margin-bottom:20px">
       <div class="section-header">
         <div class="section-title">Vencem nos próximos 7 dias</div>
-        <a href="#/bills" class="btn btn-sm btn-ghost">Ver todas</a>
+        <a href="#/expenses" class="btn btn-sm btn-ghost">Ver todas</a>
       </div>
       <div class="transaction-list">
         ${upcoming.slice(0, 5).map(t => transactionRow(t, catsMap, false)).join('')}
@@ -265,7 +265,7 @@ async function renderDashboard(month, year) {
     <div class="card">
       <div class="section-header">
         <div class="section-title">Últimas Movimentações</div>
-        <a href="#/bills" class="btn btn-sm btn-ghost">Ver tudo →</a>
+        <a href="#/expenses" class="btn btn-sm btn-ghost">Ver tudo →</a>
       </div>
       ${transactions.length === 0 ? `
         <div class="empty-state">

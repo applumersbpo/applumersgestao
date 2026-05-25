@@ -83,7 +83,7 @@ async function injectUpcomingAlert() {
       <span style="font-size:1.1rem;flex-shrink:0">⚠️</span>
       <div style="font-size:.85rem;color:var(--text);line-height:1.5">
         ${lines.join('<br>')}
-        <a href="#/bills" style="color:var(--warning);margin-left:8px;font-weight:600">Ver contas →</a>
+        <a href="#/expenses" style="color:var(--warning);margin-left:8px;font-weight:600">Ver contas →</a>
       </div>
     </div>
     <button onclick="document.getElementById('upcoming-alert').remove()"

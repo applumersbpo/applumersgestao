@@ -132,7 +132,7 @@ const app = {
     try {
       switch (this.currentPage) {
         case 'dashboard':  await renderDashboard(m, y);  break;
-        case 'bills':      await renderBills(m, y);      break;
+  
         case 'income':     await renderIncome(m, y);     break;
         case 'expenses':   await renderExpenses(m, y);   break;
         case 'transactions': await renderTransactions(); break; // kept for backward compatibility
@@ -170,7 +170,6 @@ const app = {
   updateTitle() {
     const titles = {
       dashboard:  'Dashboard',
-      bills:      'Contas a Pagar',
       income:     'Receitas',
       expenses:   'Despesas',
       transactions: 'Transações',
@@ -188,7 +187,7 @@ const app = {
 
   updateTopbarActions() {
     const el = document.getElementById('topbarActions');
-    const showMonth = ['dashboard', 'bills', 'transactions', 'income', 'expenses', 'reports'].includes(this.currentPage);
+    const showMonth = ['dashboard', 'transactions', 'income', 'expenses', 'reports'].includes(this.currentPage);
 
     if (showMonth) {
       el.innerHTML = `
