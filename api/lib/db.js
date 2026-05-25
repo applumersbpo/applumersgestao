@@ -216,9 +216,11 @@ export async function initDb() {
 }
 
 export function rowsToObjects(rows) {
+  if (!rows) return [];
   return rows.map(row => {
     const obj = {};
-    for (const [k, v] of Object.entries(row)) {
+    if (!row) return obj;
+    for (const [k, v] of Object.entries(row || {})) {
       obj[k] = v;
     }
     return obj;
