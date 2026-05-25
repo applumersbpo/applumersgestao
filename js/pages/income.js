@@ -140,7 +140,7 @@ async function openIncomeModal(month, year, data = null) {
             </div>
             <div class="form-group">
               <label class="form-label">Data</label>
-              <input id="inc-date" class="form-control" type="date" value="${data?.due_date || ''}">
+              <input id="inc-date" class="form-control" type="date" value="${data?.due_date || today()}">
             </div>
           </div>
 
@@ -171,11 +171,11 @@ async function openIncomeModal(month, year, data = null) {
 
           <div class="form-row">
             <div class="form-group" style="flex:1">
-              <label class="form-label">Data de competência</label>
-              <input id="inc-competence" type="date" class="form-control" value="${data?.competence_date || data?.due_date || ''}">
+              <label class="form-label">Data de competência <span class="field-info" title="Data de competência: referência contábil para relatórios; não influencia o caixa">ℹ️</span></label>
+              <input id="inc-competence" type="date" class="form-control" value="${data?.competence_date || data?.due_date || today()}">
             </div>
             <div class="form-group" style="flex:1">
-              <label class="form-label">Data de caixa (entrada)</label>
+              <label class="form-label">Data de caixa (entrada) <span class="field-info" title="Data de caixa: data em que o dinheiro efetivamente entrou/foi debitado da conta">ℹ️</span></label>
               <input id="inc-cash" type="date" class="form-control" value="${data?.cash_date || data?.paid_date || ''}">
             </div>
           </div>
@@ -208,17 +208,22 @@ async function saveIncome(id, month, year) {
   const notes  = document.getElementById('inc-notes').value.trim();
 
   if (!name) { toast('Informe a descrição', 'error'); return; }
-  if (!date) { toast('Informe a data', 'error'); return; }
+  // amount and category are mandatory
+  if (!amount || amount <= 0) { toast('Informe um valor válido', 'error'); return; }
+  if (!cat) { toast('Informe a categoria', 'error'); return; }
+  // if date not provided, use today (registration date)
+  const regDate = date || today();
 
-  const [yearParsed, monthParsed] = (competence_date || date).split('-').map(Number);
+
+  const [yearParsed, monthParsed] = (competence_date || regDate).split('-').map(Number);
   const record = {
     name, amount,
-    due_date: date,
+    due_date: regDate,
     category_id: cat, kind, notes,
     transaction_type: 'income',
     account_id: account_id || '',
-    competence_date: competence_date || '',
-    cash_date: cash_date || '',
+    competence_date: competence_date || regDate,
+    cash_date: cash_date || null,
     month: monthParsed || month,
     year: yearParsed || year
   };

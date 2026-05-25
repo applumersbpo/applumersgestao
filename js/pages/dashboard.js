@@ -25,8 +25,9 @@ async function renderDashboard(month, year) {
   const recvPct = totalIncome > 0 ? Math.round((received / totalIncome) * 100) : 0;
   const expPct  = totalExpense > 0 ? Math.round((expPaid / totalExpense) * 100) : 0;
 
-  const saldoProjetado = totalIncome - totalExpense - instTotal - totalGeneral;
-  const saldoReal      = received - expPaid - instPaid - totalGeneral;
+  // Simplified: saldo = receita − despesas (as requested)
+  const saldoProjetado = totalIncome - totalExpense;
+  const saldoReal      = received - expPaid;
 
   const projClass = saldoProjetado >= 0 ? 'balance-positive' : 'balance-negative';
   const realClass  = saldoReal >= 0 ? 'balance-positive' : 'balance-negative';
@@ -99,7 +100,8 @@ async function renderDashboard(month, year) {
     goalStatus = `Faltam ${fmt(revenueGoal - totalIncome)} para bater a meta`;
   }
 
-  const totalCommitted = totalExpense + instTotal + totalGeneral;
+  // Coverage simplified to consider only despesas
+  const totalCommitted = totalExpense;
   const coveragePct    = totalCommitted > 0 ? Math.min(Math.round((totalIncome / totalCommitted) * 100), 100) : 100;
   const gap            = totalCommitted - totalIncome;
   const coverOk        = gap <= 0;

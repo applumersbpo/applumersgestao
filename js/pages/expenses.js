@@ -144,11 +144,11 @@ async function openExpenseModal(month, year, data = null) {
           </div>
           <div class="form-row">
             <div class="form-group" style="flex:1">
-              <label class="form-label">Data de competência</label>
+              <label class="form-label">Data de competência <span class="field-info" title="Data de competência: referência contábil para relatórios; não influencia o caixa">ℹ️</span></label>
               <input id="exp-competence" type="date" class="form-control" value="${data?.competence_date || data?.due_date || today()}">
             </div>
             <div class="form-group" style="flex:1">
-              <label class="form-label">Data de caixa (saída)</label>
+              <label class="form-label">Data de caixa (saída) <span class="field-info" title="Data de caixa: data em que o dinheiro efetivamente entrou/foi debitado da conta">ℹ️</span></label>
               <input id="exp-cash" type="date" class="form-control" value="${data?.cash_date || data?.paid_date || today()}">
             </div>
           </div>
@@ -179,7 +179,8 @@ async function saveExpense(id, month, year) {
   const notes  = document.getElementById('exp-notes').value.trim();
 
   if (!name)   { toast('Informe a descrição', 'error'); return; }
-  if (!amount) { toast('Informe o valor', 'error'); return; }
+  if (!amount || amount <= 0) { toast('Informe um valor válido', 'error'); return; }
+  if (!cat) { toast('Informe a categoria', 'error'); return; }
   if (!date)   { toast('Informe a data', 'error'); return; }
 
   const [yearParsed, monthParsed] = (competence_date || date).split('-').map(Number);
@@ -191,8 +192,8 @@ async function saveExpense(id, month, year) {
     notes,
     transaction_type: 'expense',
     account_id:       account_id || '',
-    competence_date:  competence_date || '',
-    cash_date:        cash_date || '',
+    competence_date:  competence_date || date,
+    cash_date:        cash_date || date,
     status:           'paid',
     month:            monthParsed || month,
     year:             yearParsed || year,

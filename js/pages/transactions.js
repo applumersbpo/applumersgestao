@@ -100,11 +100,11 @@ async function openTransactionModal(data = null) {
 
           <div class="form-row">
             <div class="form-group" style="flex:1">
-              <label class="form-label">Data de competência</label>
+              <label class="form-label">Data de competência <span class="field-info" title="Data de competência: referência contábil para relatórios; não influencia o caixa">ℹ️</span></label>
               <input id="tx-competence" type="date" class="form-control" value="${data?.competence_date || ''}">
             </div>
             <div class="form-group" style="flex:1">
-              <label class="form-label">Data de caixa (entrada/saída)</label>
+              <label class="form-label">Data de caixa (entrada/saída) <span class="field-info" title="Data de caixa: data em que o dinheiro efetivamente entrou/foi debitado da conta">ℹ️</span></label>
               <input id="tx-cash" type="date" class="form-control" value="${data?.cash_date || ''}">
             </div>
           </div>
