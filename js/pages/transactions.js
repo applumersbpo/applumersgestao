@@ -20,13 +20,13 @@ async function renderTransactions() {
         <div style="font-size:.85rem;color:var(--text-muted)">Mês: ${monthLabel(m,y)}</div>
       </div>
       <div class="transaction-list">
-        ${txs.map(t => transactionRow(t, accounts, cats)).join('')}
+        ${txs.map(t => transactionRowTx(t, accounts, cats)).join('')}
       </div>
     </div>
   `;
 }
 
-function transactionRow(t, accounts, cats) {
+function transactionRowTx(t, accounts, cats) {
   const acc = accounts.find(a => a.id === t.account_id) || { name: 'Caixa' };
   const cat = cats.find(c => c.id === t.category_id) || null;
   return `
