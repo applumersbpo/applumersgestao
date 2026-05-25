@@ -179,7 +179,7 @@ export async function initDb() {
   }
 
   // Ensure transactions have new columns (safe migration)
-  const { rows: tcols } = await db.execute({ sql: "PRAGMA table_info('transactions')" });
+  const { rows: tcols } = await db.execute("PRAGMA table_info('transactions')");
   const existingCols = (tcols || []).map(r => r.name);
   if (!existingCols.includes('account_id')) {
     await db.execute({ sql: "ALTER TABLE transactions ADD COLUMN account_id TEXT DEFAULT ''" });
