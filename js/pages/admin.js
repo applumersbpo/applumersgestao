@@ -63,19 +63,22 @@ async function renderAdmin() {
 function _adminBrandSection(cfg) {
   const c = _normalizeBrand(cfg);
 
-  // Helper: campo de cor (picker + input hex)
-  const colorField = (id, label, val) => `
-    <div class="form-group" style="margin-bottom:0">
-      <label class="form-label" style="font-size:.76rem;margin-bottom:5px">${label}</label>
+  // Helper: campo de cor com swatch visual
+  const colorField = (id, label, val, hint = '') => `
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <label style="font-size:.75rem;font-weight:600;color:var(--text-muted);letter-spacing:.01em">${label}</label>
       <div style="display:flex;gap:6px;align-items:center">
         <input type="color" id="bp-${id}" value="${_escHtml(val)}"
-          style="width:36px;height:36px;border:1px solid var(--border);border-radius:6px;padding:2px;cursor:pointer;background:none;flex-shrink:0">
+          style="width:34px;height:34px;border:1.5px solid var(--border);border-radius:var(--r-md);
+                 padding:2px;cursor:pointer;background:var(--surface);flex-shrink:0">
         <input id="bt-${id}" class="form-control" value="${_escHtml(val)}"
-          style="font-family:monospace;font-size:.8rem;padding:5px 8px;min-width:0">
+          style="font-family:'JetBrains Mono',monospace;font-size:.82rem;padding:7px 10px;
+                 text-transform:uppercase;letter-spacing:.04em;min-width:0">
       </div>
+      ${hint ? `<span style="font-size:.72rem;color:var(--text-soft)">${hint}</span>` : ''}
     </div>`;
 
-  // Helper: campo de logotipo/favicon com upload + URL
+  // Helper: campo de mídia
   const mediaField = (id, label, hint, currentData) => {
     const isBase64 = currentData && currentData.startsWith('data:');
     const urlVal   = isBase64 ? '' : _escHtml(currentData || '');
@@ -85,55 +88,117 @@ function _adminBrandSection(cfg) {
       <label class="form-label">${label}</label>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;
-          padding:8px 14px;border:1.5px dashed var(--border);border-radius:8px;
-          font-size:.83rem;color:var(--primary);font-weight:500;transition:border-color .2s"
-          onmouseover="this.style.borderColor='var(--primary)'"
-          onmouseout="this.style.borderColor='var(--border)'">
-          <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-            <path d="M10 3v10M6 7l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M4 15h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          padding:8px 14px;border:1.5px dashed var(--border);border-radius:var(--r-md);
+          font-size:.83rem;color:var(--primary-600);font-weight:500;transition:border-color .15s,background .15s"
+          onmouseover="this.style.borderColor='var(--primary-600)';this.style.background='var(--primary-50)'"
+          onmouseout="this.style.borderColor='var(--border)';this.style.background='transparent'">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+            <path d="M10 3v10M6 7l4-4 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 15h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
           </svg>
           Enviar arquivo
-          <input type="file" accept="image/*" style="display:none"
-            onchange="_onMediaFile(this, '${id}')">
+          <input type="file" accept="image/*" style="display:none" onchange="_onMediaFile(this, '${id}')">
         </label>
-        ${hasMedia && isBase64 ? `<span id="${id}-file-label" style="font-size:.78rem;color:var(--income);font-weight:500">✓ Arquivo carregado</span>` : `<span id="${id}-file-label" style="font-size:.78rem;color:var(--text-muted)"></span>`}
+        ${hasMedia && isBase64
+          ? `<span id="${id}-file-label" style="font-size:.78rem;color:var(--income-text);font-weight:600">✓ Arquivo carregado</span>`
+          : `<span id="${id}-file-label" style="font-size:.78rem;color:var(--text-soft)"></span>`}
       </div>
-      <p style="font-size:.76rem;color:var(--text-muted);margin:5px 0 8px">${hint}</p>
+      <p style="font-size:.75rem;color:var(--text-soft);margin:5px 0 8px;line-height:1.5">${hint}</p>
       <label class="form-label" style="font-size:.76rem">Ou cole uma URL</label>
-      <input id="${id}-url" class="form-control" value="${urlVal}" placeholder="https://..."
-        oninput="_onMediaUrl(this, '${id}')">
+      <input id="${id}-url" class="form-control" value="${urlVal}" placeholder="https://..." oninput="_onMediaUrl(this, '${id}')">
       <div id="${id}-preview" style="margin-top:10px;${hasMedia ? '' : 'display:none'}">
-        ${hasMedia ? `<img src="${_escHtml(currentData)}" alt="" style="height:48px;border-radius:8px;border:1px solid var(--border);padding:4px;background:#f8fafc" onerror="this.style.display='none'">` : ''}
+        ${hasMedia ? `<img src="${_escHtml(currentData)}" alt=""
+          style="height:48px;border-radius:var(--r-md);border:1px solid var(--border);padding:4px;background:var(--bg-subtle)"
+          onerror="this.style.display='none'">` : ''}
       </div>
     </div>`;
   };
 
-  // Separator helper
+  // Separator
   const sep = title => `
-    <div style="font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
-      color:var(--text-muted);padding-bottom:10px;border-bottom:1.5px solid var(--border);
-      margin:24px 0 16px">
-      ${title}
+    <div style="display:flex;align-items:center;gap:10px;margin:24px 0 14px">
+      <span style="font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+        color:var(--text-muted);white-space:nowrap">${title}</span>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>`;
+
+  // Mini sidebar preview
+  const sidebarPreview = `
+    <div style="background:${_escHtml(c.sidebarBg)};border-radius:var(--r-lg);padding:12px;
+      display:flex;flex-direction:column;gap:4px;min-width:160px">
+      <div style="font-family:'Spectral',Georgia,serif;font-size:.85rem;font-weight:500;
+        color:#F8F4E4;padding:4px 6px;margin-bottom:4px;border-bottom:1px solid rgba(248,244,228,.1);
+        padding-bottom:8px">Lumers Flow</div>
+      <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;
+        background:rgba(248,244,228,.14);position:relative;">
+        <span style="position:absolute;left:0;top:20%;bottom:20%;width:3px;
+          background:${_escHtml(c.warning)};border-radius:0 2px 2px 0"></span>
+        <div style="width:6px;height:6px;border-radius:50%;background:${_escHtml(c.primary)}"></div>
+        <span style="font-size:.78rem;color:#F8F4E4;font-weight:600">Dashboard</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px">
+        <div style="width:6px;height:6px;border-radius:50%;background:${_escHtml(c.sidebarText)};opacity:.6"></div>
+        <span style="font-size:.78rem;color:${_escHtml(c.sidebarText)};opacity:.9">Contas a Pagar</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px">
+        <div style="width:6px;height:6px;border-radius:50%;background:${_escHtml(c.sidebarText)};opacity:.6"></div>
+        <span style="font-size:.78rem;color:${_escHtml(c.sidebarText)};opacity:.9">Faturamento</span>
+      </div>
+    </div>`;
+
+  // Paleta de swatches rápidos
+  const palette = [
+    { label: 'Primary', color: c.primary },
+    { label: 'Primária escura', color: c.primaryDark },
+    { label: 'Acento', color: c.warning },
+    { label: 'Receita', color: c.income },
+    { label: 'Despesa', color: c.expense },
+    { label: 'Alerta', color: c.warning },
+    { label: 'Fundo', color: c.bg },
+    { label: 'Sidebar', color: c.sidebarBg },
+  ];
+  const paletteStrip = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px">
+      ${palette.map(p => `
+        <div title="${p.label}" style="display:flex;flex-direction:column;align-items:center;gap:4px">
+          <div style="width:32px;height:32px;border-radius:var(--r-md);background:${_escHtml(p.color)};
+            border:1.5px solid rgba(0,0,0,.08)"></div>
+          <span style="font-size:.6rem;color:var(--text-soft);text-align:center;line-height:1.2;max-width:40px">${p.label}</span>
+        </div>`).join('')}
     </div>`;
 
   return `
     <div class="card" style="margin-bottom:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:4px">
-        <div class="card-title">Identidade Visual</div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-ghost btn-sm" onclick="_previewBrandConfig()">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+        <div>
+          <div class="card-title">Identidade Visual</div>
+          <p style="font-size:.85rem;color:var(--text-muted);margin:4px 0 0;line-height:1.5">
+            Personalize cores, logotipo e favicon. Aplicado para todos os usuários ao salvar.
+          </p>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button class="btn btn-sm btn-secondary" onclick="_previewBrandConfig()">
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M1 10s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7z" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.5"/></svg>
             Pré-visualizar
           </button>
-          <button class="btn btn-ghost btn-sm" style="color:var(--expense)" onclick="_resetBrandConfig()">
-            Restaurar padrões
-          </button>
+          <button class="btn btn-sm btn-ghost" style="color:var(--expense)" onclick="_resetBrandConfig()">Restaurar padrões</button>
         </div>
       </div>
-      <p style="font-size:.83rem;color:var(--text-muted);margin-bottom:4px">
-        Personalize completamente a aparência — cores, tipografia visual, logotipo e favicon.
-        Alterações são aplicadas em tempo real para todos os usuários após salvar.
-      </p>
+
+      <!-- Paleta atual + preview sidebar -->
+      <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;
+        background:var(--bg-subtle);border-radius:var(--r-lg);padding:16px;margin-bottom:8px">
+        <div style="flex:1;min-width:180px">
+          <div style="font-size:.75rem;font-weight:600;color:var(--text-muted);
+            letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">Paleta atual</div>
+          ${paletteStrip}
+        </div>
+        <div>
+          <div style="font-size:.75rem;font-weight:600;color:var(--text-muted);
+            letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">Preview sidebar</div>
+          ${sidebarPreview}
+        </div>
+      </div>
 
       ${sep('Aplicativo')}
       <div class="form-group">
@@ -145,42 +210,46 @@ function _adminBrandSection(cfg) {
       ${mediaField('b-logo', 'Logotipo', 'PNG, SVG, JPEG, WEBP — recomendado fundo transparente. Máx 4MB.', c.logoData)}
       ${mediaField('b-favicon', 'Favicon', 'PNG 32×32 ou ICO — ícone da aba do navegador. Máx 4MB.', c.faviconData)}
 
-      ${sep('Cores Principais')}
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        ${colorField('primary',      'Cor primária',    c.primary)}
-        ${colorField('primaryDark',  'Primária escura', c.primaryDark)}
-        ${colorField('primaryLight', 'Primária clara',  c.primaryLight)}
+      ${sep('Cores da Marca')}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:8px">
+        ${colorField('primary',      'Cor primária',    c.primary,      'Base do sistema — botões, links, ativo')}
+        ${colorField('primaryDark',  'Primária escura', c.primaryDark,  'Hover / sombra de botão')}
+        ${colorField('primaryLight', 'Primária clara',  c.primaryLight, 'Fundo de badges e destaques')}
       </div>
 
-      ${sep('Status')}
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        ${colorField('income',       'Receita',       c.income)}
-        ${colorField('incomeLight',  'Receita clara', c.incomeLight)}
-        ${colorField('expense',      'Despesa',       c.expense)}
-        ${colorField('expenseLight', 'Despesa clara', c.expenseLight)}
-        ${colorField('warning',      'Alerta',        c.warning)}
-        ${colorField('warningLight', 'Alerta claro',  c.warningLight)}
+      ${sep('Semânticas')}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+        ${colorField('income',       'Receita',         c.income,       'Positivo / entrada')}
+        ${colorField('incomeLight',  'Receita clara',   c.incomeLight,  'Fundo de badge de receita')}
+        ${colorField('expense',      'Despesa',         c.expense,      'Negativo / saída')}
+        ${colorField('expenseLight', 'Despesa clara',   c.expenseLight, 'Fundo de badge de despesa')}
+        ${colorField('warning',      'Alerta / Acento', c.warning,      'Alertas, pendentes e accent CTA')}
+        ${colorField('warningLight', 'Alerta claro',    c.warningLight, 'Fundo de badge de alerta')}
       </div>
 
       ${sep('Interface')}
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        ${colorField('bg',        'Fundo geral', c.bg)}
-        ${colorField('surface',   'Cartões',     c.surface)}
-        ${colorField('border',    'Bordas',      c.border)}
-        ${colorField('text',      'Texto',       c.text)}
-        ${colorField('textMuted', 'Texto suave', c.textMuted)}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+        ${colorField('bg',        'Fundo geral', c.bg,        'Background do app')}
+        ${colorField('surface',   'Cartões',     c.surface,   'Cards, modais, inputs')}
+        ${colorField('border',    'Bordas',      c.border,    'Linhas divisórias')}
+        ${colorField('text',      'Texto',       c.text,      'Texto principal — alto contraste')}
+        ${colorField('textMuted', 'Texto suave', c.textMuted, 'Labels, meta, legendas')}
       </div>
 
       ${sep('Barra Lateral')}
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        ${colorField('sidebarBg',     'Fundo',       c.sidebarBg)}
-        ${colorField('sidebarText',   'Texto',       c.sidebarText)}
-        ${colorField('sidebarActive', 'Item ativo',  c.sidebarActive)}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+        ${colorField('sidebarBg',     'Fundo',         c.sidebarBg,     'Background da sidebar')}
+        ${colorField('sidebarText',   'Texto dos itens',c.sidebarText,  'Itens não ativos — use creme para contraste')}
+        ${colorField('sidebarActive', 'Item ativo',    c.sidebarActive, 'Texto do item em foco')}
       </div>
 
-      <div style="display:flex;gap:10px;padding-top:24px;border-top:1px solid var(--border);margin-top:24px;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="saveBrandConfig()">Salvar tudo</button>
-        <button class="btn btn-ghost" onclick="_previewBrandConfig()">Pré-visualizar</button>
+      <div style="display:flex;gap:10px;padding-top:20px;border-top:1px solid var(--border);
+        margin-top:24px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-primary" onclick="saveBrandConfig()">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M4 12l4 4 8-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Salvar tudo
+        </button>
+        <button class="btn btn-secondary" onclick="_previewBrandConfig()">Pré-visualizar</button>
         <button class="btn btn-ghost" style="color:var(--expense)" onclick="_resetBrandConfig()">Restaurar padrões</button>
       </div>
     </div>`;

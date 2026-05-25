@@ -49,7 +49,7 @@ function goalCard(g) {
   const pct     = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
   const done    = current >= target && target > 0;
   const remaining = Math.max(0, target - current);
-  const color   = g.color || '#6366f1';
+  const color   = g.color || '#3A5A40';
 
   return `
     <div class="card">
@@ -99,7 +99,7 @@ async function editGoal(id) {
 
 async function openGoalModal(data = null) {
   const isEdit       = !!data;
-  const defaultColor = data?.color || '#6366f1';
+  const defaultColor = data?.color || '#3A5A40';
 
   showModal(`
     <div class="modal-backdrop">
@@ -165,7 +165,7 @@ async function saveGoal(id) {
   const target  = parseBRNumber(document.getElementById('goal-target').value);
   const current = parseBRNumber(document.getElementById('goal-current').value);
   const deadline= document.getElementById('goal-deadline').value || null;
-  const color   = document.getElementById('goal-color').value   || '#6366f1';
+  const color   = document.getElementById('goal-color').value   || '#3A5A40';
 
   if (!name)     { toast('Informe o nome da meta', 'error'); return; }
   if (target <= 0){ toast('Informe o valor objetivo', 'error'); return; }
@@ -195,7 +195,7 @@ async function saveGoal(id) {
 async function openUpdateGoalModal(id) {
   const goal = await db.goals.get(id);
   if (!goal) return;
-  const color = goal.color || '#6366f1';
+  const color = goal.color || '#3A5A40';
 
   showModal(`
     <div class="modal-backdrop">

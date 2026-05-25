@@ -222,7 +222,7 @@ function toggleAuthMode(e) {
   _authMode = _authMode === 'login' ? 'signup' : 'login';
   const s = _authMode === 'signup';
   document.getElementById('auth-title').textContent       = s ? 'Criar conta'  : 'Entrar';
-  document.getElementById('auth-submit').textContent      = s ? 'Criar conta'  : 'Entrar';
+  document.getElementById('auth-submit').textContent      = s ? 'Criar conta'  : 'Entrar no Lumers Flow';
   document.getElementById('auth-submit').onclick          = submitAuth;
   document.getElementById('auth-toggle-text').textContent = s ? 'Já tem conta?' : 'Não tem conta?';
   document.getElementById('auth-toggle').textContent      = s ? 'Entrar'       : 'Criar conta';
@@ -240,6 +240,7 @@ function toggleForgotMode(e) {
   _authMode = 'forgot';
   document.getElementById('auth-title').textContent       = 'Redefinir senha';
   document.getElementById('auth-submit').textContent      = 'Enviar link de redefinição';
+  document.querySelector('.auth-form-subtitle') && (document.querySelector('.auth-form-subtitle').textContent = 'Digite seu e-mail para receber o link');
   document.getElementById('auth-submit').onclick          = submitForgotPassword;
   document.getElementById('auth-toggle-text').textContent = 'Lembrou a senha?';
   document.getElementById('auth-toggle').textContent      = 'Fazer login';
@@ -275,11 +276,11 @@ async function submitForgotPassword() {
   btn.disabled = true; btn.textContent = 'Enviando...';
   try {
     await pb.collection('users').requestPasswordReset(email);
-    const card = document.querySelector('#auth-screen .card');
+    const card = document.querySelector('#auth-screen .auth-form-inner');
     card.innerHTML = `
       <div style="text-align:center;padding:8px 0">
         <div style="font-size:2.8rem;margin-bottom:16px">📧</div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:10px">E-mail enviado!</div>
+        <div class="auth-form-title" style="margin-bottom:10px">E-mail enviado!</div>
         <p style="color:var(--text-muted);font-size:.88rem;line-height:1.6;margin-bottom:24px">
           Enviamos um link de redefinição para <strong>${email}</strong>.<br>
           Verifique sua caixa de entrada (e o spam).
@@ -293,9 +294,10 @@ async function submitForgotPassword() {
 }
 
 function _rebuildAuthCard() {
-  const card = document.querySelector('#auth-screen .card');
+  const card = document.querySelector('#auth-screen .auth-form-inner');
   card.innerHTML = `
-    <div id="auth-title" style="font-size:1.15rem;font-weight:600;margin-bottom:20px;color:var(--text)">Entrar</div>
+    <div id="auth-title" class="auth-form-title">Entrar</div>
+    <div class="auth-form-subtitle">Bem-vindo de volta ao Lumers Flow</div>
     <div id="auth-name-group" class="form-group" style="display:none">
       <label class="form-label">Nome</label>
       <input id="auth-name" class="form-control" type="text" placeholder="Seu nome" autocomplete="name">
@@ -312,17 +314,17 @@ function _rebuildAuthCard() {
       <label class="form-label">Senha</label>
       <input id="auth-password" class="form-control" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
     </div>
-    <div id="auth-forgot-link" style="text-align:right;margin-top:-4px;margin-bottom:8px">
-      <a href="#" onclick="toggleForgotMode(event)" style="font-size:.82rem;color:var(--primary)">Esqueci minha senha</a>
+    <div id="auth-forgot-link" style="text-align:right;margin-top:-8px;margin-bottom:16px">
+      <a href="#" onclick="toggleForgotMode(event)" style="font-size:.82rem;color:var(--primary-600);font-weight:500">Esqueci minha senha</a>
     </div>
     <div id="auth-confirm-group" class="form-group" style="display:none">
       <label class="form-label">Confirmar senha</label>
       <input id="auth-confirm" class="form-control" type="password" placeholder="••••••••" autocomplete="new-password">
     </div>
-    <button id="auth-submit" class="btn btn-primary" style="width:100%;margin-top:8px;padding:12px" onclick="submitAuth()">Entrar</button>
-    <p style="text-align:center;margin-top:16px;font-size:.88rem;color:var(--text-muted)">
+    <button id="auth-submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center;margin-top:4px" onclick="submitAuth()">Entrar no Lumers Flow</button>
+    <p style="text-align:center;margin-top:20px;font-size:.875rem;color:var(--text-muted)">
       <span id="auth-toggle-text">Não tem conta?</span>
-      <a href="#" id="auth-toggle" onclick="toggleAuthMode(event)" style="color:var(--primary);margin-left:4px">Criar conta</a>
+      <a href="#" id="auth-toggle" onclick="toggleAuthMode(event)" style="color:var(--primary-600);margin-left:4px;font-weight:600">Criar conta</a>
     </p>`;
   _authMode = 'login';
 }
@@ -342,11 +344,12 @@ function _checkResetToken() {
 
 function _showResetForm(token) {
   showAuthScreen();
-  const card = document.querySelector('#auth-screen .card');
+  const card = document.querySelector('#auth-screen .auth-form-inner');
   card.innerHTML = `
-    <div style="text-align:center;margin-bottom:20px">
-      <div style="font-size:2rem;margin-bottom:8px">🔐</div>
-      <div style="font-size:1.15rem;font-weight:700;color:var(--text)">Criar nova senha</div>
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="font-size:2rem;margin-bottom:10px">🔐</div>
+      <div class="auth-form-title">Criar nova senha</div>
+      <div class="auth-form-subtitle">Digite e confirme sua nova senha</div>
     </div>
     <div class="form-group">
       <label class="form-label">Nova senha</label>
@@ -356,7 +359,7 @@ function _showResetForm(token) {
       <label class="form-label">Confirmar senha</label>
       <input id="reset-confirm" class="form-control" type="password" placeholder="Repita a nova senha" autocomplete="new-password">
     </div>
-    <button id="reset-submit" class="btn btn-primary" style="width:100%;margin-top:8px;padding:12px" onclick="submitResetPassword('${token}')">Salvar nova senha</button>
+    <button id="reset-submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center;margin-top:4px" onclick="submitResetPassword('${token}')">Salvar nova senha</button>
     <div id="reset-error" style="color:var(--expense);font-size:.83rem;margin-top:10px;text-align:center"></div>`;
 }
 
@@ -472,32 +475,32 @@ function logout() {
 
 // ── Seed & Generate ───────────────────────────────────────────────────────────
 const SUGGESTED_CATEGORIES = [
-  { name: 'Moradia',               type: 'expense', color: '#6366f1', icon: '🏠' },
-  { name: 'Condomínio',            type: 'expense', color: '#8b5cf6', icon: '🏢' },
-  { name: 'Cartão de Crédito',     type: 'expense', color: '#ef4444', icon: '💳' },
-  { name: 'Banco / Financeiro',    type: 'expense', color: '#f97316', icon: '🏦' },
-  { name: 'Conta de Luz',          type: 'expense', color: '#f59e0b', icon: '💡' },
-  { name: 'Conta de Água',         type: 'expense', color: '#3b82f6', icon: '💧' },
-  { name: 'Internet',              type: 'expense', color: '#06b6d4', icon: '🌐' },
-  { name: 'Telefone / Celular',    type: 'expense', color: '#14b8a6', icon: '📱' },
-  { name: 'Educação',              type: 'expense', color: '#8b5cf6', icon: '📚' },
-  { name: 'Transporte',            type: 'expense', color: '#3b82f6', icon: '🚗' },
-  { name: 'Alimentação',           type: 'expense', color: '#f59e0b', icon: '🍽️' },
-  { name: 'Saúde',                 type: 'expense', color: '#ef4444', icon: '❤️' },
-  { name: 'Assinaturas',           type: 'expense', color: '#64748b', icon: '🔄' },
-  { name: 'Hospedagem / Infra',    type: 'expense', color: '#6366f1', icon: '🖥️' },
-  { name: 'Lazer',                 type: 'expense', color: '#ec4899', icon: '🎉' },
-  { name: 'Manutenção',            type: 'expense', color: '#78716c', icon: '🔧' },
-  { name: 'Impostos / MEI',        type: 'expense', color: '#64748b', icon: '📋' },
-  { name: 'Outros',                type: 'expense', color: '#94a3b8', icon: '📦' },
-  { name: 'Salário Fixo',          type: 'income',  color: '#10b981', icon: '💼' },
-  { name: 'Freelance / Projeto',   type: 'income',  color: '#06b6d4', icon: '💻' },
-  { name: 'Assessoria / Retainer', type: 'income',  color: '#6366f1', icon: '🤝' },
-  { name: 'Comissão / Bônus',      type: 'income',  color: '#f59e0b', icon: '🎯' },
-  { name: 'Venda',                 type: 'income',  color: '#14b8a6', icon: '🛍️' },
-  { name: 'Investimentos',         type: 'income',  color: '#f59e0b', icon: '📈' },
-  { name: 'Ajuda de Custos',       type: 'income',  color: '#8b5cf6', icon: '🤲' },
-  { name: 'Outros',                type: 'income',  color: '#94a3b8', icon: '💰' },
+  { name: 'Moradia',               type: 'expense', color: '#2C4630', icon: '🏠' },
+  { name: 'Condomínio',            type: 'expense', color: '#3A5A40', icon: '🏢' },
+  { name: 'Cartão de Crédito',     type: 'expense', color: '#C95A47', icon: '💳' },
+  { name: 'Banco / Financeiro',    type: 'expense', color: '#8E3A30', icon: '🏦' },
+  { name: 'Conta de Luz',          type: 'expense', color: '#D4A24C', icon: '💡' },
+  { name: 'Conta de Água',         type: 'expense', color: '#2A7C82', icon: '💧' },
+  { name: 'Internet',              type: 'expense', color: '#165D62', icon: '🌐' },
+  { name: 'Telefone / Celular',    type: 'expense', color: '#669A8C', icon: '📱' },
+  { name: 'Educação',              type: 'expense', color: '#4D7549', icon: '📚' },
+  { name: 'Transporte',            type: 'expense', color: '#2A7C82', icon: '🚗' },
+  { name: 'Alimentação',           type: 'expense', color: '#D4A24C', icon: '🍽️' },
+  { name: 'Saúde',                 type: 'expense', color: '#B14939', icon: '❤️' },
+  { name: 'Assinaturas',           type: 'expense', color: '#5D594E', icon: '🔄' },
+  { name: 'Hospedagem / Infra',    type: 'expense', color: '#3A5A40', icon: '🖥️' },
+  { name: 'Lazer',                 type: 'expense', color: '#669A8C', icon: '🎉' },
+  { name: 'Manutenção',            type: 'expense', color: '#807B6C', icon: '🔧' },
+  { name: 'Impostos / MEI',        type: 'expense', color: '#5D594E', icon: '📋' },
+  { name: 'Outros',                type: 'expense', color: '#ADA897', icon: '📦' },
+  { name: 'Salário Fixo',          type: 'income',  color: '#3A5A40', icon: '💼' },
+  { name: 'Freelance / Projeto',   type: 'income',  color: '#2A7C82', icon: '💻' },
+  { name: 'Assessoria / Retainer', type: 'income',  color: '#4D7549', icon: '🤝' },
+  { name: 'Comissão / Bônus',      type: 'income',  color: '#D4A24C', icon: '🎯' },
+  { name: 'Venda',                 type: 'income',  color: '#669A8C', icon: '🛍️' },
+  { name: 'Investimentos',         type: 'income',  color: '#C28A2A', icon: '📈' },
+  { name: 'Ajuda de Custos',       type: 'income',  color: '#2C4630', icon: '🤲' },
+  { name: 'Outros',                type: 'income',  color: '#ADA897', icon: '💰' },
 ];
 
 async function seedDefaultCategories() {

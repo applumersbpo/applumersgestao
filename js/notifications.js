@@ -75,7 +75,7 @@ async function injectUpcomingAlert() {
   alert.id = 'upcoming-alert';
   alert.style.cssText = `
     display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
-    background:#f59e0b18;border:1px solid #f59e0b44;border-radius:var(--radius);
+    background:rgba(212,162,76,.08);border:1px solid rgba(212,162,76,.25);border-radius:var(--radius);
     padding:12px 16px;margin-bottom:16px;
   `;
   alert.innerHTML = `

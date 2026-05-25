@@ -38,7 +38,7 @@ function _onboardingStep1() {
     <div class="card" style="padding:32px;text-align:center">
       <div style="margin-bottom:24px">
         <svg width="52" height="52" viewBox="0 0 28 28" fill="none" style="margin:0 auto;display:block">
-          <rect width="28" height="28" rx="8" fill="#6366f1"/>
+          <rect width="28" height="28" rx="8" fill="var(--primary)"/>
           <path d="M7 14h14M14 7v14" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
         </svg>
       </div>

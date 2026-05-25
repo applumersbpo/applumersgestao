@@ -4,8 +4,8 @@
   "description": "Lumers Flow — Gestão Financeira inteligente",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#6366f1",
+  "background_color": "#FBF9F2",
+  "theme_color": "#3A5A40",
   "orientation": "any",
   "icons": [
     {

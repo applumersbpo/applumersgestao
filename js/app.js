@@ -155,7 +155,7 @@ const app = {
       bills:      'Contas a Pagar',
       daily:      'Gastos do Dia',
       expenses:   'Gastos Gerais',
-      income:     'Faturamento',
+      income:     'Receita',
       categories: 'Categorias',
       recurring:    'Recorrências',
       installments: 'Parcelamentos',

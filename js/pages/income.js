@@ -14,7 +14,7 @@ async function renderIncome(month, year) {
   content.innerHTML = `
     <div class="summary-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
       <div class="summary-card">
-        <div class="label">Faturamento Total</div>
+        <div class="label">Receita Total</div>
         <div class="value">${fmt(total)}</div>
       </div>
       <div class="summary-card income-card">

@@ -77,7 +77,7 @@ function dailyRow(t, catsMap) {
   const cat = catsMap[t.category_id];
   return `
     <div class="transaction-item" data-id="${t.id}">
-      <div class="t-icon" style="background:${cat ? cat.color + '22' : '#fee2e2'};color:${cat ? cat.color : '#ef4444'}">
+      <div class="t-icon" style="background:${cat ? cat.color + '22' : '#FAEDE7'};color:${cat ? cat.color : '#C95A47'}">
         ${cat ? (cat.icon || cat.name[0]) : '💸'}
       </div>
       <div class="t-info">

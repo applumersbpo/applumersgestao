@@ -38,8 +38,8 @@ function isOverdue(due_date, status) {
 }
 
 function statusBadge(status, due_date) {
-  if (status === 'paid') return '<span class="badge badge-paid">✓ Pago</span>';
-  if (isOverdue(due_date, status)) return '<span class="badge badge-overdue">! Vencido</span>';
+  if (status === 'paid') return '<span class="badge badge-paid">Pago</span>';
+  if (isOverdue(due_date, status)) return '<span class="badge badge-overdue">Vencido</span>';
   return '<span class="badge badge-pending">Pendente</span>';
 }
 
@@ -91,8 +91,8 @@ async function getCategoriesMap() {
 function clearCatsCache() { _catsCache = null; }
 
 const COLORS = [
-  '#6366f1','#ef4444','#f59e0b','#10b981','#3b82f6',
-  '#8b5cf6','#ec4899','#14b8a6','#f97316','#64748b'
+  '#3A5A40','#C95A47','#D4A24C','#2A7C82','#165D62',
+  '#4D7549','#A2AF8B','#8E3A30','#8A6418','#5D594E'
 ];
 
 function colorPicker(selected, name = 'color') {

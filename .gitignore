@@ -12,6 +12,7 @@ import_2026.json
 
 # Utilitários locais
 generate-icons.html
+documentacao.txt
 
 .vercel
 node_modules/

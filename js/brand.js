@@ -1,24 +1,27 @@
 // js/brand.js — Lumers Flow — Gerenciador de Identidade Visual
 
+// Bump this version whenever brand defaults change — forces cache bust for all users
+const _BRAND_CACHE_KEY = 'lf_brand_cache_v2';
+
 const _BRAND_DEFAULTS = {
   appName:       'Lumers Flow',
-  primary:       '#2563EB',
-  primaryDark:   '#1d4ed8',
-  primaryLight:  '#dbeafe',
-  income:        '#10b981',
-  incomeLight:   '#d1fae5',
-  expense:       '#ef4444',
-  expenseLight:  '#fee2e2',
-  warning:       '#f59e0b',
-  warningLight:  '#fef3c7',
-  bg:            '#F8FAFC',
-  surface:       '#ffffff',
-  border:        '#e2e8f0',
-  text:          '#0f172a',
-  textMuted:     '#64748b',
-  sidebarBg:     '#0F172A',
-  sidebarText:   '#94a3b8',
-  sidebarActive: '#ffffff',
+  primary:       '#3A5A40',
+  primaryDark:   '#2C4630',
+  primaryLight:  '#DDE7D8',
+  income:        '#3A5A40',
+  incomeLight:   '#DDE7D8',
+  expense:       '#C95A47',
+  expenseLight:  '#FAEDE7',
+  warning:       '#D4A24C',
+  warningLight:  '#FAF1D8',
+  bg:            '#FBF9F2',
+  surface:       '#FFFFFF',
+  border:        '#E8E2D0',
+  text:          '#292720',
+  textMuted:     '#5D594E',
+  sidebarBg:     '#2C4630',
+  sidebarText:   '#E6E0CC',
+  sidebarActive: '#F8F4E4',
   logoData:      'lumers-flow-logotipo.png',
   faviconData:   'favicon-lumers-flow.png',
 };
@@ -28,7 +31,9 @@ let _brand = { ..._BRAND_DEFAULTS };
 // Aplica cache de cor imediatamente ao carregar (evita flash)
 (function _applyCachedEarly() {
   try {
-    const cached = localStorage.getItem('lf_brand_cache');
+    // Remove old cache key to prevent stale blue theme from overriding new CSS
+    localStorage.removeItem('lf_brand_cache');
+    const cached = localStorage.getItem(_BRAND_CACHE_KEY);
     if (cached) _applyCssVars(JSON.parse(cached));
   } catch (_) {}
 })();
@@ -99,24 +104,38 @@ function _applyCssVars(cfg) {
     (document.head || document.documentElement).appendChild(style);
   }
   style.textContent = `:root {
-    --primary:       ${c.primary};
-    --primary-dark:  ${c.primaryDark};
-    --primary-light: ${c.primaryLight};
-    --income:        ${c.income};
-    --income-light:  ${c.incomeLight};
-    --expense:       ${c.expense};
-    --expense-light: ${c.expenseLight};
-    --warning:       ${c.warning};
-    --warning-light: ${c.warningLight};
-    --bg:            ${c.bg};
-    --surface:       ${c.surface};
-    --border:        ${c.border};
-    --text:          ${c.text};
-    --text-muted:    ${c.textMuted};
-    --text-light:    ${c.textMuted};
-    --sidebar-bg:    ${c.sidebarBg};
-    --sidebar-text:  ${c.sidebarText};
-    --sidebar-active:${c.sidebarActive};
+    --primary:         ${c.primary};
+    --primary-dark:    ${c.primaryDark};
+    --primary-light:   ${c.primaryLight};
+    --primary-600:     ${c.primary};
+    --primary-700:     ${c.primaryDark};
+    --primary-100:     ${c.primaryLight};
+    --income:          ${c.income};
+    --income-light:    ${c.incomeLight};
+    --income-text:     ${_darken(c.income, 0.1)};
+    --expense:         ${c.expense};
+    --expense-light:   ${c.expenseLight};
+    --expense-text:    ${_darken(c.expense, 0.2)};
+    --warning:         ${c.warning};
+    --warning-light:   ${c.warningLight};
+    --warning-text:    ${_darken(c.warning, 0.3)};
+    --bg:              ${c.bg};
+    --bg-subtle:       ${_darken(c.bg, 0.03)};
+    --surface:         ${c.surface};
+    --border:          ${c.border};
+    --border-strong:   ${_darken(c.border, 0.1)};
+    --text:            ${c.text};
+    --text-muted:      ${c.textMuted};
+    --text-soft:       ${_lighten(c.textMuted, 0.3)};
+    --text-light:      ${_lighten(c.textMuted, 0.55)};
+    --sidebar-bg:          ${c.sidebarBg};
+    --sidebar-text:        ${c.sidebarText};
+    --sidebar-text-muted:  #B6BFA4;
+    --sidebar-active:      ${c.sidebarActive};
+    --sidebar-active-bg:   rgba(248,244,228,.14);
+    --sidebar-hover-bg:    rgba(248,244,228,.08);
+    --sidebar-border:      rgba(248,244,228,.1);
+    --sidebar-accent:      ${c.warning};
   }`;
 
   const meta = document.querySelector('meta[name="theme-color"]');
@@ -182,7 +201,7 @@ function _applyBrand(cfg) {
 
 async function loadBrand() {
   try {
-    const cached = localStorage.getItem('lf_brand_cache');
+    const cached = localStorage.getItem(_BRAND_CACHE_KEY);
     if (cached) _applyBrand(JSON.parse(cached));
   } catch (_) {}
   try {
@@ -190,14 +209,14 @@ async function loadBrand() {
     if (!res.ok) return;
     const cfg = await res.json();
     _applyBrand(cfg);
-    localStorage.setItem('lf_brand_cache', JSON.stringify(cfg));
+    localStorage.setItem(_BRAND_CACHE_KEY, JSON.stringify(cfg));
   } catch (_) {}
 }
 
 async function saveBrand(cfg) {
   await _api('POST', '/brand', cfg);
   _applyBrand(cfg);
-  localStorage.setItem('lf_brand_cache', JSON.stringify(cfg));
+  localStorage.setItem(_BRAND_CACHE_KEY, JSON.stringify(cfg));
 }
 
 function getBrand()         { return { ..._brand }; }

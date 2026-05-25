@@ -48,12 +48,12 @@ async function renderSettings() {
         <button class="btn btn-primary" onclick="savePassword()">Alterar senha</button>
       </div>
 
-      <div class="card" style="border-color:#ef444440">
+      <div class="card" style="border-color:#C95A4740">
         <div class="card-title" style="margin-bottom:6px;color:var(--expense)">Zona de perigo</div>
         <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:16px">
           Ao excluir sua conta todos os seus dados serão removidos permanentemente.
         </p>
-        <button class="btn" style="background:#ef444415;color:#ef4444;border:1px solid #ef444430" onclick="confirmDeleteAccount()">
+        <button class="btn" style="background:var(--expense-light);color:var(--expense-text);border:1px solid rgba(201,90,71,.25)" onclick="confirmDeleteAccount()">
           Excluir minha conta
         </button>
       </div>
@@ -129,7 +129,7 @@ async function confirmDeleteAccount() {
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-          <button class="btn" style="background:#ef4444;color:#fff" onclick="deleteAccount()">Excluir permanentemente</button>
+          <button class="btn" style="background:var(--expense);color:#F8F4E4" onclick="deleteAccount()">Excluir permanentemente</button>
         </div>
       </div>
     </div>

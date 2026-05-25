@@ -82,15 +82,15 @@ async function renderDashboard(month, year) {
 
   let goalColor, goalStatus, goalBorderColor;
   if (!revenueGoal) {
-    goalColor = 'var(--text-muted)';
+    goalColor = 'var(--text-soft)';
     goalBorderColor = 'var(--border)';
     goalStatus = 'Defina sua meta de faturamento mensal';
   } else if (goalReached) {
-    goalColor = 'var(--income)';
+    goalColor = 'var(--income-text)';
     goalBorderColor = 'var(--income)';
-    goalStatus = `🎉 Meta atingida! Superou em ${fmt(totalIncome - revenueGoal)}`;
+    goalStatus = `Meta atingida! Superou em ${fmt(totalIncome - revenueGoal)}`;
   } else if (rawGoalPct >= 50) {
-    goalColor = 'var(--warning)';
+    goalColor = 'var(--warning-text)';
     goalBorderColor = 'var(--warning)';
     goalStatus = `Faltam ${fmt(revenueGoal - totalIncome)} para bater a meta`;
   } else {
@@ -105,30 +105,31 @@ async function renderDashboard(month, year) {
   const coverOk        = gap <= 0;
 
   content.innerHTML = `
+    <!-- KPI Grid -->
     <div class="summary-grid">
       <div class="summary-card income-card">
         <div class="icon-wrap">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3v14M6 7l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 3v14M6 7l4-4 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
         <div class="label">Faturamento</div>
         <div class="value">${fmt(totalIncome)}</div>
-        <div class="sub">${fmt(received)} recebido (${recvPct}%)</div>
+        <div class="sub">${fmt(received)} recebido · ${recvPct}%</div>
         <div class="progress-bar"><div class="progress-fill" style="width:${recvPct}%;background:var(--income)"></div></div>
       </div>
 
       <div class="summary-card expense-card">
         <div class="icon-wrap">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 17V3M14 13l-4 4-4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 17V3M14 13l-4 4-4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
         <div class="label">Contas a Pagar</div>
         <div class="value">${fmt(totalExpense)}</div>
-        <div class="sub">${fmt(expPaid)} pago (${expPct}%)</div>
+        <div class="sub">${fmt(expPaid)} pago · ${expPct}%</div>
         <div class="progress-bar"><div class="progress-fill" style="width:${expPct}%;background:var(--expense)"></div></div>
       </div>
 
       <div class="summary-card ${projClass}">
         <div class="icon-wrap">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 10h14M10 3l7 7-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 10h14M10 3l7 7-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
         <div class="label">Saldo Projetado</div>
         <div class="value">${fmt(saldoProjetado)}</div>
@@ -137,7 +138,7 @@ async function renderDashboard(month, year) {
 
       <div class="summary-card ${realClass}">
         <div class="icon-wrap">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M10 7v4l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M10 7v4l2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </div>
         <div class="label">Saldo Real</div>
         <div class="value">${fmt(saldoReal)}</div>
@@ -145,106 +146,103 @@ async function renderDashboard(month, year) {
       </div>
     </div>
 
+    <!-- Alertas inline -->
     ${totalGeneral > 0 ? `
-    <div class="card" style="margin-bottom:24px;border-left:3px solid var(--expense);padding:14px 16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-        <div style="min-width:0">
-          <div class="card-title" style="margin-bottom:4px">Gastos Gerais</div>
-          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-            <span style="font-size:1.1rem;font-weight:700;color:var(--expense)">${fmt(totalGeneral)}</span>
-            <span style="font-size:.8rem;color:var(--text-muted)">${generalExp.length} lançamento${generalExp.length !== 1 ? 's' : ''} · já incluído no Saldo</span>
-          </div>
-        </div>
-        <a href="#/expenses" class="btn btn-sm btn-ghost" style="flex-shrink:0">Ver todos</a>
+    <div class="insight-card expense" style="margin-bottom:16px">
+      <div class="insight-icon">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M4 4h12a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.5"/><path d="M7 10h6M10 7v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       </div>
+      <div class="insight-body">
+        <div class="insight-heading">Gastos Gerais — ${fmt(totalGeneral)}</div>
+        <div class="insight-desc">${generalExp.length} lançamento${generalExp.length !== 1 ? 's' : ''} · já incluído no Saldo</div>
+      </div>
+      <a href="#/expenses" class="btn btn-sm btn-ghost" style="flex-shrink:0;align-self:center">Ver</a>
     </div>` : ''}
 
     ${instTotal > 0 ? `
-    <div class="card" style="margin-bottom:24px;border-left:3px solid var(--primary);padding:14px 16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-        <div style="min-width:0">
-          <div class="card-title" style="margin-bottom:4px">Parcelas do Mês</div>
-          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-            <span style="font-size:1.1rem;font-weight:700;color:var(--primary)">${fmt(instTotal)}<span style="font-size:.78rem;font-weight:400;color:var(--text-muted)">/mês</span></span>
-            <span style="font-size:.8rem;color:var(--text-muted)">${fmt(instPaid)} pago · ${fmt(instTotal - instPaid)} pendente</span>
-          </div>
-        </div>
-        <a href="#/installments" class="btn btn-sm btn-ghost" style="flex-shrink:0">Ver todos</a>
+    <div class="insight-card info" style="margin-bottom:16px">
+      <div class="insight-icon">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="3" y="5" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 10h2M11 10h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       </div>
+      <div class="insight-body">
+        <div class="insight-heading">Parcelas do Mês — ${fmt(instTotal)}</div>
+        <div class="insight-desc">${fmt(instPaid)} pago · ${fmt(instTotal - instPaid)} pendente</div>
+      </div>
+      <a href="#/installments" class="btn btn-sm btn-ghost" style="flex-shrink:0;align-self:center">Ver</a>
     </div>` : ''}
 
     ${expPending > 0 ? `
-    <div class="card" style="margin-bottom:24px;border-left:3px solid var(--warning);padding:14px 16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-        <div style="min-width:0">
-          <div class="card-title" style="margin-bottom:4px">Contas Pendentes</div>
-          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-            <span style="font-size:1.1rem;font-weight:700;color:var(--warning)">${fmt(expPending)}</span>
-            <span style="font-size:.8rem;color:var(--text-muted)">${expenses.filter(t => t.status !== 'paid').length} conta${expenses.filter(t => t.status !== 'paid').length !== 1 ? 's' : ''} em aberto</span>
-          </div>
-        </div>
-        <a href="#/bills" class="btn btn-sm btn-ghost" style="flex-shrink:0">Ver todas</a>
+    <div class="insight-card warn" style="margin-bottom:16px">
+      <div class="insight-icon">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 8v4M10 14v1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8.27 3.5L1.5 15.5A1 1 0 0 0 2.37 17h15.26a1 1 0 0 0 .87-1.5L11.73 3.5a1 1 0 0 0-1.46 0z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
       </div>
+      <div class="insight-body">
+        <div class="insight-heading">Contas Pendentes — ${fmt(expPending)}</div>
+        <div class="insight-desc">${expenses.filter(t => t.status !== 'paid').length} conta${expenses.filter(t => t.status !== 'paid').length !== 1 ? 's' : ''} em aberto</div>
+      </div>
+      <a href="#/bills" class="btn btn-sm btn-ghost" style="flex-shrink:0;align-self:center">Ver</a>
     </div>` : ''}
 
-    <div class="card goal-revenue-card ${goalReached ? 'goal-reached' : ''}" style="margin-bottom:24px;border-color:${goalBorderColor}">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+    <!-- Meta de Faturamento -->
+    <div class="card goal-revenue-card ${goalReached ? 'goal-reached' : ''}" style="margin-bottom:20px;border-color:${goalBorderColor}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <div style="flex:1;min-width:0">
-          <div class="card-title" style="margin-bottom:2px">Meta de Faturamento</div>
-          <div style="font-size:1.05rem;font-weight:700;color:${goalColor}">${goalStatus}</div>
+          <div class="card-title">Meta de Faturamento</div>
+          <div style="font-size:.9rem;font-weight:600;color:${goalColor};margin-top:2px">${goalStatus}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
           <div style="text-align:right">
-            <div style="font-size:1.6rem;font-weight:800;color:${goalColor}">${revenueGoal > 0 ? goalPct + '%' : '—'}</div>
-            <div style="font-size:.75rem;color:var(--text-muted)">da meta</div>
+            <div style="font-family:var(--font-display);font-size:1.75rem;font-weight:500;color:${goalColor};line-height:1">${revenueGoal > 0 ? goalPct + '%' : '—'}</div>
+            <div style="font-size:.72rem;color:var(--text-soft)">da meta</div>
           </div>
-          <button onclick="openRevenueGoalModal()" class="btn btn-sm btn-ghost" style="padding:6px 10px;flex-shrink:0" title="Editar meta">
+          <button onclick="openRevenueGoalModal()" class="btn btn-sm btn-ghost" style="padding:6px 8px;flex-shrink:0" title="Editar meta">
             <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M13.586 3.586a2 2 0 112.828 2.828L7.414 15.414 4 16l.586-3.414 9-9z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
       </div>
-      <div class="progress-bar" style="height:10px;margin-bottom:8px">
+      <div class="progress-bar" style="height:8px;margin-bottom:10px">
         <div class="progress-fill ${goalReached ? 'goal-bar-celebrate' : ''}" style="width:${revenueGoal > 0 ? goalPct : 0}%;background:${goalColor}"></div>
       </div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:.78rem;color:var(--text-muted)">
-        <span>Faturado: <strong style="color:var(--income)">${fmt(totalIncome)}</strong></span>
+      <div style="display:flex;justify-content:space-between;margin-bottom:12px;font-size:.78rem;color:var(--text-soft);flex-wrap:wrap;gap:4px">
+        <span>Faturado: <strong style="color:var(--income-text)">${fmt(totalIncome)}</strong></span>
         <span>Meta: <strong style="color:${goalColor}">${revenueGoal > 0 ? fmt(revenueGoal) : 'Não definida'}</strong></span>
       </div>
-      <div style="font-size:.8rem;color:var(--text-muted);font-style:italic;border-top:1px solid var(--border);padding-top:8px;line-height:1.5">
+      <div style="font-size:.8rem;color:var(--text-soft);font-style:italic;font-family:var(--font-display);border-top:1px solid var(--border);padding-top:10px;line-height:1.6">
         "${phrase}"
       </div>
       ${goalReached ? '<div class="goal-sparkles" aria-hidden="true"></div>' : ''}
     </div>
 
-    <div class="card" style="margin-bottom:24px;border-color:${coverOk ? 'var(--income)' : 'var(--warning)'}">
+    <!-- Cobertura de Despesas -->
+    <div class="card" style="margin-bottom:20px;border-color:${coverOk ? 'var(--income)' : 'var(--warning)'}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <div>
-          <div class="card-title" style="margin-bottom:2px">Cobertura de Despesas</div>
-          <div style="font-size:1.1rem;font-weight:700;color:${coverOk ? 'var(--income)' : 'var(--expense)'}">
+          <div class="card-title">Cobertura de Despesas</div>
+          <div style="font-size:.9rem;font-weight:600;color:${coverOk ? 'var(--income-text)' : 'var(--expense)'};margin-top:2px">
             ${coverOk
-              ? `✓ Sobra ${fmt(Math.abs(gap))} após cobrir as despesas`
+              ? `Sobra ${fmt(Math.abs(gap))} após cobrir os compromissos`
               : `Faltam ${fmt(gap)} para cobrir todas as despesas`
             }
           </div>
         </div>
-        <div style="text-align:right">
-          <div style="font-size:1.6rem;font-weight:800;color:${coverOk ? 'var(--income)' : 'var(--expense)'}">${coveragePct}%</div>
-          <div style="font-size:.75rem;color:var(--text-muted)">do total coberto</div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-family:var(--font-display);font-size:1.75rem;font-weight:500;color:${coverOk ? 'var(--income-text)' : 'var(--expense)'};line-height:1">${coveragePct}%</div>
+          <div style="font-size:.72rem;color:var(--text-soft)">do total coberto</div>
         </div>
       </div>
-      <div class="progress-bar" style="height:10px">
+      <div class="progress-bar" style="height:8px">
         <div class="progress-fill" style="width:${coveragePct}%;background:${coverOk ? 'var(--income)' : 'var(--warning)'}"></div>
       </div>
-      <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:.78rem;color:var(--text-muted);flex-wrap:wrap;gap:4px">
-        <span>Faturamento: <strong style="color:var(--income)">${fmt(totalIncome)}</strong></span>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:.78rem;color:var(--text-soft);flex-wrap:wrap;gap:4px">
+        <span>Faturamento: <strong style="color:var(--income-text)">${fmt(totalIncome)}</strong></span>
         <span>Compromissos: <strong style="color:var(--expense)">${fmt(totalCommitted)}</strong></span>
       </div>
     </div>
 
     ${overdue.length > 0 ? `
-    <div class="card" style="border-color:var(--expense);margin-bottom:24px">
+    <div class="card" style="border-color:var(--expense);margin-bottom:20px">
       <div class="section-header">
-        <div class="section-title" style="color:var(--expense)">⚠ Contas Vencidas (${overdue.length})</div>
+        <div class="section-title" style="color:var(--expense)">Contas Vencidas (${overdue.length})</div>
         <a href="#/bills" class="btn btn-sm btn-ghost">Ver todas</a>
       </div>
       <div class="transaction-list">
@@ -253,9 +251,9 @@ async function renderDashboard(month, year) {
     </div>` : ''}
 
     ${upcoming.length > 0 ? `
-    <div class="card" style="margin-bottom:24px">
+    <div class="card" style="margin-bottom:20px">
       <div class="section-header">
-        <div class="section-title">📅 Vencem nos próximos 7 dias</div>
+        <div class="section-title">Vencem nos próximos 7 dias</div>
         <a href="#/bills" class="btn btn-sm btn-ghost">Ver todas</a>
       </div>
       <div class="transaction-list">
@@ -263,14 +261,15 @@ async function renderDashboard(month, year) {
       </div>
     </div>` : ''}
 
+    <!-- Últimas Movimentações -->
     <div class="card">
       <div class="section-header">
         <div class="section-title">Últimas Movimentações</div>
-        <a href="#/bills" class="btn btn-sm btn-ghost">Ver tudo</a>
+        <a href="#/bills" class="btn btn-sm btn-ghost">Ver tudo →</a>
       </div>
       ${transactions.length === 0 ? `
         <div class="empty-state">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><path d="M8 12h32M8 24h20M8 36h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <svg width="40" height="40" viewBox="0 0 48 48" fill="none"><path d="M8 12h32M8 24h20M8 36h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           <p>Nenhuma movimentação neste mês</p>
         </div>` : `
         <div class="transaction-list">
