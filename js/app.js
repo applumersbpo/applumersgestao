@@ -107,6 +107,10 @@ const app = {
     if (adminLink) {
       adminLink.style.display = user?.email === 'applumergestao@gmail.com' ? '' : 'none';
     }
+    const banksLink = document.getElementById('banks-admin-link');
+    if (banksLink) {
+      banksLink.style.display = user?.email === 'applumergestao@gmail.com' ? '' : 'none';
+    }
   },
 
   async route() {
@@ -128,14 +132,12 @@ const app = {
     switch (this.currentPage) {
       case 'dashboard':  await renderDashboard(m, y);  break;
       case 'bills':      await renderBills(m, y);      break;
-      case 'daily':      await renderDaily();              break;
-      case 'expenses':   await renderExpenses(m, y);      break;
-      case 'income':     await renderIncome(m, y);     break;
+      case 'transactions': await renderTransactions(); break;
+      case 'accounts':   await renderAccounts();       break;
+      case 'banks':      await renderBanksAdmin();     break;
       case 'categories': await renderCategories();     break;
-      case 'recurring':     await renderRecurring();      break;
-      case 'installments':  await renderInstallments(m, y); break;
-      case 'goals':         await renderGoals();           break;
-      case 'reports':       await renderReports(m, y);    break;
+      case 'goals':      await renderGoals();          break;
+      case 'reports':    await renderReports(m, y);    break;
       case 'import':     renderImport();               break;
       case 'settings':   await renderSettings();        break;
       case 'admin':      await renderAdmin();           break;
@@ -153,12 +155,10 @@ const app = {
     const titles = {
       dashboard:  'Dashboard',
       bills:      'Contas a Pagar',
-      daily:      'Gastos do Dia',
-      expenses:   'Gastos Gerais',
-      income:     'Receita',
+      transactions: 'Transações',
+      accounts:   'Contas Bancárias',
+      banks:      'Bancos',
       categories: 'Categorias',
-      recurring:    'Recorrências',
-      installments: 'Parcelamentos',
       goals:        'Metas Financeiras',
       reports:      'Relatórios',
       import:     'Importar Dados',
@@ -170,7 +170,7 @@ const app = {
 
   updateTopbarActions() {
     const el = document.getElementById('topbarActions');
-    const showMonth = ['dashboard', 'bills', 'income', 'reports', 'expenses', 'installments'].includes(this.currentPage);
+    const showMonth = ['dashboard', 'bills', 'transactions', 'reports'].includes(this.currentPage);
 
     if (showMonth) {
       el.innerHTML = `
