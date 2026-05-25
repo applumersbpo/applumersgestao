@@ -4,6 +4,7 @@ const app = {
   currentPage:  'dashboard',
 
   async init() {
+    loadBrand();
     if (_checkResetToken()) return;
     if (!pb.authStore.isValid) {
       showAuthScreen();

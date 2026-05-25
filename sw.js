@@ -1,4 +1,4 @@
-const CACHE = 'lumers-v1';
+const CACHE = 'lumers-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const ASSETS = [
   './js/utils.js',
   './js/app.js',
   './js/fab.js',
+  './js/brand.js',
   './js/pages/dashboard.js',
   './js/pages/bills.js',
   './js/pages/daily.js',
@@ -22,6 +23,8 @@ const ASSETS = [
   './js/pages/admin.js',
   './js/pages/onboarding.js',
   './js/notifications.js',
+  './lumers-flow-logotipo.png',
+  './favicon-lumers-flow.png',
 ];
 
 self.addEventListener('install', e => {
@@ -50,8 +53,8 @@ self.addEventListener('push', e => {
   e.waitUntil(
     self.registration.showNotification(data.title || 'Lumers Gestão Financeira', {
       body:  data.body  || '',
-      icon:  '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
+      icon:  '/favicon-lumers-flow.png',
+      badge: '/favicon-lumers-flow.png',
       data,
     })
   );
