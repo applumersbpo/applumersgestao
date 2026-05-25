@@ -23,6 +23,10 @@ export function getDb() {
             } else if (sqlOrObj && typeof sqlOrObj === 'object') {
               info.sql = sqlOrObj.sql;
               info.args = sqlOrObj.args || [];
+              // normalize missing args in-place to avoid hrana doing Object.entries(undefined)
+              try {
+                if (!('args' in sqlOrObj) || sqlOrObj.args === undefined) sqlOrObj.args = [];
+              } catch(_) {}
             } else {
               info.sql = String(sqlOrObj);
             }
