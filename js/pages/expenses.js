@@ -99,6 +99,7 @@ function bindExpenseActions(month, year) {
 async function openExpenseModal(month, year, data = null) {
   const catsMap = await getCategoriesMap();
   const cats    = Object.values(catsMap).filter(c => c.type === 'expense');
+  const accounts = await db.accounts.toArray();
   const isEdit  = !!data;
 
   showModal(`
@@ -125,12 +126,31 @@ async function openExpenseModal(month, year, data = null) {
               <input id="exp-date" class="form-control" type="date" value="${data?.due_date || today()}">
             </div>
           </div>
+
+          <div class="form-group">
+            <label class="form-label">Conta</label>
+            <select id="exp-account" class="form-control">
+              <option value="">— Selecionar conta —</option>
+              ${accounts.map(a => `<option value="${a.id}" ${data?.account_id === a.id ? 'selected' : ''}>${a.name} ${a.bank_name ? '- ' + a.bank_name : ''}</option>`).join('')}
+            </select>
+          </div>
+
           <div class="form-group">
             <label class="form-label">Categoria</label>
             <select id="exp-cat" class="form-control">
               <option value="">Sem categoria</option>
               ${cats.map(c => `<option value="${c.id}" ${data?.category_id === c.id ? 'selected' : ''}>${c.icon} ${c.name}</option>`).join('')}
             </select>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Data de competência</label>
+              <input id="exp-competence" type="date" class="form-control" value="${data?.competence_date || data?.due_date || today()}">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Data de caixa (saída)</label>
+              <input id="exp-cash" type="date" class="form-control" value="${data?.cash_date || data?.paid_date || today()}">
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Observação</label>
@@ -152,24 +172,30 @@ async function saveExpense(id, month, year) {
   const name   = document.getElementById('exp-name').value.trim();
   const amount = parseBRNumber(document.getElementById('exp-amount').value);
   const date   = document.getElementById('exp-date').value;
+  const account_id = document.getElementById('exp-account') ? document.getElementById('exp-account').value : '';
   const cat    = document.getElementById('exp-cat').value || null;
+  const competence_date = document.getElementById('exp-competence') ? document.getElementById('exp-competence').value : '';
+  const cash_date = document.getElementById('exp-cash') ? document.getElementById('exp-cash').value : '';
   const notes  = document.getElementById('exp-notes').value.trim();
 
   if (!name)   { toast('Informe a descrição', 'error'); return; }
   if (!amount) { toast('Informe o valor', 'error'); return; }
   if (!date)   { toast('Informe a data', 'error'); return; }
 
-  const [y, m] = date.split('-');
+  const [yearParsed, monthParsed] = (competence_date || date).split('-').map(Number);
   const record = {
     name, amount,
     due_date:         date,
-    paid_date:        date,
+    paid_date:        cash_date || null,
     category_id:      cat,
     notes,
-    transaction_type: 'general',
+    transaction_type: 'expense',
+    account_id:       account_id || '',
+    competence_date:  competence_date || '',
+    cash_date:        cash_date || '',
     status:           'paid',
-    month:            parseInt(m),
-    year:             parseInt(y),
+    month:            monthParsed || month,
+    year:             yearParsed || year,
     kind:             'variable',
     template_id:      null,
   };
@@ -183,5 +209,5 @@ async function saveExpense(id, month, year) {
   }
 
   closeModal();
-  renderExpenses(parseInt(m), parseInt(y));
+  renderExpenses(parseInt(record.month), parseInt(record.year));
 }

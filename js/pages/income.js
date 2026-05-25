@@ -118,6 +118,7 @@ function bindIncomeActions() {
 async function openIncomeModal(month, year, data = null) {
   const catsMap = await getCategoriesMap();
   const cats = Object.values(catsMap).filter(c => c.type === 'income');
+  const accounts = await db.accounts.toArray();
   const isEdit = !!data;
 
   showModal(`
@@ -142,6 +143,15 @@ async function openIncomeModal(month, year, data = null) {
               <input id="inc-date" class="form-control" type="date" value="${data?.due_date || ''}">
             </div>
           </div>
+
+          <div class="form-group">
+            <label class="form-label">Conta</label>
+            <select id="inc-account" class="form-control">
+              <option value="">— Selecionar conta —</option>
+              ${accounts.map(a => `<option value="${a.id}" ${data?.account_id === a.id ? 'selected' : ''}>${a.name} ${a.bank_name ? '- ' + a.bank_name : ''}</option>`).join('')}
+            </select>
+          </div>
+
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Categoria</label>
@@ -158,6 +168,18 @@ async function openIncomeModal(month, year, data = null) {
               </select>
             </div>
           </div>
+
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Data de competência</label>
+              <input id="inc-competence" type="date" class="form-control" value="${data?.competence_date || data?.due_date || ''}">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Data de caixa (entrada)</label>
+              <input id="inc-cash" type="date" class="form-control" value="${data?.cash_date || data?.paid_date || ''}">
+            </div>
+          </div>
+
           <div class="form-group">
             <label class="form-label">Observações</label>
             <textarea id="inc-notes" class="form-control" rows="2" placeholder="Opcional">${data?.notes || ''}</textarea>
@@ -178,18 +200,27 @@ async function saveIncome(id, month, year) {
   const name   = document.getElementById('inc-name').value.trim();
   const amount = parseBRNumber(document.getElementById('inc-amount').value);
   const date   = document.getElementById('inc-date').value;
+  const account_id = document.getElementById('inc-account') ? document.getElementById('inc-account').value : '';
   const cat    = document.getElementById('inc-cat').value || null;
   const kind   = document.getElementById('inc-kind').value;
+  const competence_date = document.getElementById('inc-competence') ? document.getElementById('inc-competence').value : '';
+  const cash_date = document.getElementById('inc-cash') ? document.getElementById('inc-cash').value : '';
   const notes  = document.getElementById('inc-notes').value.trim();
 
   if (!name) { toast('Informe a descrição', 'error'); return; }
   if (!date) { toast('Informe a data', 'error'); return; }
 
+  const [yearParsed, monthParsed] = (competence_date || date).split('-').map(Number);
   const record = {
-    name, amount, due_date: date,
+    name, amount,
+    due_date: date,
     category_id: cat, kind, notes,
     transaction_type: 'income',
-    month, year
+    account_id: account_id || '',
+    competence_date: competence_date || '',
+    cash_date: cash_date || '',
+    month: monthParsed || month,
+    year: yearParsed || year
   };
 
   if (id && id !== '') {
@@ -197,7 +228,7 @@ async function saveIncome(id, month, year) {
     toast('Receita atualizada!', 'success');
   } else {
     record.status = 'pending';
-    record.paid_date = null;
+    record.paid_date = cash_date || null;
     record.template_id = null;
     await db.transactions.add(record);
     toast('Receita adicionada!', 'success');
