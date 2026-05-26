@@ -53,9 +53,15 @@ async function openQuickAdd(type = 'expense') {
               ${catOptions(type)}
             </select>
           </div>
-          <div class="form-group">
-            <label class="form-label">Data</label>
-            <input id="fab-date" class="form-control" type="date" value="${today}">
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Data de competência <span class="field-info" title="Data de competência: referência contábil para relatórios; não influencia o caixa">ℹ️</span></label>
+              <input id="fab-competence" class="form-control" type="date" value="${today}">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Data de caixa <span class="field-info" title="Data de caixa: data em que o dinheiro entrou/saiu">ℹ️</span></label>
+              <input id="fab-cash" class="form-control" type="date" value="">
+            </div>
           </div>
 
         </div>
@@ -93,11 +99,14 @@ async function saveQuickAdd() {
   const amount = parseBRNumber(document.getElementById('fab-amount').value);
   const type   = document.getElementById('fab-type').value;
   const catId  = document.getElementById('fab-cat').value || null;
-  const date   = document.getElementById('fab-date').value;
+  const date = (document.getElementById('fab-competence') ? document.getElementById('fab-competence').value : '') || today;
 
   if (!name)   { toast('Informe a descrição', 'error'); return; }
-  if (!amount) { toast('Informe o valor', 'error'); return; }
-  if (!date)   { toast('Informe a data', 'error'); return; }
+  if (!amount || amount <= 0) { toast('Informe o valor', 'error'); return; }
+  if (!catId)  { toast('Informe a categoria', 'error'); return; }
+  // competence date is required for reporting; default to provided date or today
+  const competence = (document.getElementById('fab-competence') ? document.getElementById('fab-competence').value : '') || date;
+  const cashDate = (document.getElementById('fab-cash') ? document.getElementById('fab-cash').value : '') || null;
 
   const d = new Date(date + 'T12:00:00');
   const month = d.getMonth() + 1;
@@ -110,9 +119,11 @@ async function saveQuickAdd() {
     transaction_type: type,
     kind:             'fixed',
     amount,
-    due_date:         date,
-    paid_date:        date,
-    status:           'paid',
+    due_date:         competence,
+    competence_date:  competence,
+    cash_date:        cashDate,
+    paid_date:        cashDate || null,
+    status:           cashDate ? 'paid' : 'pending',
     month,
     year,
     notes:            '',
