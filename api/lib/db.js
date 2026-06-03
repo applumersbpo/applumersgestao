@@ -176,6 +176,11 @@ export async function initDb() {
       notes TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     )`,
+    `CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT DEFAULT '',
+      updated_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {
@@ -208,7 +213,25 @@ export async function initDb() {
     await db.execute("ALTER TABLE accounts ADD COLUMN logo_url TEXT DEFAULT ''");
   }
 
+  // Seed default system settings (INSERT OR IGNORE keeps existing values)
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('allow_registration', '0')", args: [] });
+
   _initialized = true;
+}
+
+export async function getSystemSetting(key) {
+  const db = getDb();
+  const { rows } = await db.execute({ sql: 'SELECT value FROM system_settings WHERE key = ?', args: [key] });
+  if (!rows || rows.length === 0) return null;
+  return rows[0].value ?? null;
+}
+
+export async function setSystemSetting(key, value) {
+  const db = getDb();
+  await db.execute({
+    sql: "INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    args: [key, value],
+  });
 }
 
 export function rowsToObjects(rows) {

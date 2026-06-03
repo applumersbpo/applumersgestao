@@ -1,4 +1,4 @@
-import { getDb, initDb, rowsToObjects } from '../lib/db.js';
+import { getDb, initDb, rowsToObjects, getSystemSetting } from '../lib/db.js';
 import { cors } from '../lib/auth.js';
 import bcrypt from 'bcryptjs';
 
@@ -9,6 +9,12 @@ export default async function handler(req, res) {
 
   try {
     await initDb();
+
+    const allow = await getSystemSetting('allow_registration');
+    if (allow !== '1') {
+      return res.status(403).json({ error: 'Cadastro de novas contas temporariamente desabilitado.' });
+    }
+
     const { email, password, passwordConfirm, name } = req.body || {};
     const phone = req.body?.phone ? req.body.phone.replace(/\D/g, '') : '';
     const normalizedPhone = phone ? (phone.startsWith('55') ? phone : '55' + phone) : '';

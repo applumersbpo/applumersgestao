@@ -447,18 +447,77 @@ async function renderAdminSystem() {
   content.innerHTML = '<div class="loading-screen"><div class="spinner"></div></div>';
 
   try {
-    const brandCfg = await fetch('/api/brand').then(r => r.json()).catch(() => ({}));
+    const [brandCfg, sysCfg] = await Promise.all([
+      fetch('/api/brand').then(r => r.json()).catch(() => ({})),
+      _api('GET', '/admin/system-settings').catch(() => ({})),
+    ]);
 
     // Reseta pendentes ao entrar na página
     _pendingLogoData    = '';
     _pendingFaviconData = '';
 
-    content.innerHTML = _adminBrandSection(brandCfg);
+    const allowReg = sysCfg.allow_registration === '1';
+
+    content.innerHTML = `
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-title" style="margin-bottom:16px">${icon('shield', 14)} Acesso e Cadastro</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <div>
+            <div style="font-weight:600;font-size:.9rem">Permitir criação de novas contas</div>
+            <div style="font-size:.8rem;color:var(--text-muted);margin-top:2px">
+              Quando desabilitado, o link "Criar conta" some da tela de login e a API de registro retorna erro 403.
+            </div>
+          </div>
+          <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer;flex-shrink:0">
+            <input type="checkbox" id="toggle-allow-reg" ${allowReg ? 'checked' : ''}
+              style="width:0;height:0;opacity:0;position:absolute"
+              onchange="_toggleAllowRegistration(this.checked)">
+            <div id="toggle-allow-reg-track" style="
+              width:46px;height:26px;border-radius:13px;transition:background .2s;
+              background:${allowReg ? 'var(--primary-600)' : 'var(--border)'};position:relative">
+              <div style="
+                position:absolute;top:3px;left:${allowReg ? '23px' : '3px'};
+                width:20px;height:20px;border-radius:50%;background:#fff;
+                box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s" id="toggle-allow-reg-knob"></div>
+            </div>
+          </label>
+        </div>
+        <div id="toggle-reg-feedback" style="font-size:.8rem;margin-top:10px;display:none"></div>
+      </div>
+      ${_adminBrandSection(brandCfg)}`;
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
     _initBrandEditor();
   } catch(e) {
     content.innerHTML = `<p style="color:var(--expense);padding:16px">Erro: ${e.message}</p>`;
+  }
+}
+
+async function _toggleAllowRegistration(checked) {
+  const track  = document.getElementById('toggle-allow-reg-track');
+  const knob   = document.getElementById('toggle-allow-reg-knob');
+  const fb     = document.getElementById('toggle-reg-feedback');
+  if (track) track.style.background = checked ? 'var(--primary-600)' : 'var(--border)';
+  if (knob)  knob.style.left        = checked ? '23px' : '3px';
+  try {
+    await _api('PUT', '/admin/system-settings', { allow_registration: checked ? '1' : '0' });
+    if (fb) {
+      fb.style.display = '';
+      fb.style.color   = 'var(--income-text)';
+      fb.textContent   = checked ? '✓ Cadastro habilitado com sucesso.' : '✓ Cadastro desabilitado com sucesso.';
+      setTimeout(() => { if (fb) fb.style.display = 'none'; }, 3000);
+    }
+  } catch(err) {
+    if (fb) {
+      fb.style.display = '';
+      fb.style.color   = 'var(--expense)';
+      fb.textContent   = 'Erro ao salvar configuração.';
+    }
+    // Reverte o toggle visualmente
+    const chk = document.getElementById('toggle-allow-reg');
+    if (chk) chk.checked = !checked;
+    if (track) track.style.background = !checked ? 'var(--primary-600)' : 'var(--border)';
+    if (knob)  knob.style.left        = !checked ? '23px' : '3px';
   }
 }
 

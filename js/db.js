@@ -208,9 +208,23 @@ const db = {
 };
 
 // ── Auth UI ───────────────────────────────────────────────────────────────────
+let _registerAllowed = false;
+
+async function _loadRegisterStatus() {
+  try {
+    const data = await fetch('/api/auth/register-status').then(r => r.json());
+    _registerAllowed = !!data.allow_registration;
+  } catch (_) {
+    _registerAllowed = false;
+  }
+  const toggleRow = document.getElementById('auth-toggle-row');
+  if (toggleRow) toggleRow.style.display = _registerAllowed ? '' : 'none';
+}
+
 function showAuthScreen() {
   document.getElementById('auth-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
+  _loadRegisterStatus();
 }
 function hideAuthScreen() {
   document.getElementById('auth-screen').style.display = 'none';
@@ -221,6 +235,7 @@ let _authMode = 'login';
 function toggleAuthMode(e) {
   e.preventDefault();
   if (_authMode === 'forgot') { _restoreLoginMode(); return; }
+  if (!_registerAllowed && _authMode === 'login') return;
   _authMode = _authMode === 'login' ? 'signup' : 'login';
   const s = _authMode === 'signup';
   document.getElementById('auth-title').textContent       = s ? 'Criar conta'  : 'Entrar';
@@ -324,7 +339,7 @@ function _rebuildAuthCard() {
       <input id="auth-confirm" class="form-control" type="password" placeholder="••••••••" autocomplete="new-password">
     </div>
     <button id="auth-submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center;margin-top:4px" onclick="submitAuth()">Entrar no Lumers Flow</button>
-    <p style="text-align:center;margin-top:20px;font-size:.875rem;color:var(--text-muted)">
+    <p id="auth-toggle-row" style="text-align:center;margin-top:20px;font-size:.875rem;color:var(--text-muted);display:${_registerAllowed ? '' : 'none'}">
       <span id="auth-toggle-text">Não tem conta?</span>
       <a href="#" id="auth-toggle" onclick="toggleAuthMode(event)" style="color:var(--primary-600);margin-left:4px;font-weight:600">Criar conta</a>
     </p>`;
