@@ -1,12 +1,12 @@
 // js/brand.js — Lumers Flow — Gerenciador de Identidade Visual
 
 // Bump this version whenever brand defaults change — forces cache bust for all users
-const _BRAND_CACHE_KEY = 'lf_brand_cache_v2';
+const _BRAND_CACHE_KEY = 'lf_brand_cache_v6';
 
 const _BRAND_DEFAULTS = {
   appName:       'Lumers Flow',
   primary:       '#3A5A40',
-  primaryDark:   '#2C4630',
+  primaryDark:   '#243d28',
   primaryLight:  '#DDE7D8',
   income:        '#3A5A40',
   incomeLight:   '#DDE7D8',
@@ -19,9 +19,32 @@ const _BRAND_DEFAULTS = {
   border:        '#E8E2D0',
   text:          '#292720',
   textMuted:     '#5D594E',
-  sidebarBg:     '#2C4630',
-  sidebarText:   '#E6E0CC',
-  sidebarActive: '#F8F4E4',
+  sidebarBg:        '#243d28',
+  sidebarText:      '#ddd7c0',
+  sidebarTextMuted: '#9faa8e',
+  sidebarActive:    '#F8F4E4',
+  sidebarHoverText: '#F8F4E4',
+  sidebarAccent:    '#D4A24C',
+  sidebarLogout:    '#F4DCD4',
+  logoutBg:         '#243d28',
+  logoutHoverBg:    '#C95A47',
+  logoutHoverText:  '#FFFFFF',
+  topbarBg:         '#FBF9F2',
+  topbarText:       '#1E3322',
+  bottomNavBg:      '#FBF9F2',
+  bottomNavText:    '#807B6C',
+  bottomNavActive:  '#3A5A40',
+  bottomNavHover:   '#2C4630',
+  // Annual reports dashboard colors
+  annualCardHeader:   '#3A5A40',
+  annualReceiver:     '#DDE7D8',
+  annualPayer:        '#FAEDE7',
+  annualOverdue:      '#FDDCD4',
+  annualSaldoPos:     '#2C4630',
+  annualSaldoNeg:     '#C95A47',
+  annualSaldoZero:    '#807B6C',
+  annualBorder:       '#E8E2D0',
+  annualSummaryAccent:'#D4A24C',
   logoData:      'lumers-flow-logotipo.png',
   faviconData:   'favicon-lumers-flow.png',
 };
@@ -31,8 +54,12 @@ let _brand = { ..._BRAND_DEFAULTS };
 // Aplica cache de cor imediatamente ao carregar (evita flash)
 (function _applyCachedEarly() {
   try {
-    // Remove old cache key to prevent stale blue theme from overriding new CSS
+    // Remove old cache keys to prevent stale theme from overriding new CSS
     localStorage.removeItem('lf_brand_cache');
+    localStorage.removeItem('lf_brand_cache_v2');
+    localStorage.removeItem('lf_brand_cache_v3');
+    localStorage.removeItem('lf_brand_cache_v4');
+    localStorage.removeItem('lf_brand_cache_v5');
     const cached = localStorage.getItem(_BRAND_CACHE_KEY);
     if (cached) _applyCssVars(JSON.parse(cached));
   } catch (_) {}
@@ -54,6 +81,10 @@ function _darken(hex, pct = 0.15) {
 function _lighten(hex, pct = 0.85) {
   const { r, g, b } = _hexToRgb(hex);
   return _rgbToHex(r+(255-r)*pct, g+(255-g)*pct, b+(255-b)*pct);
+}
+function _hexToRgba(hex, alpha) {
+  const { r, g, b } = _hexToRgb(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 // ── Escape HTML ───────────────────────────────────────────────────────────────
@@ -128,14 +159,35 @@ function _applyCssVars(cfg) {
     --text-muted:      ${c.textMuted};
     --text-soft:       ${_lighten(c.textMuted, 0.3)};
     --text-light:      ${_lighten(c.textMuted, 0.55)};
-    --sidebar-bg:          ${c.sidebarBg};
-    --sidebar-text:        ${c.sidebarText};
-    --sidebar-text-muted:  #B6BFA4;
-    --sidebar-active:      ${c.sidebarActive};
-    --sidebar-active-bg:   rgba(248,244,228,.14);
-    --sidebar-hover-bg:    rgba(248,244,228,.08);
-    --sidebar-border:      rgba(248,244,228,.1);
-    --sidebar-accent:      ${c.warning};
+    --sidebar-bg:              ${c.sidebarBg};
+    --sidebar-text:            ${c.sidebarText};
+    --sidebar-text-muted:      ${c.sidebarTextMuted};
+    --sidebar-active:          ${c.sidebarActive};
+    --sidebar-hover-text:      ${c.sidebarHoverText};
+    --sidebar-accent:          ${c.sidebarAccent};
+    --sidebar-logout-color:    ${c.sidebarLogout};
+    --sidebar-active-bg:       ${_hexToRgba(c.sidebarActive, 0.16)};
+    --sidebar-hover-bg:        ${_hexToRgba(c.sidebarActive, 0.11)};
+    --sidebar-hover-indicator: ${_hexToRgba(c.sidebarAccent, 0.45)};
+    --sidebar-border:          ${_hexToRgba(c.sidebarActive, 0.10)};
+    --sidebar-logout-bg:          ${c.logoutBg};
+    --sidebar-logout-hover-bg:    ${c.logoutHoverBg};
+    --sidebar-logout-hover-text:  ${c.logoutHoverText};
+    --topbar-bg:    ${_hexToRgba(c.topbarBg, 0.94)};
+    --topbar-text:  ${c.topbarText};
+    --bottom-nav-bg:     ${_hexToRgba(c.bottomNavBg, 0.95)};
+    --bottom-nav-text:   ${c.bottomNavText};
+    --bottom-nav-active: ${c.bottomNavActive};
+    --bottom-nav-hover:  ${c.bottomNavHover};
+    --annual-card-header:    ${c.annualCardHeader};
+    --annual-receiver:       ${c.annualReceiver};
+    --annual-payer:          ${c.annualPayer};
+    --annual-overdue:        ${c.annualOverdue};
+    --annual-saldo-pos:      ${c.annualSaldoPos};
+    --annual-saldo-neg:      ${c.annualSaldoNeg};
+    --annual-saldo-zero:     ${c.annualSaldoZero};
+    --annual-border:         ${c.annualBorder};
+    --annual-summary-accent: ${c.annualSummaryAccent};
   }`;
 
   const meta = document.querySelector('meta[name="theme-color"]');

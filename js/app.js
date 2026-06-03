@@ -74,7 +74,7 @@ const app = {
     `;
     el.innerHTML = `
       <div style="display:flex;align-items:flex-start;gap:14px">
-        <div style="font-size:2rem;line-height:1;flex-shrink:0">💬</div>
+        <div style="flex-shrink:0;color:var(--income)"><i data-lucide="message-circle" style="width:32px;height:32px"></i></div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;font-size:.95rem;color:var(--text);margin-bottom:4px">
             Registre gastos pelo WhatsApp!
@@ -95,6 +95,7 @@ const app = {
       </div>
     `;
     document.body.appendChild(el);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
     setTimeout(() => { if (el.parentNode) el.remove(); }, 12000);
   },
 
@@ -103,17 +104,19 @@ const app = {
     const el = document.getElementById('user-name');
     if (el && user) el.textContent = user.name || user.email;
 
+    const isAdmin = user?.email === 'applumergestao@gmail.com';
     const adminLink = document.getElementById('admin-nav-link');
-    if (adminLink) {
-      adminLink.style.display = user?.email === 'applumergestao@gmail.com' ? '' : 'none';
-    }
+    if (adminLink) adminLink.style.display = isAdmin ? '' : 'none';
     const banksLink = document.getElementById('banks-admin-link');
-    if (banksLink) {
-      banksLink.style.display = user?.email === 'applumergestao@gmail.com' ? '' : 'none';
-    }
+    if (banksLink) banksLink.style.display = isAdmin ? '' : 'none';
+    const adminUsersLink = document.getElementById('admin-users-link');
+    if (adminUsersLink) adminUsersLink.style.display = isAdmin ? '' : 'none';
+    const adminSystemLink = document.getElementById('admin-system-link');
+    if (adminSystemLink) adminSystemLink.style.display = isAdmin ? '' : 'none';
   },
 
   async route() {
+    if (typeof destroyBulkMode === 'function' && _Bulk?.active) destroyBulkMode();
     const hash = location.hash || '#/';
     const page = hash.replace('#/', '') || 'dashboard';
     this.currentPage = page || 'dashboard';
@@ -136,26 +139,31 @@ const app = {
         case 'income':     await renderIncome(m, y);     break;
         case 'expenses':   await renderExpenses(m, y);   break;
         case 'transactions': await renderTransactions(); break; // kept for backward compatibility
-        case 'accounts':   await renderAccounts();       break;
+case 'accounts':   await renderAccounts();       break;
         case 'banks':      await renderBanksAdmin();     break;
         case 'categories': await renderCategories();     break;
         case 'goals':      await renderGoals();          break;
-        case 'reports':    await renderReports(m, y);    break;
+        case 'reports':         await renderReports(m, y);         break;
+        case 'annual-reports':  await renderAnnualReports(y);     break;
         case 'import':     renderImport();               break;
         case 'settings':   await renderSettings();        break;
         case 'admin':      await renderAdmin();           break;
+        case 'admin-users':  await renderAdminUsers();  break;
+        case 'admin-system': await renderAdminSystem(); break;
         default:           await renderDashboard(m, y);
       }
+      if (typeof lucide !== 'undefined') lucide.createIcons();
     } catch (err) {
       console.error('Render error:', err);
       const content = document.getElementById('content');
       if (content) {
         content.innerHTML = `
           <div class="empty-state">
-            <svg width="40" height="40" viewBox="0 0 48 48" fill="none"><path d="M8 12h32M8 24h20M8 36h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <i data-lucide="file-x-2" style="width:40px;height:40px;opacity:.4"></i>
             <p>Erro ao carregar a página: ${err?.message || 'Erro inesperado'}</p>
             <pre style="white-space:pre-wrap;color:var(--text-muted);font-size:.8rem;margin-top:8px">${(err && err.stack) ? String(err.stack).substring(0, 1000) : ''}</pre>
           </div>`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
       }
     }
   },
@@ -177,10 +185,13 @@ const app = {
       banks:      'Bancos',
       categories: 'Categorias',
       goals:        'Metas Financeiras',
-      reports:      'Relatórios',
-      import:     'Importar Dados',
+      reports:          'Relatórios',
+      'annual-reports': 'Fluxo Anual',
+import:     'Importar Dados',
       settings:   'Configurações',
-      admin:      'Usuários',
+      admin:        'Admin — Dashboard',
+      'admin-users':  'Usuários',
+      'admin-system': 'Configurações do Sistema',
     };
     document.getElementById('pageTitle').textContent = titles[this.currentPage] || 'Dashboard';
   },
@@ -193,14 +204,15 @@ const app = {
       el.innerHTML = `
         <div class="month-selector">
           <button onclick="app.prevMonth()" title="Mês anterior">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <i data-lucide="chevron-left" style="width:16px;height:16px"></i>
           </button>
           <span class="month-label">${monthLabel(this.currentMonth, this.currentYear)}</span>
           <button onclick="app.nextMonth()" title="Próximo mês">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <i data-lucide="chevron-right" style="width:16px;height:16px"></i>
           </button>
         </div>
       `;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
     } else {
       el.innerHTML = '';
     }
@@ -231,7 +243,7 @@ const app = {
   },
 
   bindNav() {
-    document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(link => {
+    document.querySelectorAll('.nav-item, .bottom-nav-item, .sidebar-user-name--link').forEach(link => {
       link.addEventListener('click', () => {
         document.getElementById('sidebar').classList.remove('open');
         document.getElementById('overlay').classList.remove('visible');
