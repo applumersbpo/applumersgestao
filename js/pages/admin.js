@@ -138,6 +138,9 @@ function _renderAdminUsersHtml(searchTerm) {
         <button class="btn btn-sm btn-outline" onclick="adminNormalizePhones()">
           ${icon('phone',13)} Normalizar telefones
         </button>
+        <button class="btn btn-sm btn-outline" onclick="openAdminCreateUserModal()">
+          ${icon('user-plus',13)} Nova conta
+        </button>
         <button class="btn btn-sm btn-primary" onclick="openAdminMessageModal()">
           ${icon('send',13)} Mensagem em massa
           ${comWpp > 0 ? `<span style="background:rgba(255,255,255,.25);border-radius:10px;padding:1px 7px;font-size:.72rem;margin-left:4px">${comWpp}</span>` : ''}
@@ -518,6 +521,73 @@ async function _toggleAllowRegistration(checked) {
     if (chk) chk.checked = !checked;
     if (track) track.style.background = !checked ? 'var(--primary-600)' : 'var(--border)';
     if (knob)  knob.style.left        = !checked ? '23px' : '3px';
+  }
+}
+
+// ── Create User Modal ─────────────────────────────────────────────────────────
+
+function openAdminCreateUserModal() {
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:420px;width:calc(100% - 32px)">
+        <div class="modal-header">
+          <div class="modal-title">${icon('user-plus', 16)} Nova conta</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Nome *</label>
+            <input id="cu-name" class="form-control" type="text" placeholder="Nome completo" autocomplete="off">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">E-mail *</label>
+            <input id="cu-email" class="form-control" type="email" placeholder="usuario@email.com" autocomplete="off">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">WhatsApp <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+            <input id="cu-phone" class="form-control" type="tel" placeholder="5561999990000">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Senha *</label>
+            <input id="cu-password" class="form-control" type="password" placeholder="Mínimo 8 caracteres" autocomplete="new-password">
+          </div>
+          <div id="cu-error" style="color:var(--expense);font-size:.83rem;display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+          <button id="cu-submit" class="btn btn-primary" onclick="_adminSubmitCreateUser()">
+            ${icon('user-plus', 14)} Criar conta
+          </button>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+async function _adminSubmitCreateUser() {
+  const name     = document.getElementById('cu-name').value.trim();
+  const email    = document.getElementById('cu-email').value.trim();
+  const phone    = document.getElementById('cu-phone').value.trim();
+  const password = document.getElementById('cu-password').value;
+  const errEl    = document.getElementById('cu-error');
+  const btn      = document.getElementById('cu-submit');
+
+  errEl.style.display = 'none';
+  if (!name)              { errEl.textContent = 'Informe o nome.';              errEl.style.display = ''; return; }
+  if (!email)             { errEl.textContent = 'Informe o e-mail.';            errEl.style.display = ''; return; }
+  if (password.length < 8){ errEl.textContent = 'Senha mínima: 8 caracteres.'; errEl.style.display = ''; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Criando...';
+  try {
+    await _api('POST', '/admin/users', { action: 'create-user', name, email, phone, password });
+    closeModal();
+    await renderAdminUsers();
+  } catch(err) {
+    errEl.textContent = err?.response?.message || err?.message || 'Erro ao criar conta.';
+    errEl.style.display = '';
+    btn.disabled = false;
+    btn.innerHTML = `${icon('user-plus', 14)} Criar conta`;
   }
 }
 

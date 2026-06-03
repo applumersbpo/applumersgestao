@@ -1,5 +1,6 @@
 import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from '../lib/db.js';
 import { requireAuth, cors } from '../lib/auth.js';
+import bcrypt from 'bcryptjs';
 
 const SYSTEM_SETTING_KEYS = ['allow_registration'];
 
@@ -195,6 +196,29 @@ export default async function handler(req, res) {
 
         const sent = results.filter(r => r.ok).length;
         return res.status(200).json({ ok: true, sent, total: user_ids.length, results });
+      }
+
+      // Create user (admin bypass — ignores allow_registration)
+      if (action === 'create-user') {
+        const { email, password, name, phone: rawPhone } = req.body;
+        if (!email || !password || !name) return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios' });
+        if (password.length < 8) return res.status(400).json({ error: 'Senha mínima: 8 caracteres' });
+        const phone = rawPhone ? rawPhone.replace(/\D/g, '') : '';
+        const normalizedPhone = phone ? (phone.startsWith('55') ? phone : '55' + phone) : '';
+        const { rows: existing } = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [email.toLowerCase().trim()] });
+        if (rowsToObjects(existing).length > 0) return res.status(400).json({ error: 'E-mail já cadastrado' });
+        const hash = await bcrypt.hash(password, 10);
+        const id = crypto.randomUUID();
+        const now = new Date().toISOString();
+        await db.execute({
+          sql: 'INSERT INTO users (id, email, password_hash, name, phone, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+          args: [id, email.toLowerCase().trim(), hash, name, normalizedPhone, now],
+        });
+        await db.execute({
+          sql: 'INSERT INTO user_plans (id, user_id, email, name, monthly_fee, active) VALUES (?, ?, ?, ?, 0, 1)',
+          args: [crypto.randomUUID(), id, email.toLowerCase().trim(), name],
+        });
+        return res.status(201).json({ ok: true, id });
       }
 
       return res.status(400).json({ error: 'Ação inválida' });
