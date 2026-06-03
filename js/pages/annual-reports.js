@@ -34,7 +34,7 @@ async function renderAnnualReports(year) {
   content.innerHTML = '<div class="loading-screen"><div class="spinner"></div></div>';
 
   try {
-    const data = await _api('GET', `/annual-reports?year=${_arYear}`);
+    const data = await _api('GET', `/data/annual-reports?year=${_arYear}`);
     _arData = data;
     _arRenderPage(data);
   } catch (e) {
