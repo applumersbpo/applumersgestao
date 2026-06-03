@@ -1,5 +1,7 @@
-import { getDb, initDb, rowsToObjects } from '../lib/db.js';
+import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from '../lib/db.js';
 import { requireAuth, cors } from '../lib/auth.js';
+
+const SYSTEM_SETTING_KEYS = ['allow_registration'];
 
 export default async function handler(req, res) {
   cors(res);
@@ -11,6 +13,24 @@ export default async function handler(req, res) {
     if (!user.is_admin) return res.status(403).json({ error: 'Forbidden' });
 
     const db = getDb();
+
+    // ── GET/PUT /api/admin/users?resource=system-settings
+    if (req.query.resource === 'system-settings') {
+      if (req.method === 'GET') {
+        const result = {};
+        for (const key of SYSTEM_SETTING_KEYS) {
+          result[key] = await getSystemSetting(key);
+        }
+        return res.status(200).json(result);
+      }
+      if (req.method === 'PUT') {
+        const updates = req.body || {};
+        for (const key of SYSTEM_SETTING_KEYS) {
+          if (key in updates) await setSystemSetting(key, String(updates[key]));
+        }
+        return res.status(200).json({ ok: true });
+      }
+    }
 
     // ── GET /api/admin/users?stats=true  →  aggregate dashboard stats
     if (req.method === 'GET' && req.query.stats === 'true') {

@@ -1,4 +1,4 @@
-import { getDb, initDb, rowsToObjects } from '../lib/db.js';
+import { getDb, initDb, rowsToObjects, getSystemSetting } from '../lib/db.js';
 import { requireAuth, cors } from '../lib/auth.js';
 import bcrypt from 'bcryptjs';
 
@@ -10,6 +10,12 @@ export default async function handler(req, res) {
     await initDb();
     const { action } = req.query;
     const db = getDb();
+
+    // GET /api/auth/register-status
+    if (action === 'register-status' && req.method === 'GET') {
+      const value = await getSystemSetting('allow_registration');
+      return res.status(200).json({ allow_registration: value === '1' });
+    }
 
     // GET /api/auth/me
     if (action === 'me') {

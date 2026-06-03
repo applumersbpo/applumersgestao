@@ -449,7 +449,7 @@ async function renderAdminSystem() {
   try {
     const [brandCfg, sysCfg] = await Promise.all([
       fetch('/api/brand').then(r => r.json()).catch(() => ({})),
-      _api('GET', '/admin/system-settings').catch(() => ({})),
+      _api('GET', '/admin/users?resource=system-settings').catch(() => ({})),
     ]);
 
     // Reseta pendentes ao entrar na página
@@ -500,7 +500,7 @@ async function _toggleAllowRegistration(checked) {
   if (track) track.style.background = checked ? 'var(--primary-600)' : 'var(--border)';
   if (knob)  knob.style.left        = checked ? '23px' : '3px';
   try {
-    await _api('PUT', '/admin/system-settings', { allow_registration: checked ? '1' : '0' });
+    await _api('PUT', '/admin/users?resource=system-settings', { allow_registration: checked ? '1' : '0' });
     if (fb) {
       fb.style.display = '';
       fb.style.color   = 'var(--income-text)';
