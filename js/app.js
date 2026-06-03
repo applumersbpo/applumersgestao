@@ -104,7 +104,7 @@ const app = {
     const el = document.getElementById('user-name');
     if (el && user) el.textContent = user.name || user.email;
 
-    const isAdmin = user?.email === 'applumergestao@gmail.com';
+    const isAdmin = user?.email === 'applumergestao@gmail.com' || !!user?.is_admin || user?.role === 'admin' || user?.role === 'super_admin';
     const adminLink = document.getElementById('admin-nav-link');
     if (adminLink) adminLink.style.display = isAdmin ? '' : 'none';
     const banksLink = document.getElementById('banks-admin-link');
@@ -150,6 +150,7 @@ case 'accounts':   await renderAccounts();       break;
         case 'admin':      await renderAdmin();           break;
         case 'admin-users':  await renderAdminUsers();  break;
         case 'admin-system': await renderAdminSystem(); break;
+        case 'admin-plans':  await renderAdminPlans();  break;
         default:           await renderDashboard(m, y);
       }
       if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -192,6 +193,7 @@ import:     'Importar Dados',
       admin:        'Admin — Dashboard',
       'admin-users':  'Usuários',
       'admin-system': 'Configurações do Sistema',
+      'admin-plans':  'Planos de Assinatura',
     };
     document.getElementById('pageTitle').textContent = titles[this.currentPage] || 'Dashboard';
   },

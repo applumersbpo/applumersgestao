@@ -48,7 +48,7 @@ export default async function handler(req, res) {
           SUM(CASE WHEN transaction_type='income' THEN amount ELSE 0 END) as total_income,
           SUM(CASE WHEN transaction_type IN ('expense','general','daily','installment') THEN amount ELSE 0 END) as total_expense
           FROM transactions`),
-        db.execute(`SELECT u.id, u.name, u.email, u.phone, u.last_login, u.created_at,
+        db.execute(`SELECT u.id, u.name, u.email, u.phone, u.role, u.is_admin, u.last_login, u.created_at,
           COUNT(t.id) as tx_count,
           COALESCE(SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE 0 END),0) as total_income,
           COALESCE(SUM(CASE WHEN t.transaction_type IN ('expense','general','daily','installment') THEN t.amount ELSE 0 END),0) as total_expense
@@ -82,7 +82,7 @@ export default async function handler(req, res) {
 
     // ── GET /api/admin/users  →  user list
     if (req.method === 'GET') {
-      const { rows } = await db.execute('SELECT id, email, name, phone, is_admin, created_at FROM users ORDER BY created_at DESC');
+      const { rows } = await db.execute('SELECT id, email, name, phone, role, is_admin, created_at FROM users ORDER BY created_at DESC');
       return res.status(200).json(rowsToObjects(rows));
     }
 

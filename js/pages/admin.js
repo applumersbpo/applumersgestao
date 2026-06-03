@@ -38,7 +38,10 @@ async function renderAdmin() {
         <a href="#/admin-users" class="btn btn-primary btn-sm">
           ${icon('users', 14)} Gerenciar Usuários
         </a>
-        <a href="#/admin-system" class="btn btn-secondary btn-sm">
+        <a href="#/admin-plans" class="btn btn-secondary btn-sm">
+          ${icon('credit-card', 14)} Planos de Assinatura
+        </a>
+        <a href="#/admin-system" class="btn btn-outline btn-sm">
           ${icon('settings', 14)} Configurações do Sistema
         </a>
         <a href="#/banks" class="btn btn-outline btn-sm">
@@ -170,6 +173,16 @@ function _adminUsersFilterInput(term) {
   _renderAdminUsersHtml(term);
 }
 
+function _adminRoleBadge(role) {
+  const map = {
+    super_admin: { label: 'Super Admin', color: '#dc2626', bg: '#fef2f2' },
+    admin:       { label: 'Admin',       color: '#d97706', bg: '#fffbeb' },
+    user:        { label: 'Usuário',     color: 'var(--text-muted)', bg: 'var(--bg-subtle)' },
+  };
+  const r = map[role] || map.user;
+  return `<span style="font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:10px;background:${r.bg};color:${r.color};white-space:nowrap">${r.label}</span>`;
+}
+
 function _adminUserRow(u) {
   const displayName  = u.name || u.email.split('@')[0];
   const initials     = displayName[0].toUpperCase();
@@ -177,6 +190,7 @@ function _adminUserRow(u) {
   const phoneOk      = _hasValidDDI(phone);
   const balance      = (u.total_income || 0) - (u.total_expense || 0);
   const balanceColor = balance >= 0 ? 'var(--income-text)' : 'var(--expense)';
+  const role         = u.role || (u.is_admin ? 'admin' : 'user');
 
   return `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;transition:box-shadow .15s"
@@ -193,8 +207,9 @@ function _adminUserRow(u) {
 
         <!-- Info principal -->
         <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:.93rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            ${_escHtml(displayName)}
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="font-weight:600;font-size:.93rem;color:var(--text)">${_escHtml(displayName)}</span>
+            ${_adminRoleBadge(role)}
           </div>
           <div style="font-size:.78rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">
             ${_escHtml(u.email)}
@@ -228,6 +243,10 @@ function _adminUserRow(u) {
           <button class="btn btn-sm" style="background:var(--primary-light);color:var(--primary);font-weight:600;gap:4px"
             onclick="renderAdminUserProfile('${u.id}')" title="Ver perfil completo">
             ${icon('bar-chart-2',13)} Perfil
+          </button>
+          <button class="btn btn-sm btn-icon btn-ghost" style="color:var(--text-muted)"
+            onclick="openAdminEditUserModal('${u.id}')" title="Editar usuário">
+            ${icon('pencil',14)}
           </button>
           ${phone ? `<button class="btn btn-sm btn-icon btn-ghost" style="color:var(--primary)"
             onclick="_adminMsgOpenFor('${u.id}')"
@@ -521,6 +540,406 @@ async function _toggleAllowRegistration(checked) {
     if (chk) chk.checked = !checked;
     if (track) track.style.background = !checked ? 'var(--primary-600)' : 'var(--border)';
     if (knob)  knob.style.left        = !checked ? '23px' : '3px';
+  }
+}
+
+// ── Edit User Modal ───────────────────────────────────────────────────────────
+
+const _FEATURE_KEYS = ['transactions','accounts','categories','goals','installments','reports','annual_flow','whatsapp_bot'];
+const _FEATURE_LABELS = {
+  transactions: 'Transações',
+  accounts:     'Carteiras/Contas',
+  categories:   'Categorias',
+  goals:        'Metas',
+  installments: 'Parcelamentos',
+  reports:      'Relatórios',
+  annual_flow:  'Fluxo Anual',
+  whatsapp_bot: 'Bot WhatsApp',
+};
+
+let _editUserData = null; // { user, plan, templates }
+
+async function openAdminEditUserModal(userId) {
+  showModal(`<div class="modal-backdrop"><div class="modal" style="max-width:540px;width:calc(100% - 32px);max-height:92vh;overflow-y:auto">
+    <div class="modal-header"><div class="modal-title">${icon('pencil',16)} Carregando...</div>
+    <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x',16)}</button></div>
+    <div class="modal-body"><div class="loading-screen" style="height:120px"><div class="spinner"></div></div></div>
+  </div></div>`);
+
+  try {
+    const [userData, templates] = await Promise.all([
+      _api('GET', '/admin/users/' + userId),
+      _api('GET', '/admin/user-plans?resource=plan-templates').catch(() => []),
+    ]);
+    _planTemplatesCache = templates;
+    _editUserData = { user: userData.user, plan: userData.plan, templates };
+    _renderEditUserModal(userId);
+  } catch(e) {
+    const mb = document.querySelector('.modal-body');
+    if (mb) mb.innerHTML = `<p style="color:var(--expense);padding:16px">Erro: ${e.message}</p>`;
+  }
+}
+
+function _renderEditUserModal(userId) {
+  const { user, plan, templates } = _editUserData;
+  const role = user.role || (user.is_admin ? 'admin' : 'user');
+
+  // Build features: start from template, then apply user overrides
+  let templateFeatures = {};
+  let userOverride = {};
+  if (plan) {
+    try { userOverride = JSON.parse(plan.features_override || '{}'); } catch(_) {}
+    const tpl = templates.find(t => t.id === plan.plan_template_id);
+    if (tpl) { try { templateFeatures = JSON.parse(tpl.features || '{}'); } catch(_) {} }
+  }
+  const effectiveFeatures = { ..._defaultFeatures(), ...templateFeatures, ...userOverride };
+
+  const featuresHtml = _FEATURE_KEYS.map(k => {
+    const fromTemplate = templateFeatures[k] !== undefined;
+    const isOverridden = userOverride[k] !== undefined;
+    const checked = effectiveFeatures[k] !== false;
+    return `
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer">
+        <input type="checkbox" id="ef-${k}" ${checked ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer">
+        <span style="flex:1;font-size:.87rem">${_FEATURE_LABELS[k]}</span>
+        ${fromTemplate && !isOverridden
+          ? `<span style="font-size:.7rem;color:var(--text-muted)">do plano</span>`
+          : isOverridden
+            ? `<span style="font-size:.7rem;color:var(--primary-600);font-weight:600">override</span>`
+            : ''}
+      </label>`;
+  }).join('');
+
+  const templateOptions = templates.map(t =>
+    `<option value="${t.id}" ${plan?.plan_template_id === t.id ? 'selected' : ''}>${_escHtml(t.name)} — R$ ${(t.monthly_fee||0).toFixed(2)}</option>`
+  ).join('');
+
+  const modal = document.querySelector('.modal');
+  if (!modal) return;
+  modal.innerHTML = `
+    <div class="modal-header">
+      <div class="modal-title">${icon('pencil',16)} Editar — ${_escHtml(user.name || user.email)}</div>
+      <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x',16)}</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:0">
+
+      <!-- DADOS PESSOAIS -->
+      <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">
+        ${icon('user',13)} Dados Pessoais
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Nome</label>
+          <input id="eu-name" class="form-control" value="${_escHtml(user.name||'')}">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">WhatsApp</label>
+          <input id="eu-phone" class="form-control" type="tel" value="${_escHtml(user.phone||'')}">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">E-mail</label>
+          <input id="eu-email" class="form-control" type="email" value="${_escHtml(user.email||'')}">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Nova senha <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+          <input id="eu-password" class="form-control" type="password" placeholder="Deixe em branco para manter">
+        </div>
+      </div>
+
+      <!-- PERFIL / ROLE -->
+      <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">
+        ${icon('shield',13)} Perfil de Acesso
+      </div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label class="form-label">Nível de acesso</label>
+        <select id="eu-role" class="form-control">
+          <option value="user"        ${role==='user'        ?'selected':''}>Usuário</option>
+          <option value="admin"       ${role==='admin'       ?'selected':''}>Admin</option>
+          <option value="super_admin" ${role==='super_admin' ?'selected':''}>Super Admin</option>
+        </select>
+      </div>
+
+      ${plan ? `
+      <!-- PLANO -->
+      <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">
+        ${icon('credit-card',13)} Plano de Assinatura
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+        <div class="form-group" style="margin:0;grid-column:1/-1">
+          <label class="form-label">Modelo de plano</label>
+          <select id="eu-plan-template" class="form-control" onchange="_onEditUserTemplateChange()">
+            <option value="">— Sem plano —</option>
+            ${templateOptions}
+          </select>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Mensalidade (R$)</label>
+          <input id="eu-plan-fee" class="form-control" type="number" min="0" step="0.01" value="${plan.monthly_fee||0}">
+        </div>
+        <div class="form-group" style="margin:0;display:flex;align-items:flex-end;gap:8px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding-bottom:6px">
+            <input type="checkbox" id="eu-plan-active" ${plan.active ? 'checked' : ''} style="width:16px;height:16px">
+            <span style="font-size:.87rem">Plano ativo</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- RECURSOS -->
+      <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">
+        ${icon('toggle-left',13)} Recursos Habilitados
+      </div>
+      <div style="margin-bottom:16px">${featuresHtml}</div>
+      ` : ''}
+
+      <div id="eu-error" style="color:var(--expense);font-size:.83rem;display:none;margin-top:4px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button id="eu-submit" class="btn btn-primary" onclick="_adminSaveUserEdit('${userId}')">
+        ${icon('save',14)} Salvar alterações
+      </button>
+    </div>`;
+}
+
+function _defaultFeatures() {
+  return { transactions:true, accounts:true, categories:true, goals:true, installments:true, reports:true, annual_flow:true, whatsapp_bot:false };
+}
+
+function _onEditUserTemplateChange() {
+  const sel = document.getElementById('eu-plan-template');
+  if (!sel || !_editUserData) return;
+  const tplId = sel.value;
+  const tpl = _editUserData.templates.find(t => t.id === tplId);
+  if (!tpl) return;
+  // Update fee field from template
+  const feeEl = document.getElementById('eu-plan-fee');
+  if (feeEl) feeEl.value = tpl.monthly_fee || 0;
+  // Update feature checkboxes from template
+  try {
+    const features = JSON.parse(tpl.features || '{}');
+    _FEATURE_KEYS.forEach(k => {
+      const el = document.getElementById('ef-' + k);
+      if (el && features[k] !== undefined) el.checked = features[k] !== false;
+    });
+  } catch(_) {}
+}
+
+async function _adminSaveUserEdit(userId) {
+  const btn  = document.getElementById('eu-submit');
+  const errEl = document.getElementById('eu-error');
+  errEl.style.display = 'none';
+
+  const name     = document.getElementById('eu-name')?.value.trim();
+  const email    = document.getElementById('eu-email')?.value.trim();
+  const phone    = document.getElementById('eu-phone')?.value.trim();
+  const password = document.getElementById('eu-password')?.value;
+  const role     = document.getElementById('eu-role')?.value;
+
+  if (!name)  { errEl.textContent = 'Nome é obrigatório.';  errEl.style.display = ''; return; }
+  if (!email) { errEl.textContent = 'E-mail é obrigatório.'; errEl.style.display = ''; return; }
+
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try {
+    // Save profile
+    const profileData = { name, email, phone, role };
+    if (password) profileData.password = password;
+    await _api('PUT', '/admin/users/' + userId, profileData);
+
+    // Save plan if exists
+    const { plan } = _editUserData || {};
+    if (plan?.id) {
+      const templateId = document.getElementById('eu-plan-template')?.value || '';
+      const fee        = parseFloat(document.getElementById('eu-plan-fee')?.value) || 0;
+      const active     = document.getElementById('eu-plan-active')?.checked ?? true;
+
+      // Build features override: only keys that differ from template
+      const tpl = _editUserData.templates.find(t => t.id === templateId);
+      let tplFeatures = {};
+      if (tpl) { try { tplFeatures = JSON.parse(tpl.features || '{}'); } catch(_) {} }
+
+      const override = {};
+      _FEATURE_KEYS.forEach(k => {
+        const el = document.getElementById('ef-' + k);
+        if (!el) return;
+        const checked = el.checked;
+        const tplVal  = tplFeatures[k] !== undefined ? tplFeatures[k] !== false : _defaultFeatures()[k];
+        if (checked !== tplVal) override[k] = checked;
+      });
+
+      await _api('PUT', '/admin/user-plans/' + plan.id, {
+        plan_template_id: templateId,
+        monthly_fee: fee,
+        active,
+        features_override: JSON.stringify(override),
+      });
+    }
+
+    closeModal();
+    await renderAdminUsers();
+  } catch(err) {
+    errEl.textContent = err?.response?.message || err?.message || 'Erro ao salvar.';
+    errEl.style.display = '';
+    btn.disabled = false;
+    btn.innerHTML = `${icon('save',14)} Salvar alterações`;
+  }
+}
+
+// ── Admin Plans Page ──────────────────────────────────────────────────────────
+
+async function renderAdminPlans() {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading-screen"><div class="spinner"></div></div>';
+  try {
+    const templates = await _api('GET', '/admin/user-plans?resource=plan-templates');
+    _planTemplatesCache = templates;
+    _renderAdminPlansHtml(templates);
+  } catch(e) {
+    content.innerHTML = `<p style="color:var(--expense);padding:16px">Erro: ${e.message}</p>`;
+  }
+}
+
+function _renderAdminPlansHtml(templates) {
+  const content = document.getElementById('content');
+  const rows = templates.map(t => {
+    let features = {};
+    try { features = JSON.parse(t.features || '{}'); } catch(_) {}
+    const activeFeat = _FEATURE_KEYS.filter(k => features[k] !== false).length;
+    return `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:16px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div>
+            <div style="font-weight:700;font-size:.97rem">${_escHtml(t.name)}</div>
+            ${t.description ? `<div style="font-size:.8rem;color:var(--text-muted);margin-top:2px">${_escHtml(t.description)}</div>` : ''}
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn btn-sm btn-icon btn-ghost" onclick="_openEditTemplateModal('${t.id}')" title="Editar">${icon('pencil',14)}</button>
+            <button class="btn btn-sm btn-icon btn-danger" onclick="_deleteTemplate('${t.id}','${_escHtml(t.name)}')" title="Excluir">${icon('trash-2',14)}</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="font-size:1.1rem;font-weight:700;color:var(--primary-600)">R$ ${(t.monthly_fee||0).toFixed(2)}<span style="font-size:.75rem;font-weight:400;color:var(--text-muted)">/mês</span></span>
+          <span style="font-size:.78rem;background:var(--bg-subtle);padding:3px 9px;border-radius:10px">${activeFeat}/${_FEATURE_KEYS.length} recursos</span>
+          <span style="font-size:.78rem;padding:3px 9px;border-radius:10px;background:${t.active ? '#dcfce7' : 'var(--bg-subtle)'};color:${t.active ? '#166534' : 'var(--text-muted)'}">${t.active ? 'Ativo' : 'Inativo'}</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px">
+          ${_FEATURE_KEYS.map(k => `
+            <span style="font-size:.72rem;padding:2px 8px;border-radius:8px;background:${features[k]!==false ? 'var(--primary-light)' : 'var(--bg-subtle)'};color:${features[k]!==false ? 'var(--primary-600)' : 'var(--text-muted)'}">
+              ${features[k]!==false ? '✓' : '—'} ${_FEATURE_LABELS[k]}
+            </span>`).join('')}
+        </div>
+      </div>`;
+  }).join('');
+
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:.82rem;color:var(--text-muted)">${icon('credit-card',13)} <strong>${templates.length}</strong> plano(s) cadastrado(s)</div>
+      <button class="btn btn-sm btn-primary" onclick="_openEditTemplateModal(null)">
+        ${icon('plus',13)} Novo plano
+      </button>
+    </div>
+    ${templates.length === 0
+      ? `<div class="empty-state">${icon('credit-card',36)}<p>Nenhum plano cadastrado ainda.</p><button class="btn btn-primary" onclick="_openEditTemplateModal(null)">${icon('plus',14)} Criar primeiro plano</button></div>`
+      : `<div style="display:flex;flex-direction:column;gap:10px">${rows}</div>`}`;
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+let _planTemplatesCache = [];
+
+function _openEditTemplateModal(templateId) {
+  const tpl = templateId ? (_planTemplatesCache.find(t => t.id === templateId) || {}) : {};
+  let features = {};
+  try { features = JSON.parse(tpl.features || '{}'); } catch(_) {}
+  const eff = { ..._defaultFeatures(), ...features };
+  const isNew = !templateId;
+
+  const featHtml = _FEATURE_KEYS.map(k => `
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:6px 0;border-bottom:1px solid var(--border)">
+      <input type="checkbox" id="tf-${k}" ${eff[k]!==false ? 'checked' : ''} style="width:16px;height:16px">
+      <span style="font-size:.87rem;flex:1">${_FEATURE_LABELS[k]}</span>
+    </label>`).join('');
+
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:460px;width:calc(100% - 32px);max-height:92vh;overflow-y:auto">
+        <div class="modal-header">
+          <div class="modal-title">${icon('credit-card',16)} ${isNew ? 'Novo Plano' : 'Editar Plano'}</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x',16)}</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Nome do plano *</label>
+            <input id="tpl-name" class="form-control" value="${_escHtml(tpl.name||'')}">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Descrição <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+            <input id="tpl-desc" class="form-control" value="${_escHtml(tpl.description||'')}">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Mensalidade (R$)</label>
+              <input id="tpl-fee" class="form-control" type="number" min="0" step="0.01" value="${tpl.monthly_fee||0}">
+            </div>
+            <div class="form-group" style="margin:0;display:flex;align-items:flex-end;padding-bottom:6px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <input type="checkbox" id="tpl-active" ${tpl.active!==0 ? 'checked' : ''} style="width:16px;height:16px">
+                <span style="font-size:.87rem">Plano ativo</span>
+              </label>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">${icon('toggle-left',12)} Recursos</div>
+            ${featHtml}
+          </div>
+          <div id="tpl-error" style="color:var(--expense);font-size:.83rem;display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+          <button id="tpl-submit" class="btn btn-primary" onclick="_saveTemplate('${templateId||''}')">
+            ${icon('save',14)} ${isNew ? 'Criar plano' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+    </div>`);
+}
+
+async function _saveTemplate(templateId) {
+  const name   = document.getElementById('tpl-name')?.value.trim();
+  const desc   = document.getElementById('tpl-desc')?.value.trim();
+  const fee    = parseFloat(document.getElementById('tpl-fee')?.value) || 0;
+  const active = document.getElementById('tpl-active')?.checked ?? true;
+  const errEl  = document.getElementById('tpl-error');
+  const btn    = document.getElementById('tpl-submit');
+  errEl.style.display = 'none';
+  if (!name) { errEl.textContent = 'Nome é obrigatório.'; errEl.style.display = ''; return; }
+
+  const features = {};
+  _FEATURE_KEYS.forEach(k => { features[k] = !!document.getElementById('tf-' + k)?.checked; });
+
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try {
+    if (templateId) {
+      await _api('POST', '/admin/user-plans', { action: 'update-template', id: templateId, name, description: desc, monthly_fee: fee, features, active });
+    } else {
+      await _api('POST', '/admin/user-plans', { action: 'create-template', name, description: desc, monthly_fee: fee, features, active });
+    }
+    closeModal();
+    await renderAdminPlans();
+  } catch(err) {
+    errEl.textContent = err?.message || 'Erro ao salvar.';
+    errEl.style.display = '';
+    btn.disabled = false;
+    btn.innerHTML = `${icon('save',14)} Salvar`;
+  }
+}
+
+async function _deleteTemplate(templateId, name) {
+  if (!confirm(`Excluir o plano "${name}"? Usuários vinculados a este plano perderão a referência.`)) return;
+  try {
+    await _api('POST', '/admin/user-plans', { action: 'delete-template', id: templateId });
+    await renderAdminPlans();
+  } catch(err) {
+    alert('Erro: ' + (err?.message || 'Falha ao excluir'));
   }
 }
 

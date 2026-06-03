@@ -181,6 +181,15 @@ export async function initDb() {
       value TEXT DEFAULT '',
       updated_at TEXT DEFAULT (datetime('now'))
     )`,
+    `CREATE TABLE IF NOT EXISTS plan_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      monthly_fee REAL DEFAULT 0,
+      features TEXT DEFAULT '{}',
+      active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {
@@ -200,11 +209,26 @@ export async function initDb() {
     await db.execute("ALTER TABLE transactions ADD COLUMN competence_date TEXT DEFAULT ''");
   }
 
-  // Add last_login to users
+  // Migrations — users table
   const { rows: ucols } = await db.execute("PRAGMA table_info('users')");
   const uColNames = (ucols || []).map(r => r.name);
   if (!uColNames.includes('last_login')) {
     await db.execute("ALTER TABLE users ADD COLUMN last_login TEXT DEFAULT ''");
+  }
+  if (!uColNames.includes('role')) {
+    await db.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'");
+    // Migrate existing is_admin=1 users to role='admin'
+    await db.execute("UPDATE users SET role='admin' WHERE is_admin=1 AND role='user'");
+  }
+
+  // Migrations — user_plans table
+  const { rows: upcols } = await db.execute("PRAGMA table_info('user_plans')");
+  const upColNames = (upcols || []).map(r => r.name);
+  if (!upColNames.includes('plan_template_id')) {
+    await db.execute("ALTER TABLE user_plans ADD COLUMN plan_template_id TEXT DEFAULT ''");
+  }
+  if (!upColNames.includes('features_override')) {
+    await db.execute("ALTER TABLE user_plans ADD COLUMN features_override TEXT DEFAULT '{}'");
   }
   // Add logo_url to accounts
   const { rows: acols } = await db.execute("PRAGMA table_info('accounts')");
