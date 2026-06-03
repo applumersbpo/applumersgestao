@@ -17,3 +17,4 @@ documentacao.txt
 .vercel
 node_modules/
 package-lock.json
+.env*.local

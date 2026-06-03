@@ -1,3 +1,5 @@
+let _expCache = { txs: [], catsMap: {}, accounts: [], month: null, year: null };
+
 async function renderExpenses(month, year) {
   const content = document.getElementById('content');
   const [transactions, catsMap, accounts] = await Promise.all([
@@ -7,41 +9,89 @@ async function renderExpenses(month, year) {
   ]);
 
   transactions.sort((a, b) => a.due_date > b.due_date ? -1 : 1);
+  _expCache = { txs: transactions, catsMap, accounts, month, year };
 
   const total = transactions.reduce((s, t) => s + (t.amount || 0), 0);
+  const paid  = transactions.filter(t => t.status === 'paid').reduce((s, t) => s + (t.amount || 0), 0);
+  const expCats = Object.values(catsMap).filter(c => c.type === 'expense');
 
   content.innerHTML = `
-    <div class="summary-grid" style="grid-template-columns:1fr 1fr;margin-bottom:20px">
+    <div class="summary-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
       <div class="summary-card expense-card">
         <div class="label">Total Gasto</div>
         <div class="value">${fmt(total)}</div>
       </div>
       <div class="summary-card">
-        <div class="label">Lançamentos</div>
-        <div class="value" style="color:var(--text)">${transactions.length}</div>
+        <div class="label" style="color:var(--income-text)">Pago</div>
+        <div class="value" style="color:var(--income-text)">${fmt(paid)}</div>
+      </div>
+      <div class="summary-card">
+        <div class="label" style="color:var(--warning)">A Pagar</div>
+        <div class="value" style="color:var(--warning)">${fmt(total - paid)}</div>
       </div>
     </div>
 
     <div class="section-header">
-      <div class="section-title">Gastos Gerais (${transactions.length})</div>
-      <button class="btn btn-primary btn-sm" style="background:var(--expense)" onclick="openExpenseModal(${month}, ${year})">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        Novo Gasto
-      </button>
+      <div class="section-title">Gastos (${transactions.length})</div>
+      <div style="display:flex;gap:8px">
+        ${transactions.length > 10 ? `<button class="btn btn-sm btn-outline" onclick="toggleExpenseBulk(${month},${year})" id="expense-bulk-btn">${icon('check-square',14)} Selecionar</button>` : ''}
+        <button class="btn btn-primary btn-sm" style="background:var(--expense)" onclick="openExpenseModal(${month}, ${year})">
+          ${icon('plus', 15)} Novo Gasto
+        </button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0">
+      <input id="exp-search" class="form-control" type="search" placeholder="Buscar descrição..."
+        oninput="_expFilterRender()"
+        style="flex:1;min-width:140px;max-width:220px">
+      <select id="exp-filter-cat" class="form-control" onchange="_expFilterRender()"
+        style="flex:1;min-width:130px;max-width:200px">
+        <option value="">Todas as categorias</option>
+        ${expCats.map(c => `<option value="${c.id}">${c.icon || ''} ${c.name}</option>`).join('')}
+      </select>
+      <select id="exp-filter-status" class="form-control" onchange="_expFilterRender()"
+        style="flex:1;min-width:110px;max-width:160px">
+        <option value="">Todos os status</option>
+        <option value="paid">Pago</option>
+        <option value="pending">Pendente/Vencido</option>
+      </select>
     </div>
 
     ${transactions.length === 0 ? `
       <div class="empty-state">
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><path d="M12 8h24a2 2 0 0 1 2 2v28a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="2"/><path d="M16 20h16M16 28h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <i data-lucide="trending-down" style="width:48px;height:48px;opacity:.25"></i>
         <p>Nenhum gasto registrado neste mês</p>
       </div>` : `
       <div class="transaction-list" id="expenses-list">
-    ${transactions.map(t => expenseRow(t, catsMap, accounts)).join('')}
+        ${transactions.map(t => expenseRow(t, catsMap, accounts)).join('')}
       </div>`
     }
   `;
 
   bindExpenseActions(month, year);
+}
+
+function _expFilterRender() {
+  const text   = (document.getElementById('exp-search')?.value || '').toLowerCase();
+  const catId  = document.getElementById('exp-filter-cat')?.value  || '';
+  const status = document.getElementById('exp-filter-status')?.value || '';
+  const { txs, catsMap, accounts } = _expCache;
+
+  const filtered = txs.filter(t => {
+    if (text && !t.name.toLowerCase().includes(text)) return false;
+    if (catId && t.category_id !== catId) return false;
+    if (status === 'paid' && t.status !== 'paid') return false;
+    if (status === 'pending' && t.status === 'paid') return false;
+    return true;
+  });
+
+  const list = document.getElementById('expenses-list');
+  if (!list) return;
+  list.innerHTML = filtered.length
+    ? filtered.map(t => expenseRow(t, catsMap, accounts)).join('')
+    : `<div class="empty-state" style="padding:24px"><i data-lucide="search-x" style="width:36px;height:36px;opacity:.3"></i><p>Nenhum resultado</p></div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 function expenseRow(t, catsMap, accounts) {
@@ -58,17 +108,17 @@ function expenseRow(t, catsMap, accounts) {
           ${cat ? catTag(cat) : ''}
           ${acc ? `<span title="Conta">🏦 ${acc.name}</span>` : ''}
           <span>${fmtDate(t.due_date)}</span>
+          ${statusBadge(t.status, t.due_date)}
           ${t.notes ? `<span title="${t.notes}">📝 ${t.notes.substring(0, 30)}${t.notes.length > 30 ? '…' : ''}</span>` : ''}
         </div>
       </div>
       <div class="t-amount expense">${fmt(t.amount)}</div>
       <div class="t-actions">
-        <button class="btn btn-sm btn-icon btn-ghost" data-action="edit" data-id="${t.id}" title="Editar">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a2.121 2.121 0 1 1 3 3L5 15H2v-3L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <button class="btn btn-sm btn-icon btn-danger" data-action="delete" data-id="${t.id}" title="Excluir">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </button>
+        ${t.status !== 'paid'
+          ? `<button class="btn btn-sm btn-icon" style="background:var(--income-light);color:var(--income)" data-action="pay" data-id="${t.id}" title="Marcar como pago">${icon('check', 14)}</button>`
+          : `<button class="btn btn-sm btn-icon btn-ghost" data-action="unpay" data-id="${t.id}" title="Desfazer">${icon('undo-2', 14)}</button>`}
+        <button class="btn btn-sm btn-icon btn-ghost" data-action="edit" data-id="${t.id}" title="Editar">${icon('pencil', 14)}</button>
+        <button class="btn btn-sm btn-icon btn-danger" data-action="delete" data-id="${t.id}" title="Excluir">${icon('trash-2', 14)}</button>
       </div>
     </div>
   `;
@@ -83,20 +133,63 @@ function bindExpenseActions(month, year) {
     if (btn) {
       const id     = btn.dataset.id;
       const action = btn.dataset.action;
-      if (action === 'edit') {
+      if (action === 'pay') {
+        await db.transactions.update(id, { status: 'paid', paid_date: today() });
+        _expCache.txs = _expCache.txs.map(t => t.id === id ? { ...t, status: 'paid', paid_date: today() } : t);
+        clearUpcomingCache();
+        toast('Marcado como pago!', 'success');
+        _expFilterRender();
+      } else if (action === 'unpay') {
+        await db.transactions.update(id, { status: 'pending', paid_date: null });
+        _expCache.txs = _expCache.txs.map(t => t.id === id ? { ...t, status: 'pending', paid_date: null } : t);
+        clearUpcomingCache();
+        toast('Alteração desfeita');
+        _expFilterRender();
+      } else if (action === 'edit') {
         const t = await db.transactions.get(id);
         if (t) openExpenseModal(t.month, t.year, t);
       } else if (action === 'delete') {
         if (!confirm('Excluir este gasto?')) return;
         await db.transactions.delete(id);
+        _expCache.txs = _expCache.txs.filter(t => t.id !== id);
         toast('Gasto excluído');
-        renderExpenses(month, year);
+        _expFilterRender();
       }
     } else {
       const t = await db.transactions.get(item.dataset.id);
       if (t) openExpenseModal(t.month, t.year, t);
     }
   });
+}
+
+function toggleExpenseBulk(month, year) {
+  if (_Bulk.active) { destroyBulkMode(); return; }
+  initBulkMode('expenses-list', `
+    <button class="btn btn-sm" style="background:var(--income-light);color:var(--income)" onclick="bulkExpensePay()">
+      ${icon('check',13)} Pagar
+    </button>
+    <button class="btn btn-sm btn-danger-outline" onclick="bulkExpenseDelete(${month},${year})">
+      ${icon('trash-2',13)} Excluir
+    </button>
+  `);
+}
+async function bulkExpensePay() {
+  const ids = [..._Bulk.ids];
+  if (!ids.length) { toast('Nenhum item selecionado','error'); return; }
+  for (const id of ids) await db.transactions.update(id, { status:'paid', paid_date: today() });
+  clearUpcomingCache();
+  destroyBulkMode();
+  toast(`${ids.length} gasto(s) marcado(s) como pago(s)`,'success');
+  app.render();
+}
+async function bulkExpenseDelete(month, year) {
+  const ids = [..._Bulk.ids];
+  if (!ids.length) { toast('Nenhum item selecionado','error'); return; }
+  if (!confirm(`Excluir ${ids.length} gasto(s)?`)) return;
+  for (const id of ids) await db.transactions.delete(id);
+  destroyBulkMode();
+  toast(`${ids.length} gasto(s) excluído(s)`,'success');
+  app.render();
 }
 
 async function openExpenseModal(month, year, data = null) {
@@ -110,9 +203,7 @@ async function openExpenseModal(month, year, data = null) {
       <div class="modal">
         <div class="modal-header">
           <div class="modal-title">${isEdit ? 'Editar Gasto' : 'Novo Gasto Geral'}</div>
-          <button class="btn btn-icon btn-ghost" onclick="closeModal()">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12 4L4 12M4 4l8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          </button>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
         </div>
         <div class="modal-body">
           <div class="form-group">

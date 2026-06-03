@@ -25,18 +25,20 @@ async function renderGoals() {
 
     <div class="section-header" style="margin-bottom:16px">
       <div class="section-title">Metas Financeiras (${goals.length})</div>
-      <button class="btn btn-primary btn-sm" onclick="openGoalModal()">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        Nova Meta
-      </button>
+      <div style="display:flex;gap:8px">
+        ${goals.length > 10 ? `<button class="btn btn-sm btn-outline" onclick="toggleGoalsBulk()">${icon('check-square',14)} Selecionar</button>` : ''}
+        <button class="btn btn-primary btn-sm" onclick="openGoalModal()">
+          ${icon('plus', 15)} Nova Meta
+        </button>
+      </div>
     </div>
 
     ${goals.length === 0 ? `
       <div class="empty-state">
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="16" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="6" stroke="currentColor" stroke-width="2"/><path d="M24 8v4M24 36v4M8 24h4M36 24h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <i data-lucide="target" style="width:48px;height:48px;opacity:.25"></i>
         <p>Nenhuma meta cadastrada</p>
       </div>` : `
-      <div style="display:grid;gap:16px">
+      <div style="display:grid;gap:16px" id="goals-list">
         ${goals.map(goalCard).join('')}
       </div>`
     }
@@ -52,7 +54,7 @@ function goalCard(g) {
   const color   = g.color || '#3A5A40';
 
   return `
-    <div class="card">
+    <div class="card" data-id="${g.id}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
         <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
           <div style="width:48px;height:48px;border-radius:14px;background:${color}22;color:${color};display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">
@@ -66,12 +68,8 @@ function goalCard(g) {
         </div>
         <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
           ${!done ? `<button class="btn btn-sm" style="background:${color}22;color:${color};font-weight:600;border-radius:var(--radius-sm)" onclick="openUpdateGoalModal('${g.id}')">Atualizar</button>` : ''}
-          <button class="btn btn-sm btn-icon btn-ghost" onclick="editGoal('${g.id}')" title="Editar">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5a2.121 2.121 0 1 1 3 3L5 15H2v-3L11.5 2.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-          <button class="btn btn-sm btn-icon btn-danger" onclick="deleteGoal('${g.id}')" title="Excluir">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          </button>
+          <button class="btn btn-sm btn-icon btn-ghost" onclick="editGoal('${g.id}')" title="Editar">${icon('pencil', 14)}</button>
+          <button class="btn btn-sm btn-icon btn-danger" onclick="deleteGoal('${g.id}')" title="Excluir">${icon('trash-2', 14)}</button>
         </div>
       </div>
 
@@ -106,9 +104,7 @@ async function openGoalModal(data = null) {
       <div class="modal">
         <div class="modal-header">
           <div class="modal-title">${isEdit ? 'Editar Meta' : 'Nova Meta'}</div>
-          <button class="btn btn-icon btn-ghost" onclick="closeModal()">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12 4L4 12M4 4l8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          </button>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
         </div>
         <div class="modal-body">
           <div class="form-row">
@@ -202,9 +198,7 @@ async function openUpdateGoalModal(id) {
       <div class="modal">
         <div class="modal-header">
           <div class="modal-title">Atualizar "${goal.name}"</div>
-          <button class="btn btn-icon btn-ghost" onclick="closeModal()">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12 4L4 12M4 4l8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          </button>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
         </div>
         <div class="modal-body">
           <div style="margin-bottom:20px">
@@ -246,5 +240,23 @@ async function deleteGoal(id) {
   if (!confirm('Excluir esta meta?')) return;
   await db.goals.delete(id);
   toast('Meta excluída');
+  renderGoals();
+}
+
+function toggleGoalsBulk() {
+  if (_Bulk.active) { destroyBulkMode(); return; }
+  initBulkMode('goals-list', `
+    <button class="btn btn-sm btn-danger-outline" onclick="bulkGoalsDelete()">
+      ${icon('trash-2',13)} Excluir
+    </button>
+  `);
+}
+async function bulkGoalsDelete() {
+  const ids = [..._Bulk.ids];
+  if (!ids.length) { toast('Nenhum item selecionado','error'); return; }
+  if (!confirm(`Excluir ${ids.length} meta(s)?`)) return;
+  for (const id of ids) await db.goals.delete(id);
+  destroyBulkMode();
+  toast(`${ids.length} meta(s) excluída(s)`,'success');
   renderGoals();
 }

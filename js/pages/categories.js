@@ -13,10 +13,12 @@ async function renderCategories() {
   content.innerHTML = `
     <div class="section-header" style="margin-bottom:20px">
       <div class="section-title">Categorias</div>
-      <button class="btn btn-primary btn-sm" onclick="openCategoryModal()">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        Nova Categoria
-      </button>
+      <div style="display:flex;gap:8px">
+        ${categories.length > 10 ? `<button class="btn btn-sm btn-outline" onclick="toggleCatBulk()">${icon('check-square',14)} Selecionar</button>` : ''}
+        <button class="btn btn-primary btn-sm" onclick="openCategoryModal()">
+          ${icon('plus', 15)} Nova Categoria
+        </button>
+      </div>
     </div>
 
     ${missingSuggestions.length > 0 ? `
@@ -80,8 +82,8 @@ function catRow(c) {
         <div class="t-name">${c.name}</div>
       </div>
       <div class="t-actions" style="display:flex">
-        <button class="btn btn-sm btn-icon btn-ghost" data-action="edit-cat" data-id="${c.id}">✎</button>
-        <button class="btn btn-sm btn-icon btn-danger" data-action="delete-cat" data-id="${c.id}">✕</button>
+        <button class="btn btn-sm btn-icon btn-ghost" data-action="edit-cat" data-id="${c.id}" title="Editar">${icon('pencil', 14)}</button>
+        <button class="btn btn-sm btn-icon btn-danger" data-action="delete-cat" data-id="${c.id}" title="Excluir">${icon('trash-2', 14)}</button>
       </div>
     </div>
   `;
@@ -112,6 +114,36 @@ function bindCategoryActions() {
   }, { once: false });
 }
 
+function toggleCatBulk() {
+  if (_Bulk.active) { destroyBulkMode(); return; }
+  // use cat-list (expenses); categories page has two lists — we bulk the combined
+  const listId = document.getElementById('cat-list') ? 'cat-list' : 'cat-list-income';
+  initBulkMode(listId, `
+    <button class="btn btn-sm btn-danger-outline" onclick="bulkCatDelete()">
+      ${icon('trash-2',13)} Excluir
+    </button>
+  `);
+}
+async function bulkCatDelete() {
+  const ids = [..._Bulk.ids];
+  if (!ids.length) { toast('Nenhum item selecionado','error'); return; }
+  const blocked = [];
+  for (const id of ids) {
+    const used = await db.transactions.filter(`category_id = '${id}'`).count();
+    if (used > 0) blocked.push(id);
+  }
+  if (blocked.length) {
+    toast(`${blocked.length} categoria(s) em uso não podem ser excluídas`,'error');
+    return;
+  }
+  if (!confirm(`Excluir ${ids.length} categoria(s)?`)) return;
+  for (const id of ids) await db.categories.delete(id);
+  clearCatsCache();
+  destroyBulkMode();
+  toast(`${ids.length} categoria(s) excluída(s)`,'success');
+  renderCategories();
+}
+
 async function openCategoryModal(data = null) {
   const isEdit = !!data;
   const selectedColor = data?.color || COLORS[0];
@@ -121,7 +153,7 @@ async function openCategoryModal(data = null) {
       <div class="modal">
         <div class="modal-header">
           <div class="modal-title">${isEdit ? 'Editar Categoria' : 'Nova Categoria'}</div>
-          <button class="btn btn-icon btn-ghost" onclick="closeModal()">✕</button>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
         </div>
         <div class="modal-body">
           <div class="form-group">

@@ -24,9 +24,19 @@ async function renderSettings() {
           Vincule seu número para registrar gastos e receitas direto pelo WhatsApp.
         </p>
         <div class="form-group">
-          <label class="form-label">Número com DDD e DDI (só números)</label>
-          <input id="set-phone" class="form-control" type="tel" inputmode="numeric"
-            value="${user.phone || ''}" placeholder="Ex: 5561999990000">
+          <label class="form-label">Número com DDI + DDD (só números)</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="display:flex;align-items:center;background:var(--bg-subtle);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;font-weight:600;font-size:.9rem;white-space:nowrap;flex-shrink:0">
+              🇧🇷 +55
+            </div>
+            <input id="set-phone" class="form-control" type="tel" inputmode="numeric"
+              value="${_phoneDisplay(user.phone)}"
+              placeholder="(61) 99999-0000"
+              oninput="this.value=this.value.replace(/\D/g,'')">
+          </div>
+          <p style="font-size:.78rem;color:var(--text-muted);margin:6px 0 0">
+            DDI do Brasil (+55) aplicado automaticamente. Para outros países, inclua o DDI no início. Ex: <strong>5561999990000</strong>
+          </p>
         </div>
         <button class="btn btn-primary" onclick="savePhone()">Salvar número</button>
       </div>
@@ -62,13 +72,41 @@ async function renderSettings() {
   `;
 }
 
+/** Exibe o número sem o DDI 55 se o usuário for BR */
+function _phoneDisplay(raw) {
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');
+  // Se começa com 55 e tem 13 dígitos (55 + 11), remove o DDI para exibição
+  if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) {
+    return digits.slice(2);
+  }
+  return digits;
+}
+
+/** Normaliza o número para o formato Evolution API: sempre começa com DDI */
+function _normalizePhone(raw) {
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+  // Já tem DDI do Brasil
+  if (digits.startsWith('55') && digits.length >= 12) return digits;
+  // Tem DDI de outro país (começa com dígitos != 55 e tem >11 dígitos)
+  if (digits.length > 11) return digits;
+  // Sem DDI — adiciona 55 Brasil
+  return '55' + digits;
+}
+
 async function savePhone() {
-  const phone = document.getElementById('set-phone').value.replace(/\D/g, '');
-  if (!phone) { toast('Informe o número', 'error'); return; }
+  const raw = document.getElementById('set-phone').value;
+  if (!raw.trim()) { toast('Informe o número', 'error'); return; }
+  const phone = _normalizePhone(raw);
+  if (phone.length < 12 || phone.length > 15) {
+    toast('Número inválido. Use DDI + DDD + número. Ex: 5561999990000', 'error');
+    return;
+  }
   try {
     await pb.collection('users').update(pb.authStore.model.id, { phone });
     pb.authStore.model.phone = phone;
-    toast('Número salvo!', 'success');
+    toast('Número salvo! (' + phone + ')', 'success');
   } catch(e) {
     toast('Erro ao salvar número', 'error');
   }

@@ -13,10 +13,7 @@ function renderImport() {
       <div class="card" style="margin-bottom:24px">
         <div class="section-title" style="margin-bottom:16px">Upload da Planilha</div>
         <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-            <path d="M24 8v24M14 18l10-10 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M8 36h32" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
+          <i data-lucide="upload" style="width:48px;height:48px;opacity:.4"></i>
           <p>Arraste o arquivo aqui ou <strong>clique para selecionar</strong></p>
           <p style="font-size:.78rem;margin-top:4px;color:var(--text-light)">.xlsx, .xls, .csv</p>
         </div>
@@ -26,6 +23,7 @@ function renderImport() {
     </div>
   `;
 
+  if (typeof lucide !== 'undefined') lucide.createIcons();
   const zone = document.getElementById('drop-zone');
   if (zone) {
     zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
@@ -102,7 +100,7 @@ async function showImportMapper(headers, rows) {
         ${headers.map((h, i) => `
           <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px">
             <div style="font-size:.85rem;font-weight:600;background:var(--bg);padding:8px 12px;border-radius:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h || `Coluna ${i + 1}`}</div>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="var(--text-muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <i data-lucide="arrow-right" style="width:16px;height:16px;color:var(--text-muted)"></i>
             <select class="form-control col-map" data-col="${i}">
               ${fields.map(f => `<option value="${f.value}" ${autoMap[i] === f.value ? 'selected' : ''}>${f.label}</option>`).join('')}
             </select>
@@ -152,6 +150,7 @@ async function showImportMapper(headers, rows) {
       </button>
     </div>
   `;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 async function confirmImport(rows, headers) {

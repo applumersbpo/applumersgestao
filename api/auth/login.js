@@ -23,6 +23,7 @@ export default async function handler(req, res) {
     if (!valid) return res.status(401).json({ error: 'E-mail ou senha incorretos' });
 
     const token = await signToken({ sub: user.id, email: user.email, is_admin: user.is_admin });
+    await db.execute({ sql: "UPDATE users SET last_login = ? WHERE id = ?", args: [new Date().toISOString(), user.id] });
     const { password_hash: _, ...safeUser } = user;
     return res.status(200).json({ token, user: safeUser });
   } catch (err) {

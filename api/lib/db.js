@@ -1,5 +1,4 @@
 import { createClient } from '@libsql/client';
-import bcrypt from 'bcryptjs';
 
 let _client = null;
 let _initialized = false;
@@ -54,6 +53,7 @@ export async function initDb() {
   if (_initialized) return;
   const db = getDb();
 
+  // Schema only — idempotent, fast
   const tables = [
     `CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -182,7 +182,7 @@ export async function initDb() {
     await db.execute(sql);
   }
 
-  // Ensure transactions have new columns (safe migration)
+  // Column migrations — safe PRAGMA checks
   const { rows: tcols } = await db.execute("PRAGMA table_info('transactions')");
   const existingCols = (tcols || []).map(r => r.name);
   if (!existingCols.includes('account_id')) {
@@ -195,57 +195,17 @@ export async function initDb() {
     await db.execute("ALTER TABLE transactions ADD COLUMN competence_date TEXT DEFAULT ''");
   }
 
-  // Migrate existing transactions to a default 'Caixa' account per user
-  const { rows: users } = await db.execute({ sql: 'SELECT id FROM users' });
-  for (const u of users) {
-    const uid = u.id;
-    // check if user already has a 'Caixa' account
-    const { rows: exist } = await db.execute({ sql: 'SELECT id FROM accounts WHERE user_id = ? AND name = ?', args: [uid, 'Caixa'] });
-    let accId;
-    if (exist.length > 0) {
-      accId = exist[0].id;
-    } else {
-      accId = crypto.randomUUID();
-      await db.execute({ sql: 'INSERT INTO accounts (id, user_id, name, initial_balance, created_at) VALUES (?, ?, ?, ?, ?)', args: [accId, uid, 'Caixa', 0, new Date().toISOString()] });
-    }
-    // assign transactions without account_id to this account
-    await db.execute({ sql: "UPDATE transactions SET account_id = ? WHERE user_id = ? AND (account_id = '' OR account_id IS NULL)", args: [accId, uid] });
+  // Add last_login to users
+  const { rows: ucols } = await db.execute("PRAGMA table_info('users')");
+  const uColNames = (ucols || []).map(r => r.name);
+  if (!uColNames.includes('last_login')) {
+    await db.execute("ALTER TABLE users ADD COLUMN last_login TEXT DEFAULT ''");
   }
-
-  // Seed/ensure admin user with correct credentials
-  const { rows: adminRows } = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: ['applumergestao@gmail.com'] });
-  const hash = await bcrypt.hash('123lumers', 10);
-  if (adminRows.length === 0) {
-    const id = crypto.randomUUID();
-    await db.execute({
-      sql: 'INSERT INTO users (id, email, password_hash, name, is_admin) VALUES (?, ?, ?, ?, 1)',
-      args: [id, 'applumergestao@gmail.com', hash, 'Admin Lumers']
-    });
-    await db.execute({
-      sql: 'INSERT INTO user_plans (id, user_id, email, name, monthly_fee, active) VALUES (?, ?, ?, ?, 0, 1)',
-      args: [crypto.randomUUID(), id, 'applumergestao@gmail.com', 'Admin Lumers']
-    });
-  } else {
-    await db.execute({
-      sql: 'UPDATE users SET password_hash = ?, is_admin = 1 WHERE email = ?',
-      args: [hash, 'applumergestao@gmail.com']
-    });
-  }
-
-  // Seed top 30 banks if not present
-  const { rows: adminCheck } = await db.execute({ sql: 'SELECT id FROM users WHERE is_admin = 1 LIMIT 1' });
-  const adminId = (adminCheck[0] && adminCheck[0].id) ? adminCheck[0].id : '';
-  const topBanks = [
-    'Itaú', 'Bradesco', 'Banco do Brasil', 'Caixa Econômica Federal', 'Santander', 'Nubank', 'Banco Inter', 'Mercado Pago', 'Sicredi', 'Sicoob',
-    'BTG Pactual', 'XP Investimentos', 'Neon', 'C6 Bank', 'Original', 'Banrisul', 'Bancoob', 'Banco PAN', 'PicPay', 'Banco Modal',
-    'Volkswagen Bank', 'Agibank', 'Banco da Amazônia', 'BRB', 'Next', 'PagBank', 'BS2', 'Stone', 'Safra', 'Banco do Nordeste'
-  ];
-  for (const bname of topBanks) {
-    const code = bname.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
-    const { rows: found } = await db.execute({ sql: 'SELECT id FROM banks WHERE name = ? OR code = ? LIMIT 1', args: [bname, code] });
-    if (found.length === 0) {
-      await db.execute({ sql: 'INSERT INTO banks (id, user_id, code, name, logo_url, published, approved_by, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)', args: [crypto.randomUUID(), '', code, bname, '', adminId, new Date().toISOString()] });
-    }
+  // Add logo_url to accounts
+  const { rows: acols } = await db.execute("PRAGMA table_info('accounts')");
+  const aColNames = (acols || []).map(r => r.name);
+  if (!aColNames.includes('logo_url')) {
+    await db.execute("ALTER TABLE accounts ADD COLUMN logo_url TEXT DEFAULT ''");
   }
 
   _initialized = true;

@@ -2,10 +2,13 @@ async function renderDashboard(month, year) {
   window._currentPeriod = { month, year };
   const content = document.getElementById('content');
 
-  const [transactions, catsMap] = await Promise.all([
+  const [transactions, catsMap, accounts, banks] = await Promise.all([
     db.transactions.filter(`month = ${month} && year = ${year}`).toArray(),
-    getCategoriesMap()
+    getCategoriesMap(),
+    db.accounts.toArray(),
+    db.banks.toArray()
   ]);
+  const banksMapById = Object.fromEntries(banks.map(b => [b.id, b]));
 
   const expenses   = transactions.filter(t => t.transaction_type === 'expense');
   const generalExp = transactions.filter(t => t.transaction_type === 'general' || t.transaction_type === 'daily');
@@ -106,12 +109,74 @@ async function renderDashboard(month, year) {
   const gap            = totalCommitted - totalIncome;
   const coverOk        = gap <= 0;
 
+  // Visão por Carteiras — cruzamento receita/despesa do mês por conta
+  const accountsHTML = (() => {
+    if (!accounts || accounts.length === 0) return '';
+    const EXP_TYPES = ['expense', 'general', 'daily', 'installment'];
+    const cards = accounts.map(acc => {
+      const accTxs = transactions.filter(t => t.account_id === acc.id);
+      const accIncome  = accTxs.filter(t => t.transaction_type === 'income').reduce((s, t) => s + (t.amount || 0), 0);
+      const accExpense = accTxs.filter(t => EXP_TYPES.includes(t.transaction_type)).reduce((s, t) => s + (t.amount || 0), 0);
+      const accNet     = accIncome - accExpense;
+      const netColor   = accNet >= 0 ? 'var(--income-text)' : 'var(--expense)';
+      const bank       = banksMapById[acc.bank_id] || null;
+      const catalog    = (typeof findBankInCatalog === 'function')
+        ? findBankInCatalog(bank?.name || acc.bank_name, bank?.code || '')
+        : null;
+      const logoUrl = acc.logo_url || bank?.logo_url || (catalog && catalog.logo_url) || '';
+      const logoHtml = logoUrl
+        ? `<img src="${logoUrl}" alt="${acc.bank_name || ''}" style="width:32px;height:32px;object-fit:contain;border-radius:6px;padding:3px"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+          + `<span style="display:none;width:32px;height:32px;border-radius:8px;background:var(--primary-100);color:var(--primary-700);align-items:center;justify-content:center;font-size:.85rem;font-weight:700">${(acc.bank_name || acc.name || '?')[0].toUpperCase()}</span>`
+        : `<div style="width:32px;height:32px;border-radius:8px;background:var(--primary-100);color:var(--primary-700);display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700">${(acc.bank_name || acc.name || '?')[0].toUpperCase()}</div>`;
+      return `
+        <div style="border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;background:var(--surface)">
+          <a href="#/accounts" class="acc-row acc-row-header">
+            <div style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;flex-shrink:0">${logoHtml}</div>
+            <div style="min-width:0;flex:1">
+              <div style="font-size:.85rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${acc.name}</div>
+              ${acc.bank_name ? `<div style="font-size:.72rem;color:var(--text-muted)">${acc.bank_name}</div>` : ''}
+            </div>
+            <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--text-soft);flex-shrink:0"></i>
+          </a>
+          <a href="#/income" class="acc-row acc-row-item" style="border-bottom:1px solid var(--border)">
+            <span style="font-size:.78rem;color:var(--income-text);display:flex;align-items:center;gap:5px;font-weight:500">
+              <i data-lucide="trending-up" style="width:11px;height:11px"></i>
+              Receita
+            </span>
+            <span style="font-size:.85rem;font-weight:600;color:var(--income-text)">${fmt(accIncome)}</span>
+          </a>
+          <a href="#/expenses" class="acc-row acc-row-item" style="border-bottom:1px solid var(--border)">
+            <span style="font-size:.78rem;color:var(--expense-text);display:flex;align-items:center;gap:5px;font-weight:500">
+              <i data-lucide="trending-down" style="width:11px;height:11px"></i>
+              Despesas
+            </span>
+            <span style="font-size:.85rem;font-weight:600;color:var(--expense)">${fmt(accExpense)}</span>
+          </a>
+          <div style="padding:9px 14px;display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:.78rem;color:var(--text-muted);font-weight:500">Saldo do mês</span>
+            <span style="font-size:.88rem;font-weight:700;color:${netColor}">${accNet >= 0 ? '+' : ''}${fmt(accNet)}</span>
+          </div>
+        </div>`;
+    }).join('');
+    return `
+      <div class="card" style="margin-bottom:20px">
+        <div class="section-header" style="margin-bottom:14px">
+          <div class="section-title">Visão por Carteiras</div>
+          <a href="#/accounts" class="btn btn-sm btn-ghost">Ver tudo →</a>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px">
+          ${cards}
+        </div>
+      </div>`;
+  })();
+
   content.innerHTML = `
     <!-- KPI Grid -->
     <div class="summary-grid">
       <div class="summary-card income-card">
         <div class="icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 3v14M6 7l4-4 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <i data-lucide="trending-up" style="width:18px;height:18px"></i>
         </div>
         <div class="label">Receita</div>
         <div class="value">${fmt(totalIncome)}</div>
@@ -121,9 +186,9 @@ async function renderDashboard(month, year) {
 
       <div class="summary-card expense-card">
         <div class="icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 17V3M14 13l-4 4-4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <i data-lucide="trending-down" style="width:18px;height:18px"></i>
         </div>
-        <div class="label">Contas a Pagar</div>
+        <div class="label">Despesas</div>
         <div class="value">${fmt(totalExpense)}</div>
         <div class="sub">${fmt(expPaid)} pago · ${expPct}%</div>
         <div class="progress-bar"><div class="progress-fill" style="width:${expPct}%;background:var(--expense)"></div></div>
@@ -131,7 +196,7 @@ async function renderDashboard(month, year) {
 
       <div class="summary-card ${projClass}">
         <div class="icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 10h14M10 3l7 7-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <i data-lucide="calculator" style="width:18px;height:18px"></i>
         </div>
         <div class="label">Saldo Projetado</div>
         <div class="value">${fmt(saldoProjetado)}</div>
@@ -140,7 +205,7 @@ async function renderDashboard(month, year) {
 
       <div class="summary-card ${realClass}">
         <div class="icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M10 7v4l2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <i data-lucide="clock" style="width:18px;height:18px"></i>
         </div>
         <div class="label">Saldo Real</div>
         <div class="value">${fmt(saldoReal)}</div>
@@ -148,11 +213,54 @@ async function renderDashboard(month, year) {
       </div>
     </div>
 
+    <!-- Visão por Carteiras -->
+    ${accountsHTML}
+
+    <!-- Top categorias de despesa -->
+    ${(() => {
+      const EXPENSE_TYPES = ['expense', 'general', 'daily', 'installment'];
+      const expTxs = transactions.filter(t => EXPENSE_TYPES.includes(t.transaction_type));
+      if (expTxs.length === 0) return '';
+      const catTotals = {};
+      expTxs.forEach(t => {
+        const key = t.category_id || 'none';
+        catTotals[key] = (catTotals[key] || 0) + (t.amount || 0);
+      });
+      const topCats = Object.entries(catTotals)
+        .map(([id, val]) => ({ cat: catsMap[id], val }))
+        .sort((a, b) => b.val - a.val)
+        .slice(0, 5);
+      const maxVal = topCats[0]?.val || 1;
+      return `
+      <div class="card" style="margin-bottom:20px">
+        <div class="section-header" style="margin-bottom:14px">
+          <div class="section-title">Top gastos por categoria</div>
+          <a href="#/reports" class="btn btn-sm btn-ghost">Ver relatório →</a>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${topCats.map(({ cat, val }) => {
+            const pct   = Math.round((val / maxVal) * 100);
+            const color = cat?.color || '#ADA897';
+            return `
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+                  <span style="font-size:.85rem;font-weight:600;color:var(--text)">${cat ? (cat.icon + ' ' + cat.name) : '📦 Sem categoria'}</span>
+                  <span style="font-size:.85rem;font-weight:600;color:var(--expense)">${fmt(val)}</span>
+                </div>
+                <div class="progress-bar" style="margin:0">
+                  <div class="progress-fill" style="width:${pct}%;background:${color}"></div>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    })()}
+
     <!-- Alertas inline -->
     ${totalGeneral > 0 ? `
     <div class="insight-card expense" style="margin-bottom:16px">
       <div class="insight-icon">
-        <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M4 4h12a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.5"/><path d="M7 10h6M10 7v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <i data-lucide="receipt" style="width:16px;height:16px"></i>
       </div>
       <div class="insight-body">
         <div class="insight-heading">Gastos Gerais — ${fmt(totalGeneral)}</div>
@@ -164,7 +272,7 @@ async function renderDashboard(month, year) {
     ${instTotal > 0 ? `
     <div class="insight-card info" style="margin-bottom:16px">
       <div class="insight-icon">
-        <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="3" y="5" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 10h2M11 10h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <i data-lucide="credit-card" style="width:16px;height:16px"></i>
       </div>
       <div class="insight-body">
         <div class="insight-heading">Parcelas do Mês — ${fmt(instTotal)}</div>
@@ -176,7 +284,7 @@ async function renderDashboard(month, year) {
     ${expPending > 0 ? `
     <div class="insight-card warn" style="margin-bottom:16px">
       <div class="insight-icon">
-        <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 8v4M10 14v1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8.27 3.5L1.5 15.5A1 1 0 0 0 2.37 17h15.26a1 1 0 0 0 .87-1.5L11.73 3.5a1 1 0 0 0-1.46 0z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        <i data-lucide="alert-triangle" style="width:16px;height:16px"></i>
       </div>
       <div class="insight-body">
         <div class="insight-heading">Contas Pendentes — ${fmt(expPending)}</div>
@@ -198,7 +306,7 @@ async function renderDashboard(month, year) {
             <div style="font-size:.72rem;color:var(--text-soft)">da meta</div>
           </div>
           <button onclick="openRevenueGoalModal()" class="btn btn-sm btn-ghost" style="padding:6px 8px;flex-shrink:0" title="Editar meta">
-            <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M13.586 3.586a2 2 0 112.828 2.828L7.414 15.414 4 16l.586-3.414 9-9z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <i data-lucide="pencil" style="width:14px;height:14px"></i>
           </button>
         </div>
       </div>
@@ -271,7 +379,7 @@ async function renderDashboard(month, year) {
       </div>
       ${transactions.length === 0 ? `
         <div class="empty-state">
-          <svg width="40" height="40" viewBox="0 0 48 48" fill="none"><path d="M8 12h32M8 24h20M8 36h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <i data-lucide="file-text" style="width:40px;height:40px;opacity:.3"></i>
           <p>Nenhuma movimentação neste mês</p>
         </div>` : `
         <div class="transaction-list">
@@ -294,7 +402,7 @@ function openRevenueGoalModal() {
       <div class="modal-header">
         <span class="modal-title">Meta de Receita</span>
         <button class="btn btn-icon btn-ghost" id="goal-modal-close" aria-label="Fechar">
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <i data-lucide="x" style="width:18px;height:18px"></i>
         </button>
       </div>
       <div class="modal-body">
@@ -310,6 +418,7 @@ function openRevenueGoalModal() {
       </div>
     </div>`;
   document.body.appendChild(backdrop);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 
   const input = backdrop.querySelector('#goal-input');
   input.focus();

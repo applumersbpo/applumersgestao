@@ -13,6 +13,24 @@ export default async function handler(req, res) {
     const { id } = req.query;
     const db = getDb();
 
+    if (req.method === 'GET') {
+      const { rows: uRows } = await db.execute({ sql: 'SELECT id,email,name,phone,last_login,created_at FROM users WHERE id=?', args: [id] });
+      const userObj = rowsToObjects(uRows)[0];
+      if (!userObj) return res.status(404).json({ error: 'Not found' });
+
+      // Monthly breakdown (last 12 months)
+      const { rows: mRows } = await db.execute({ sql: `SELECT month, year, SUM(CASE WHEN transaction_type='income' THEN amount ELSE 0 END) as income, SUM(CASE WHEN transaction_type IN ('expense','general','daily','installment') THEN amount ELSE 0 END) as expense FROM transactions WHERE user_id=? GROUP BY year, month ORDER BY year DESC, month DESC LIMIT 12`, args: [id] });
+
+      // Top spending categories
+      const { rows: cRows } = await db.execute({ sql: `SELECT c.name, c.icon, c.color, COALESCE(SUM(t.amount),0) as total FROM transactions t LEFT JOIN categories c ON c.id=t.category_id WHERE t.user_id=? AND t.transaction_type IN ('expense','general','daily','installment') AND c.id IS NOT NULL GROUP BY t.category_id ORDER BY total DESC LIMIT 5`, args: [id] });
+
+      return res.status(200).json({
+        user: userObj,
+        monthly: rowsToObjects(mRows),
+        topCategories: rowsToObjects(cRows)
+      });
+    }
+
     if (req.method === 'DELETE') {
       for (const table of ['categories', 'templates', 'transactions', 'installments', 'goals', 'settings', 'user_plans', 'password_resets']) {
         await db.execute({ sql: `DELETE FROM ${table} WHERE user_id = ?`, args: [id] });

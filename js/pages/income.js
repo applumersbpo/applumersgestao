@@ -1,3 +1,5 @@
+let _incCache = { txs: [], catsMap: {}, month: null, year: null };
+
 async function renderIncome(month, year) {
   const content = document.getElementById('content');
   const [transactions, catsMap] = await Promise.all([
@@ -6,10 +8,12 @@ async function renderIncome(month, year) {
   ]);
 
   transactions.sort((a, b) => a.due_date > b.due_date ? 1 : -1);
+  _incCache = { txs: transactions, catsMap, month, year };
 
   const total    = transactions.reduce((s, t) => s + (t.amount || 0), 0);
   const received = transactions.filter(t => t.status === 'paid').reduce((s, t) => s + (t.amount || 0), 0);
   const pending  = total - received;
+  const incCats  = Object.values(catsMap).filter(c => c.type === 'income');
 
   content.innerHTML = `
     <div class="summary-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
@@ -29,15 +33,34 @@ async function renderIncome(month, year) {
 
     <div class="section-header">
       <div class="section-title">Receitas (${transactions.length})</div>
-      <button class="btn btn-primary btn-sm" style="background:var(--income)" onclick="openIncomeModal(${month}, ${year})">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        Nova Receita
-      </button>
+      <div style="display:flex;gap:8px">
+        ${transactions.length > 10 ? `<button class="btn btn-sm btn-outline" onclick="toggleIncomeBulk(${month},${year})" id="income-bulk-btn">${icon('check-square',14)} Selecionar</button>` : ''}
+        <button class="btn btn-primary btn-sm" style="background:var(--income)" onclick="openIncomeModal(${month}, ${year})">
+          ${icon('plus', 15)} Nova Receita
+        </button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0">
+      <input id="inc-search" class="form-control" type="search" placeholder="Buscar descrição..."
+        oninput="_incFilterRender()"
+        style="flex:1;min-width:140px;max-width:220px">
+      <select id="inc-filter-cat" class="form-control" onchange="_incFilterRender()"
+        style="flex:1;min-width:130px;max-width:200px">
+        <option value="">Todas as categorias</option>
+        ${incCats.map(c => `<option value="${c.id}">${c.icon || ''} ${c.name}</option>`).join('')}
+      </select>
+      <select id="inc-filter-status" class="form-control" onchange="_incFilterRender()"
+        style="flex:1;min-width:110px;max-width:160px">
+        <option value="">Todos os status</option>
+        <option value="paid">Recebido</option>
+        <option value="pending">A Receber</option>
+      </select>
     </div>
 
     ${transactions.length === 0 ? `
       <div class="empty-state">
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><path d="M24 8v32M12 20l12-12 12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <i data-lucide="trending-up" style="width:48px;height:48px;opacity:.25"></i>
         <p>Nenhuma receita para este mês</p>
       </div>` : `
       <div class="transaction-list" id="income-list">
@@ -47,6 +70,28 @@ async function renderIncome(month, year) {
   `;
 
   bindIncomeActions();
+}
+
+function _incFilterRender() {
+  const text   = (document.getElementById('inc-search')?.value || '').toLowerCase();
+  const catId  = document.getElementById('inc-filter-cat')?.value  || '';
+  const status = document.getElementById('inc-filter-status')?.value || '';
+  const { txs, catsMap } = _incCache;
+
+  const filtered = txs.filter(t => {
+    if (text && !t.name.toLowerCase().includes(text)) return false;
+    if (catId && t.category_id !== catId) return false;
+    if (status === 'paid' && t.status !== 'paid') return false;
+    if (status === 'pending' && t.status === 'paid') return false;
+    return true;
+  });
+
+  const list = document.getElementById('income-list');
+  if (!list) return;
+  list.innerHTML = filtered.length
+    ? filtered.map(t => incomeRow(t, catsMap)).join('')
+    : `<div class="empty-state" style="padding:24px"><i data-lucide="search-x" style="width:36px;height:36px;opacity:.3"></i><p>Nenhum resultado</p></div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 function incomeRow(t, catsMap) {
@@ -67,9 +112,11 @@ function incomeRow(t, catsMap) {
       </div>
       <div class="t-amount income">+${fmt(t.amount)}</div>
       <div class="t-actions">
-        ${t.status !== 'paid' ? `<button class="btn btn-sm btn-icon" style="background:var(--income-light);color:var(--income)" data-action="receive" data-id="${t.id}" title="Marcar como recebido"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : `<button class="btn btn-sm btn-icon btn-ghost" data-action="unreceive" data-id="${t.id}" title="Desfazer"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 5h7a3 3 0 0 1 0 6H5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 3L2 5l2 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`}
-        <button class="btn btn-sm btn-icon btn-ghost" data-action="edit" data-id="${t.id}" title="Editar"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9.5 2.5l2 2L4 12H2v-2L9.5 2.5z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-        <button class="btn btn-sm btn-icon btn-danger" data-action="delete" data-id="${t.id}" title="Excluir"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        ${t.status !== 'paid'
+          ? `<button class="btn btn-sm btn-icon" style="background:var(--income-light);color:var(--income)" data-action="receive" data-id="${t.id}" title="Marcar como recebido">${icon('check', 14)}</button>`
+          : `<button class="btn btn-sm btn-icon btn-ghost" data-action="unreceive" data-id="${t.id}" title="Desfazer">${icon('undo-2', 14)}</button>`}
+        <button class="btn btn-sm btn-icon btn-ghost" data-action="edit" data-id="${t.id}" title="Editar">${icon('pencil', 14)}</button>
+        <button class="btn btn-sm btn-icon btn-danger" data-action="delete" data-id="${t.id}" title="Excluir">${icon('trash-2', 14)}</button>
       </div>
     </div>
   `;
@@ -84,15 +131,17 @@ function bindIncomeActions() {
 
     if (action === 'receive') {
       await db.transactions.update(id, { status: 'paid', paid_date: today() });
+      _incCache.txs = _incCache.txs.map(t => t.id === id ? { ...t, status: 'paid', paid_date: today() } : t);
       clearUpcomingCache();
       toast('Receita marcada como recebida!', 'success');
-      app.render();
+      _incFilterRender();
     }
     if (action === 'unreceive') {
       await db.transactions.update(id, { status: 'pending', paid_date: null });
+      _incCache.txs = _incCache.txs.map(t => t.id === id ? { ...t, status: 'pending', paid_date: null } : t);
       clearUpcomingCache();
       toast('Alteração desfeita');
-      app.render();
+      _incFilterRender();
     }
     if (action === 'edit') {
       const t = await db.transactions.get(id);
@@ -101,8 +150,9 @@ function bindIncomeActions() {
     if (action === 'delete') {
       if (!confirm('Excluir esta receita?')) return;
       await db.transactions.delete(id);
+      _incCache.txs = _incCache.txs.filter(t => t.id !== id);
       toast('Receita excluída');
-      app.render();
+      _incFilterRender();
     }
   });
 
@@ -126,7 +176,7 @@ async function openIncomeModal(month, year, data = null) {
       <div class="modal">
         <div class="modal-header">
           <div class="modal-title">${isEdit ? 'Editar Receita' : 'Nova Receita'}</div>
-          <button class="btn btn-icon btn-ghost" onclick="closeModal()"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12 4L4 12M4 4l8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
@@ -194,6 +244,36 @@ async function openIncomeModal(month, year, data = null) {
       </div>
     </div>
   `);
+}
+
+function toggleIncomeBulk(month, year) {
+  if (_Bulk.active) { destroyBulkMode(); return; }
+  initBulkMode('income-list', `
+    <button class="btn btn-sm" style="background:var(--income-light);color:var(--income)" onclick="bulkIncomeReceive()">
+      ${icon('check',13)} Receber
+    </button>
+    <button class="btn btn-sm btn-danger-outline" onclick="bulkIncomeDelete(${month},${year})">
+      ${icon('trash-2',13)} Excluir
+    </button>
+  `);
+}
+async function bulkIncomeReceive() {
+  const ids = [..._Bulk.ids];
+  if (!ids.length) { toast('Nenhum item selecionado','error'); return; }
+  for (const id of ids) await db.transactions.update(id, { status:'paid', paid_date: today() });
+  clearUpcomingCache();
+  destroyBulkMode();
+  toast(`${ids.length} receita(s) marcada(s) como recebida(s)`,'success');
+  app.render();
+}
+async function bulkIncomeDelete(month, year) {
+  const ids = [..._Bulk.ids];
+  if (!ids.length) { toast('Nenhum item selecionado','error'); return; }
+  if (!confirm(`Excluir ${ids.length} receita(s)?`)) return;
+  for (const id of ids) await db.transactions.delete(id);
+  destroyBulkMode();
+  toast(`${ids.length} receita(s) excluída(s)`,'success');
+  app.render();
 }
 
 async function saveIncome(id, month, year) {
