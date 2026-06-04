@@ -1548,8 +1548,13 @@ function _adminBrandSection(cfg) {
 
       <!-- Cores opcionais -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:8px">
-        ${colorField('loginPanelBg', 'Cor do painel (opcional)', c.loginPanelBg || '#3A5A40', 'Substitui o gradiente verde do painel esquerdo')}
-        ${colorField('loginFormBg',  'Cor de fundo do formulário', c.loginFormBg || '#FFFFFF', 'Cor de fundo da área do formulário')}
+        ${colorField('loginScreenBg', 'Fundo da tela',          c.loginScreenBg || '#d9d9d9', 'Cor ao redor do card de login')}
+        ${colorField('loginPanelBg',  'Cor do painel esquerdo', c.loginPanelBg  || '#84c859', 'Substitui o gradiente verde')}
+        ${colorField('loginPanelFrom','Cor clara do gradiente',  c.loginPanelFrom|| '#84c859', 'Verde claro no gradiente do painel')}
+        ${colorField('loginPanelDark','Cor escura do gradiente', c.loginPanelDark|| '#07130f', 'Tom escuro do gradiente do painel')}
+        ${colorField('loginFormBg',   'Fundo do formulário',    c.loginFormBg   || '#ffffff', 'Cor de fundo da área do formulário')}
+        ${colorField('loginBtnFrom',  'Botão — cor inicial',    c.loginBtnFrom  || '#178f8f', 'Gradiente inicial do botão Entrar')}
+        ${colorField('loginBtnTo',    'Botão — cor final',      c.loginBtnTo    || '#64d953', 'Gradiente final do botão Entrar')}
       </div>
 
       <!-- Textos do painel esquerdo (desktop) -->
@@ -1712,7 +1717,7 @@ function _initBrandEditor() {
     'annualSaldoPos', 'annualSaldoNeg', 'annualSaldoZero',
     'annualBorder', 'annualSummaryAccent',
     // Login screen
-    'loginPanelBg', 'loginFormBg',
+    'loginScreenBg', 'loginPanelBg', 'loginFormBg', 'loginBtnFrom', 'loginBtnTo', 'loginPanelFrom', 'loginPanelDark',
   ];
 
   colorIds.forEach(id => {
@@ -1909,6 +1914,11 @@ function _collectBrandForm() {
     loginLayout:       document.querySelector('input[name="login-layout"]:checked')?.value || 'split',
     loginPanelBg:      (document.getElementById('bt-loginPanelBg')?.value || '').trim(),
     loginFormBg:       (document.getElementById('bt-loginFormBg')?.value  || '').trim(),
+    loginScreenBg:     (document.getElementById('bt-loginScreenBg')?.value || '').trim(),
+    loginBtnFrom:      (document.getElementById('bt-loginBtnFrom')?.value  || '').trim(),
+    loginBtnTo:        (document.getElementById('bt-loginBtnTo')?.value    || '').trim(),
+    loginPanelFrom:    (document.getElementById('bt-loginPanelFrom')?.value || '').trim(),
+    loginPanelDark:    (document.getElementById('bt-loginPanelDark')?.value || '').trim(),
     loginPanelBgImage: _pendingLoginBgData || document.getElementById('b-login-bg-url')?.value.trim() || '',
     loginBrandEyebrow: document.getElementById('b-login-eyebrow')?.value.trim() || '',
     loginBrandHeading: document.getElementById('b-login-heading')?.value.trim() || '',
@@ -1989,8 +1999,13 @@ function _populateBrandForm(cfg) {
 
   // Login config
   _onLoginLayoutChange(c.loginLayout || 'split');
-  if (c.loginPanelBg) set('loginPanelBg', c.loginPanelBg);
-  if (c.loginFormBg)  set('loginFormBg',  c.loginFormBg);
+  if (c.loginPanelBg)  set('loginPanelBg',  c.loginPanelBg);
+  if (c.loginFormBg)   set('loginFormBg',   c.loginFormBg);
+  if (c.loginScreenBg) set('loginScreenBg', c.loginScreenBg);
+  if (c.loginBtnFrom)  set('loginBtnFrom',  c.loginBtnFrom);
+  if (c.loginBtnTo)    set('loginBtnTo',    c.loginBtnTo);
+  if (c.loginPanelFrom)set('loginPanelFrom',c.loginPanelFrom);
+  if (c.loginPanelDark)set('loginPanelDark',c.loginPanelDark);
 
   _pendingLoginBgData = c.loginPanelBgImage?.startsWith('data:') ? c.loginPanelBgImage : '';
   const loginBgUrlEl  = document.getElementById('b-login-bg-url');
@@ -2048,7 +2063,7 @@ async function saveBrandConfig() {
     }
   }
   // Valida hexadecimais opcionais (login)
-  for (const f of ['loginPanelBg', 'loginFormBg']) {
+  for (const f of ['loginPanelBg', 'loginFormBg', 'loginScreenBg', 'loginBtnFrom', 'loginBtnTo', 'loginPanelFrom', 'loginPanelDark']) {
     if (cfg[f] && !hexRe.test(cfg[f])) {
       toast(`Cor inválida em "${f}". Use o formato #rrggbb`, 'error');
       return;

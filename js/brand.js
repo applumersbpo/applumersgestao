@@ -62,6 +62,11 @@ const _BRAND_DEFAULTS = {
   loginPill2:        '',
   loginPill3:        '',
   loginCopyright:    '',
+  loginScreenBg:   '#d9d9d9',
+  loginBtnFrom:    '#178f8f',
+  loginBtnTo:      '#64d953',
+  loginPanelFrom:  '#84c859',
+  loginPanelDark:  '#07130f',
 };
 
 let _brand = { ..._BRAND_DEFAULTS };
@@ -203,6 +208,11 @@ function _applyCssVars(cfg) {
     --annual-saldo-zero:     ${c.annualSaldoZero};
     --annual-border:         ${c.annualBorder};
     --annual-summary-accent: ${c.annualSummaryAccent};
+    --login-screen-bg:  ${c.loginScreenBg || '#d9d9d9'};
+    --login-btn-from:   ${c.loginBtnFrom  || '#178f8f'};
+    --login-btn-to:     ${c.loginBtnTo    || '#64d953'};
+    --login-panel-from: ${c.loginPanelFrom || '#84c859'};
+    --login-panel-dark: ${c.loginPanelDark || '#07130f'};
   }`;
 
   const meta = document.querySelector('meta[name="theme-color"]');
@@ -268,18 +278,24 @@ function _applyBrand(cfg) {
 // ── Configuração da tela de login ─────────────────────────────────────────────
 
 function _applyLoginConfig(cfg) {
-  const authLayout = document.querySelector('.auth-layout');
-  if (!authLayout) return;
+  const authScreen = document.querySelector('#auth-screen');
+  if (!authScreen) return;
 
-  const layout = cfg.loginLayout || 'split';
-  authLayout.setAttribute('data-login-layout', layout);
+  const visualPanel = authScreen.querySelector('.auth-visual');
+  const formArea    = authScreen.querySelector('.auth-form-area');
 
-  // Background image — vai no painel visual (split) ou no layout inteiro (fullbg)
+  // Screen background
+  if (cfg.loginScreenBg && /^#[0-9a-fA-F]{6}$/.test(cfg.loginScreenBg)) {
+    authScreen.style.background = cfg.loginScreenBg;
+  } else {
+    authScreen.style.background = '';
+  }
+
+  // Visual panel background
   const bgImg      = cfg.loginPanelBgImage || '';
   const panelColor = (cfg.loginPanelBg && /^#[0-9a-fA-F]{6}$/.test(cfg.loginPanelBg)) ? cfg.loginPanelBg : '';
-  const visualPanel = authLayout.querySelector('.auth-visual');
 
-  if (visualPanel && layout !== 'fullbg') {
+  if (visualPanel) {
     if (panelColor && bgImg) {
       visualPanel.style.background         = panelColor;
       visualPanel.style.backgroundImage    = `url(${bgImg})`;
@@ -306,54 +322,39 @@ function _applyLoginConfig(cfg) {
       visualPanel.style.backgroundSize     = '';
       visualPanel.style.backgroundPosition = '';
     }
-  } else if (visualPanel) {
-    visualPanel.style.background      = '';
-    visualPanel.style.backgroundImage = '';
   }
 
-  // fullbg: imagem de fundo no layout inteiro
-  if (layout === 'fullbg' && bgImg) {
-    authLayout.style.backgroundImage = `url(${bgImg})`;
-  } else {
-    authLayout.style.backgroundImage = '';
-  }
-
-  // Form panel background color
-  const formPanel = authLayout.querySelector('.auth-form-panel');
-  if (formPanel) {
+  // Form area background color
+  if (formArea) {
     if (cfg.loginFormBg && /^#[0-9a-fA-F]{6}$/.test(cfg.loginFormBg)) {
-      formPanel.style.background = cfg.loginFormBg;
+      formArea.style.background = cfg.loginFormBg;
     } else {
-      formPanel.style.background = '';
+      formArea.style.background = '';
     }
   }
 
   // Textos do painel visual
-  const eyebrow = authLayout.querySelector('.auth-brand-eyebrow');
+  const eyebrow = authScreen.querySelector('.auth-brand-eyebrow');
   if (eyebrow && cfg.loginBrandEyebrow) eyebrow.textContent = cfg.loginBrandEyebrow;
 
-  const heading = authLayout.querySelector('.auth-brand-heading');
+  const heading = authScreen.querySelector('.auth-brand-heading');
   if (heading && cfg.loginBrandHeading) heading.textContent = cfg.loginBrandHeading;
 
-  const desc = authLayout.querySelector('.auth-brand-desc');
+  const desc = authScreen.querySelector('.auth-brand-desc');
   if (desc && cfg.loginBrandDesc) desc.textContent = cfg.loginBrandDesc;
 
-  // Form card title (only if in login mode — don't override signup/forgot states)
   const titleEl = document.getElementById('auth-title');
   if (titleEl && titleEl.textContent === 'Entrar' && cfg.loginTitle) {
     titleEl.textContent = cfg.loginTitle;
   }
 
-  // Form card subtitle
-  const subtitleEl = authLayout.querySelector('.auth-form-subtitle');
+  const subtitleEl = authScreen.querySelector('.auth-form-subtitle');
   if (subtitleEl && cfg.loginSubtitle) subtitleEl.textContent = cfg.loginSubtitle;
 
-  // Desktop brand panel — feature pills
-  const pillEls = authLayout.querySelectorAll('.auth-pill-text');
+  const pillEls = authScreen.querySelectorAll('.auth-pill-text');
   const pills = [cfg.loginPill1, cfg.loginPill2, cfg.loginPill3];
   pillEls.forEach((el, i) => { if (pills[i]) el.textContent = pills[i]; });
 
-  // Desktop brand panel — copyright footer
   const copyright = document.getElementById('auth-brand-copyright');
   if (copyright && cfg.loginCopyright) copyright.textContent = cfg.loginCopyright;
 }
