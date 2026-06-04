@@ -1552,20 +1552,40 @@ function _adminBrandSection(cfg) {
         ${colorField('loginFormBg',  'Cor de fundo do formulário', c.loginFormBg || '#FFFFFF', 'Cor de fundo da área do formulário')}
       </div>
 
-      <!-- Textos do painel esquerdo -->
+      <!-- Textos do painel esquerdo (desktop) -->
       <div style="margin-bottom:14px">
-        <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px">Textos do Painel Esquerdo</div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:4px">Painel Esquerdo — Desktop</div>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:10px">Aparece somente no desktop (layout <em>Dividido</em>)</div>
         <div class="form-group" style="margin-bottom:10px">
-          <label class="form-label" style="font-size:.76rem">Eyebrow (subtítulo pequeno acima do título)</label>
+          <label class="form-label" style="font-size:.76rem">Eyebrow (texto acima do título, maiúsculas)</label>
           <input id="b-login-eyebrow" class="form-control" value="${_escHtml(c.loginBrandEyebrow || '')}" placeholder="ex: BPO Financeiro">
         </div>
         <div class="form-group" style="margin-bottom:10px">
           <label class="form-label" style="font-size:.76rem">Título principal</label>
           <input id="b-login-heading" class="form-control" value="${_escHtml(c.loginBrandHeading || '')}" placeholder="ex: Visão clara sobre seu fluxo financeiro">
         </div>
-        <div class="form-group" style="margin-bottom:0">
+        <div class="form-group" style="margin-bottom:10px">
           <label class="form-label" style="font-size:.76rem">Descrição</label>
           <textarea id="b-login-desc" class="form-control" rows="2" placeholder="ex: Centralize receitas, despesas e metas em um só lugar.">${_escHtml(c.loginBrandDesc || '')}</textarea>
+        </div>
+        <div style="font-size:.72rem;font-weight:600;color:var(--text-muted);margin-bottom:8px;margin-top:4px">Badges de recursos (3 pills)</div>
+        <div style="display:grid;gap:8px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label" style="font-size:.74rem">Pill 1</label>
+            <input id="b-login-pill1" class="form-control" value="${_escHtml(c.loginPill1 || '')}" placeholder="ex: Dashboard em tempo real">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label" style="font-size:.74rem">Pill 2</label>
+            <input id="b-login-pill2" class="form-control" value="${_escHtml(c.loginPill2 || '')}" placeholder="ex: Metas e cobertura de despesas">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label" style="font-size:.74rem">Pill 3</label>
+            <input id="b-login-pill3" class="form-control" value="${_escHtml(c.loginPill3 || '')}" placeholder="ex: Recorrências automáticas">
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:10px;margin-bottom:0">
+          <label class="form-label" style="font-size:.76rem">Rodapé / Copyright</label>
+          <input id="b-login-copyright" class="form-control" value="${_escHtml(c.loginCopyright || '')}" placeholder="ex: © 2026 Lumers BPO Financeiro">
         </div>
       </div>
 
@@ -1896,6 +1916,10 @@ function _collectBrandForm() {
     loginTitle:        document.getElementById('b-login-title')?.value.trim() || '',
     loginSubtitle:     document.getElementById('b-login-subtitle')?.value.trim() || '',
     loginHeroTagline:  document.getElementById('b-login-tagline')?.value.trim() || '',
+    loginPill1:        document.getElementById('b-login-pill1')?.value.trim() || '',
+    loginPill2:        document.getElementById('b-login-pill2')?.value.trim() || '',
+    loginPill3:        document.getElementById('b-login-pill3')?.value.trim() || '',
+    loginCopyright:    document.getElementById('b-login-copyright')?.value.trim() || '',
   };
 }
 
@@ -1974,12 +1998,16 @@ function _populateBrandForm(cfg) {
   _showMediaPreview('b-login-bg', c.loginPanelBgImage || '');
 
   const stv = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
-  stv('b-login-eyebrow', c.loginBrandEyebrow);
-  stv('b-login-heading', c.loginBrandHeading);
-  stv('b-login-desc',    c.loginBrandDesc);
-  stv('b-login-title',   c.loginTitle);
-  stv('b-login-subtitle',c.loginSubtitle);
-  stv('b-login-tagline', c.loginHeroTagline);
+  stv('b-login-eyebrow',    c.loginBrandEyebrow);
+  stv('b-login-heading',    c.loginBrandHeading);
+  stv('b-login-desc',       c.loginBrandDesc);
+  stv('b-login-title',      c.loginTitle);
+  stv('b-login-subtitle',   c.loginSubtitle);
+  stv('b-login-tagline',    c.loginHeroTagline);
+  stv('b-login-pill1',      c.loginPill1);
+  stv('b-login-pill2',      c.loginPill2);
+  stv('b-login-pill3',      c.loginPill3);
+  stv('b-login-copyright',  c.loginCopyright);
 }
 
 // ── Ações ─────────────────────────────────────────────────────────────────────

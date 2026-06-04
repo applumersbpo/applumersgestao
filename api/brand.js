@@ -64,6 +64,10 @@ const DEFAULTS = {
   loginHeroTagline:  '',
   loginTitle:        '',
   loginSubtitle:     '',
+  loginPill1:        '',
+  loginPill2:        '',
+  loginPill3:        '',
+  loginCopyright:    '',
 };
 
 export default async function handler(req, res) {
@@ -110,7 +114,8 @@ export default async function handler(req, res) {
         // Login screen
         'loginLayout', 'loginPanelBg', 'loginFormBg',
         'loginBrandEyebrow', 'loginBrandHeading', 'loginBrandDesc',
-        'loginHeroTagline', 'loginTitle', 'loginSubtitle'];
+        'loginHeroTagline', 'loginTitle', 'loginSubtitle',
+        'loginPill1', 'loginPill2', 'loginPill3', 'loginCopyright'];
 
       const cfg = {};
       for (const f of textFields) {

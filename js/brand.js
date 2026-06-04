@@ -58,6 +58,10 @@ const _BRAND_DEFAULTS = {
   loginHeroTagline:  '',
   loginTitle:        '',
   loginSubtitle:     '',
+  loginPill1:        '',
+  loginPill2:        '',
+  loginPill3:        '',
+  loginCopyright:    '',
 };
 
 let _brand = { ..._BRAND_DEFAULTS };
@@ -272,28 +276,43 @@ function _applyLoginConfig(cfg) {
 
   // Background image — goes on brand panel (split) or on the layout itself (fullbg)
   const bgImg      = cfg.loginPanelBgImage || '';
+  const panelColor = (cfg.loginPanelBg && /^#[0-9a-fA-F]{6}$/.test(cfg.loginPanelBg)) ? cfg.loginPanelBg : '';
   const brandPanel = authLayout.querySelector('.auth-brand-panel');
-  if (brandPanel) {
-    if (bgImg && layout === 'split') {
-      brandPanel.style.backgroundImage = [
+
+  if (brandPanel && layout !== 'fullbg') {
+    if (panelColor && bgImg) {
+      // Solid color base + image on top
+      brandPanel.style.background           = panelColor;
+      brandPanel.style.backgroundImage      = `url(${bgImg})`;
+      brandPanel.style.backgroundSize       = 'cover';
+      brandPanel.style.backgroundPosition   = 'center';
+    } else if (panelColor) {
+      // Solid color only — replaces gradient
+      brandPanel.style.background           = panelColor;
+      brandPanel.style.backgroundImage      = 'none';
+      brandPanel.style.backgroundSize       = '';
+      brandPanel.style.backgroundPosition   = '';
+    } else if (bgImg) {
+      // Image on top of CSS gradient (layered)
+      brandPanel.style.background           = '';
+      brandPanel.style.backgroundImage      = [
         `url(${bgImg})`,
         'radial-gradient(circle, rgba(248,244,228,.055) 1px, transparent 1px)',
         'radial-gradient(ellipse 60% 70% at 30% 80%, rgba(212,162,76,.22) 0%, transparent 60%)',
         'radial-gradient(ellipse 50% 50% at 80% 20%, rgba(22,93,98,.28) 0%, transparent 55%)',
       ].join(',');
-      brandPanel.style.backgroundSize     = 'cover, 26px 26px, auto, auto';
-      brandPanel.style.backgroundPosition = 'center, 0 0, 50% 80%, 80% 20%';
+      brandPanel.style.backgroundSize       = 'cover, 26px 26px, auto, auto';
+      brandPanel.style.backgroundPosition   = 'center, 0 0, 50% 80%, 80% 20%';
     } else {
-      brandPanel.style.backgroundImage   = '';
-      brandPanel.style.backgroundSize    = '';
-      brandPanel.style.backgroundPosition = '';
+      // Default — reset to CSS-defined gradient
+      brandPanel.style.background           = '';
+      brandPanel.style.backgroundImage      = '';
+      brandPanel.style.backgroundSize       = '';
+      brandPanel.style.backgroundPosition   = '';
     }
-    // Optional solid color override for brand panel
-    if (cfg.loginPanelBg && /^#[0-9a-fA-F]{6}$/.test(cfg.loginPanelBg)) {
-      brandPanel.style.backgroundColor = cfg.loginPanelBg;
-    } else {
-      brandPanel.style.backgroundColor = '';
-    }
+  } else if (brandPanel) {
+    brandPanel.style.background = '';
+    brandPanel.style.backgroundImage = '';
   }
 
   // Full-bg layout: apply background image to the whole layout div
@@ -336,6 +355,15 @@ function _applyLoginConfig(cfg) {
   // Form card subtitle
   const subtitleEl = authLayout.querySelector('.auth-form-subtitle');
   if (subtitleEl && cfg.loginSubtitle) subtitleEl.textContent = cfg.loginSubtitle;
+
+  // Desktop brand panel — feature pills
+  const pillEls = authLayout.querySelectorAll('.auth-pill-text');
+  const pills = [cfg.loginPill1, cfg.loginPill2, cfg.loginPill3];
+  pillEls.forEach((el, i) => { if (pills[i]) el.textContent = pills[i]; });
+
+  // Desktop brand panel — copyright footer
+  const copyright = document.getElementById('auth-brand-copyright');
+  if (copyright && cfg.loginCopyright) copyright.textContent = cfg.loginCopyright;
 }
 
 // ── API pública ───────────────────────────────────────────────────────────────
