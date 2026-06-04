@@ -160,21 +160,21 @@ input, select, textarea { font: inherit; }
   min-height: 100dvh;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  background: var(--bg);
+  padding: 32px;
+  background: var(--border); /* #E8E2D0 — contraste claro vs card branco */
 }
 
-/* Floating card */
+/* Floating card — proporções do preview */
 .auth-wrapper {
   width: 100%;
-  max-width: 1080px;
-  min-height: 620px;
+  max-width: 1120px;
+  min-height: 700px;
   background: var(--surface);
   border-radius: 22px;
   overflow: hidden;
   display: grid;
   grid-template-columns: 38% 62%;
-  box-shadow: 0 24px 80px rgba(41,39,32,.13), 0 4px 16px rgba(41,39,32,.06);
+  box-shadow: 0 30px 80px rgba(0,0,0,.08);
 }
 
 /* ── Visual Panel (left) ── */
@@ -186,24 +186,22 @@ input, select, textarea { font: inherit; }
   justify-content: space-between;
   color: #F8F4E4;
   overflow: hidden;
-  background: var(--primary-700);
-  background-image:
-    radial-gradient(circle at 72% 68%, rgba(212,162,76,.6) 0%, transparent 38%),
-    radial-gradient(circle at 18% 28%, rgba(22,93,98,.45) 0%, transparent 35%),
-    linear-gradient(155deg, #132018 0%, #1c2a20 45%, #3A5A40 100%);
+  background:
+    radial-gradient(circle at 70% 70%, rgba(212,162,76,.85) 0%, transparent 38%),
+    radial-gradient(circle at 20% 30%, rgba(22,93,98,.55) 0%, transparent 35%),
+    linear-gradient(145deg, #07130f 0%, #1c2a20 45%, #2C4630 100%);
 }
 
-/* Blob decoration */
+/* Blob fiel ao preview — semi-círculo proeminente */
 .auth-visual::after {
   content: '';
   position: absolute;
-  bottom: -18%;
-  left: -20%;
-  right: -28%;
-  height: 44%;
+  inset: auto -30% -25% -20%;
+  height: 48%;
   border-radius: 50% 50% 0 0;
-  background: rgba(212,162,76,.18);
-  border-top: 1px solid rgba(248,244,228,.12);
+  background: rgba(212,162,76,.45);
+  border-top: 1px solid rgba(248,244,228,.22);
+  filter: blur(0.2px);
   pointer-events: none;
 }
 
@@ -424,14 +422,12 @@ input, select, textarea { font: inherit; }
 
   /* Painel visual vira hero no topo */
   .auth-visual {
-    min-height: 230px;
-    padding: 36px 24px 28px;
+    min-height: 260px;
+    padding: 36px 28px 32px;
     padding-top: max(36px, env(safe-area-inset-top, 36px));
-    justify-content: flex-end;
+    justify-content: space-between;
     gap: 0;
   }
-  .auth-visual::after { display: none; }
-  .auth-visual-brand { margin-bottom: auto; }
   .auth-visual-footer { display: none; }
   .auth-brand-pills { display: none; }
   .auth-brand-eyebrow { margin-bottom: 8px; font-size: 10px; }
