@@ -257,7 +257,7 @@ function toggleForgotMode(e) {
   _authMode = 'forgot';
   document.getElementById('auth-title').textContent       = 'Redefinir senha';
   document.getElementById('auth-submit').textContent      = 'Enviar link de redefinição';
-  document.querySelector('.auth-form-subtitle') && (document.querySelector('.auth-form-subtitle').textContent = 'Digite seu e-mail para receber o link');
+  // subtitle removido no novo design
   document.getElementById('auth-submit').onclick          = submitForgotPassword;
   document.getElementById('auth-toggle-text').textContent = 'Lembrou a senha?';
   document.getElementById('auth-toggle').textContent      = 'Fazer login';
@@ -293,12 +293,12 @@ async function submitForgotPassword() {
   btn.disabled = true; btn.textContent = 'Enviando...';
   try {
     await pb.collection('users').requestPasswordReset(email);
-    const card = document.querySelector('#auth-screen .auth-form-inner');
+    const card = document.querySelector('#auth-screen .form-card');
     card.innerHTML = `
       <div style="text-align:center;padding:8px 0">
         <div style="font-size:2.8rem;margin-bottom:16px">📧</div>
         <div class="auth-form-title" style="margin-bottom:10px">E-mail enviado!</div>
-        <p style="color:var(--text-muted);font-size:.88rem;line-height:1.6;margin-bottom:24px">
+        <p style="color:#666;font-size:.88rem;line-height:1.6;margin-bottom:24px">
           Enviamos um link de redefinição para <strong>${email}</strong>.<br>
           Verifique sua caixa de entrada (e o spam).
         </p>
@@ -311,10 +311,18 @@ async function submitForgotPassword() {
 }
 
 function _rebuildAuthCard() {
-  const card = document.querySelector('#auth-screen .auth-form-inner');
+  const card = document.querySelector('#auth-screen .form-card');
   card.innerHTML = `
-    <div id="auth-title" class="auth-form-title">Entrar</div>
-    <div class="auth-form-subtitle">Bem-vindo de volta ao Lumers Flow</div>
+    <div class="auth-logo-mark">
+      <svg width="36" height="36" viewBox="0 0 28 28" fill="none">
+        <rect width="28" height="28" rx="8" fill="var(--primary-600)"/>
+        <rect x="7" y="13" width="14" height="2" rx="1" fill="#fff"/>
+        <rect x="7" y="9" width="9" height="2" rx="1" fill="rgba(255,255,255,.6)"/>
+        <rect x="7" y="17" width="11" height="2" rx="1" fill="rgba(255,255,255,.4)"/>
+      </svg>
+    </div>
+    <h2 id="auth-title" class="auth-form-title">Bem-vindo de volta</h2>
+    <div id="auth-error" style="display:none;color:#c95a47;font-size:.875rem;margin-bottom:14px;text-align:left"></div>
     <div id="auth-name-group" class="form-group" style="display:none">
       <label class="form-label">Nome</label>
       <div class="input-box">
@@ -346,9 +354,6 @@ function _rebuildAuthCard() {
           onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
       </div>
     </div>
-    <div id="auth-forgot-link" style="text-align:right;margin-top:4px;margin-bottom:16px">
-      <a href="#" onclick="toggleForgotMode(event)">Esqueci minha senha</a>
-    </div>
     <div id="auth-confirm-group" class="form-group" style="display:none">
       <label class="form-label">Confirmar senha</label>
       <div class="input-box">
@@ -357,7 +362,10 @@ function _rebuildAuthCard() {
       </div>
     </div>
     <button id="auth-submit" class="auth-submit-btn" onclick="submitAuth()">Entrar no Lumers Flow</button>
-    <p id="auth-toggle-row" style="text-align:center;margin-top:20px;font-size:.875rem;color:var(--text-muted);display:${_registerAllowed ? '' : 'none'}">
+    <div id="auth-forgot-link" style="margin-top:20px">
+      <a href="#" onclick="toggleForgotMode(event)">Problemas ao acessar?</a>
+    </div>
+    <p id="auth-toggle-row" style="text-align:center;margin-top:16px;font-size:.875rem;color:var(--text-muted);display:${_registerAllowed ? '' : 'none'}">
       <span id="auth-toggle-text">Não tem conta?</span>
       <a href="#" id="auth-toggle" onclick="toggleAuthMode(event)" style="color:var(--primary-600);margin-left:4px;font-weight:600">Criar conta</a>
     </p>`;
@@ -380,12 +388,12 @@ function _checkResetToken() {
 
 function _showResetForm(token) {
   showAuthScreen();
-  const card = document.querySelector('#auth-screen .auth-form-inner');
+  const card = document.querySelector('#auth-screen .form-card');
   card.innerHTML = `
     <div style="text-align:center;margin-bottom:24px">
       <div style="font-size:2rem;margin-bottom:10px">🔐</div>
       <div class="auth-form-title">Criar nova senha</div>
-      <div class="auth-form-subtitle">Digite e confirme sua nova senha</div>
+      <p style="font-size:14px;color:#666;margin-top:8px">Digite e confirme sua nova senha</p>
     </div>
     <div class="form-group">
       <label class="form-label">Nova senha</label>
