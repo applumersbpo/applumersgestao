@@ -146,7 +146,7 @@ input, select, textarea { font: inherit; }
 
 /* ── Auth Screen ── */
 #auth-screen {
-  display: none;
+  display: flex;
   position: fixed;
   inset: 0;
   z-index: 9999;
