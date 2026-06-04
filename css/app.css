@@ -306,6 +306,15 @@ input, select, textarea { font: inherit; }
   margin-top: 14px;
 }
 
+#auth-error {
+  color: var(--expense);
+  font-size: .85rem;
+  line-height: 1.4;
+  margin-top: 12px;
+  margin-bottom: 0;
+  text-align: center;
+}
+
 /* ── Auth — Responsivo ── */
 /* Tablet (769px – 1024px): mantém split-screen mas reduz proporções */
 @media (max-width: 1024px) and (min-width: 769px) {
@@ -328,7 +337,7 @@ input, select, textarea { font: inherit; }
     padding: 0;
     min-height: 100vh;
     min-height: 100dvh;
-    background: var(--surface);
+    background: var(--bg);
   }
 
   .auth-form-panel {
@@ -336,7 +345,7 @@ input, select, textarea { font: inherit; }
     width: 100%;
     max-width: 100%;
     padding: 0;
-    background: var(--surface);
+    background: var(--bg);
     border-radius: 0;
     box-shadow: none;
     border-left: none;
@@ -355,49 +364,87 @@ input, select, textarea { font: inherit; }
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
     background: var(--primary-700);
     background-image:
       radial-gradient(ellipse 70% 80% at 50% 120%, rgba(212,162,76,.18) 0%, transparent 60%),
       radial-gradient(ellipse 50% 60% at 85% 5%, rgba(22,93,98,.22) 0%, transparent 55%);
-    min-height: 180px;
-    padding: 40px 24px 32px;
-    padding-top: max(40px, env(safe-area-inset-top, 40px));
+    min-height: 160px;
+    padding: 36px 24px 28px;
+    padding-top: max(36px, env(safe-area-inset-top, 36px));
     color: #F8F4E4;
     flex-shrink: 0;
   }
 
   .auth-hero-name {
     font-family: var(--font-display);
-    font-size: 1.6rem;
+    font-size: 1.5rem;
     font-weight: 700;
     color: #F8F4E4;
     margin: 0;
   }
 
   .auth-hero-tagline {
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     color: rgba(248,244,228,.7);
     margin: 0;
     letter-spacing: 0.02em;
   }
 
-  /* Área do formulário */
+  /* Área do formulário — cartão visual com borda sutil */
   .auth-form-inner {
     flex: 1;
     max-width: 100%;
-    background: transparent;
+    background: var(--surface);
     border: none;
-    border-radius: 0;
-    box-shadow: none;
-    padding: 32px 24px;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -2px 16px rgba(41,39,32,.07);
+    padding: 28px 20px 32px;
     padding-bottom: max(32px, env(safe-area-inset-bottom, 32px));
+    margin-top: -12px;
   }
 }
 
 @media (max-width: 400px) {
-  .auth-hero-mobile { min-height: 160px; padding: 32px 20px 24px; padding-top: max(32px, env(safe-area-inset-top, 32px)); }
-  .auth-hero-name { font-size: 1.4rem; }
+  .auth-hero-mobile { min-height: 140px; padding: 28px 16px 22px; padding-top: max(28px, env(safe-area-inset-top, 28px)); }
+  .auth-hero-name { font-size: 1.35rem; }
+  .auth-form-inner { padding: 24px 16px 28px; padding-bottom: max(28px, env(safe-area-inset-bottom, 28px)); }
+}
+
+/* Landscape mobile — hero compacto para não dominar a viewport */
+@media (max-height: 500px) and (max-width: 900px) and (orientation: landscape) {
+  .auth-hero-mobile {
+    min-height: 80px;
+    padding: 16px 24px 14px;
+    padding-top: max(16px, env(safe-area-inset-top, 16px));
+    flex-direction: row;
+    gap: 12px;
+    justify-content: flex-start;
+  }
+  .auth-hero-name { font-size: 1.1rem; }
+  .auth-hero-tagline { display: none; }
+  .auth-form-inner { margin-top: 0; border-radius: 0; }
+}
+
+/* Mobile auth — ajustes de tipografia e spacing */
+@media (max-width: 768px) {
+  .auth-form-title { font-size: 24px; margin-bottom: 4px; }
+  .auth-form-subtitle { font-size: 13px; margin-bottom: 20px; margin-top: 10px; }
+  #auth-error {
+    color: var(--expense);
+    font-size: .85rem;
+    line-height: 1.4;
+    max-width: 100%;
+    word-break: break-word;
+    text-align: left;
+    padding: 10px 12px;
+    background: rgba(201,90,71,.08);
+    border: 1px solid rgba(201,90,71,.2);
+    border-radius: var(--r-md);
+    margin-top: 12px;
+    margin-bottom: 0;
+  }
+  .btn-lg { min-height: 48px; font-size: 1rem; }
 }
 
 /* ── Login Layout: centered ── */
@@ -1153,19 +1200,19 @@ input, select, textarea { font: inherit; }
   font-size: .77rem;
   font-weight: 700;
   color: var(--text-soft);
-  margin-bottom: 5px;
+  margin-bottom: 6px;
   letter-spacing: .04em;
   text-transform: uppercase;
 }
 
 .form-control {
   width: 100%;
-  padding: 10px 12px;
+  padding: 11px 14px;
   border: 1.5px solid var(--border);
   border-radius: var(--r-md);
   background: var(--surface);
   color: var(--text);
-  font-size: .9rem;
+  font-size: 1rem;
   transition: border-color .15s, box-shadow .15s;
   -webkit-appearance: none;
   font-family: var(--font-ui);

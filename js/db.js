@@ -331,8 +331,8 @@ function _rebuildAuthCard() {
       <label class="form-label">Senha</label>
       <input id="auth-password" class="form-control" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
     </div>
-    <div id="auth-forgot-link" style="text-align:right;margin-top:-8px;margin-bottom:16px">
-      <a href="#" onclick="toggleForgotMode(event)" style="font-size:.82rem;color:var(--primary-600);font-weight:500">Esqueci minha senha</a>
+    <div id="auth-forgot-link" style="text-align:right;margin-top:4px;margin-bottom:16px">
+      <a href="#" onclick="toggleForgotMode(event)" style="font-size:.85rem;color:var(--primary-600);font-weight:600;min-height:44px;display:inline-flex;align-items:center">Esqueci minha senha</a>
     </div>
     <div id="auth-confirm-group" class="form-group" style="display:none">
       <label class="form-label">Confirmar senha</label>
@@ -396,7 +396,6 @@ async function submitResetPassword(token) {
     const errDiv = document.getElementById('auth-error') || (() => {
       const el = document.createElement('p');
       el.id = 'auth-error';
-      el.style.cssText = 'color:var(--income);font-size:.83rem;margin-top:10px;text-align:center;margin-bottom:0';
       document.getElementById('auth-submit').after(el); return el;
     })();
     errDiv.style.color = 'var(--income)';
@@ -454,7 +453,6 @@ function _authError(msg) {
   if (!el) {
     el = document.createElement('p');
     el.id = 'auth-error';
-    el.style.cssText = 'color:var(--expense);font-size:.83rem;margin-top:10px;text-align:center;margin-bottom:0';
     document.getElementById('auth-submit').after(el);
   }
   el.textContent = msg;
