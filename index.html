@@ -19,102 +19,113 @@
   <!-- ── Auth Screen ── -->
   <div id="auth-screen" style="display:none">
     <div class="auth-layout">
+      <div class="auth-wrapper">
 
-      <!-- Brand Panel (left) -->
-      <div class="auth-brand-panel">
-        <div class="auth-brand-logo">
-          <div class="brand-logo-container" data-variant="auth">
-            <svg width="32" height="32" viewBox="0 0 28 28" fill="none">
-              <rect width="28" height="28" rx="8" fill="rgba(248,244,228,.15)"/>
-              <rect x="7" y="13" width="14" height="2" rx="1" fill="#F8F4E4"/>
-              <rect x="7" y="9" width="9" height="2" rx="1" fill="rgba(248,244,228,.55)"/>
-              <rect x="7" y="17" width="11" height="2" rx="1" fill="rgba(248,244,228,.35)"/>
-            </svg>
-          </div>
-          <span class="brand-app-name" style="font-family:'Spectral',Georgia,serif;font-weight:500;color:#F8F4E4">Lumers Flow</span>
-        </div>
-
-        <div class="auth-brand-body">
-          <div class="auth-brand-eyebrow">BPO Financeiro</div>
-          <h1 class="auth-brand-heading">
-            Visão clara sobre seu<br>
-            <em>fluxo financeiro</em>
-          </h1>
-          <p class="auth-brand-desc">
-            Centralize receitas, despesas e metas em um só lugar. Tome decisões com dados reais, não intuição.
-          </p>
-          <div class="auth-brand-pills">
-            <span class="auth-brand-pill">
-              <i data-lucide="layout-dashboard" style="width:14px;height:14px"></i>
-              <span class="auth-pill-text">Dashboard em tempo real</span>
-            </span>
-            <span class="auth-brand-pill">
-              <i data-lucide="target" style="width:14px;height:14px"></i>
-              <span class="auth-pill-text">Metas e cobertura de despesas</span>
-            </span>
-            <span class="auth-brand-pill">
-              <i data-lucide="repeat" style="width:14px;height:14px"></i>
-              <span class="auth-pill-text">Recorrências automáticas</span>
-            </span>
-          </div>
-        </div>
-
-        <div id="auth-brand-copyright" style="font-size:.7rem;color:rgba(248,244,228,.3);font-weight:500">
-          © 2026 Lumers BPO Financeiro
-        </div>
-      </div>
-
-      <!-- Form Panel (right) -->
-      <div class="auth-form-panel">
-
-        <!-- Hero mobile: visível apenas em telas ≤ 768px -->
-        <div class="auth-hero-mobile">
-          <div class="brand-logo-container" data-variant="auth"></div>
-          <span class="brand-app-name auth-hero-name">Lumers Flow</span>
-          <p class="auth-hero-tagline">BPO Financeiro — Gestão Inteligente</p>
-        </div>
-
-        <div class="auth-form-inner">
-          <div class="brand-logo-container" data-variant="auth-form" style="display:none;margin-bottom:24px"></div>
-
-          <div id="auth-title" class="auth-form-title">Entrar</div>
-          <div class="auth-form-subtitle">Bem-vindo de volta ao Lumers Flow</div>
-
-          <div id="auth-name-group" class="form-group" style="display:none">
-            <label class="form-label">Nome</label>
-            <input id="auth-name" class="form-control" type="text" placeholder="Seu nome" autocomplete="name">
-          </div>
-          <div id="auth-phone-group" class="form-group" style="display:none">
-            <label class="form-label">WhatsApp (DDI + DDD + número)</label>
-            <input id="auth-phone" class="form-control" type="tel" inputmode="numeric" placeholder="Ex: 5561999990000">
-          </div>
-          <div class="form-group">
-            <label class="form-label">E-mail</label>
-            <input id="auth-email" class="form-control" type="email" placeholder="seu@email.com" autocomplete="email"
-              onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
-          </div>
-          <div id="auth-password-group" class="form-group">
-            <label class="form-label">Senha</label>
-            <input id="auth-password" class="form-control" type="password" placeholder="••••••••" autocomplete="current-password"
-              onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
-          </div>
-          <div id="auth-forgot-link" style="text-align:right;margin-top:4px;margin-bottom:16px">
-            <a href="#" onclick="toggleForgotMode(event)" style="font-size:.85rem;color:var(--primary-600);font-weight:600;min-height:44px;display:inline-flex;align-items:center">Esqueci minha senha</a>
-          </div>
-          <div id="auth-confirm-group" class="form-group" style="display:none">
-            <label class="form-label">Confirmar senha</label>
-            <input id="auth-confirm" class="form-control" type="password" placeholder="••••••••" autocomplete="new-password">
+        <!-- ── Painel Visual (esquerda) ── -->
+        <section class="auth-visual">
+          <div class="auth-visual-brand">
+            <div class="brand-logo-container" data-variant="auth">
+              <svg width="32" height="32" viewBox="0 0 28 28" fill="none">
+                <rect width="28" height="28" rx="8" fill="rgba(248,244,228,.15)"/>
+                <rect x="7" y="13" width="14" height="2" rx="1" fill="#F8F4E4"/>
+                <rect x="7" y="9" width="9" height="2" rx="1" fill="rgba(248,244,228,.55)"/>
+                <rect x="7" y="17" width="11" height="2" rx="1" fill="rgba(248,244,228,.35)"/>
+              </svg>
+            </div>
+            <span class="brand-app-name" style="font-family:'Spectral',Georgia,serif;font-weight:500;color:#F8F4E4">Lumers Flow</span>
           </div>
 
-          <button id="auth-submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center;margin-top:4px" onclick="submitAuth()">
-            Entrar no Lumers Flow
-          </button>
+          <div class="auth-visual-body">
+            <div class="auth-brand-eyebrow">BPO Financeiro</div>
+            <h1 class="auth-brand-heading">
+              Visão clara sobre seu<br>
+              <em>fluxo financeiro</em>
+            </h1>
+            <p class="auth-brand-desc">
+              Centralize receitas, despesas e metas em um só lugar. Tome decisões com dados reais, não intuição.
+            </p>
+            <div class="auth-brand-pills">
+              <span class="auth-brand-pill">
+                <i data-lucide="layout-dashboard" style="width:13px;height:13px"></i>
+                <span class="auth-pill-text">Dashboard em tempo real</span>
+              </span>
+              <span class="auth-brand-pill">
+                <i data-lucide="target" style="width:13px;height:13px"></i>
+                <span class="auth-pill-text">Metas e cobertura de despesas</span>
+              </span>
+              <span class="auth-brand-pill">
+                <i data-lucide="repeat" style="width:13px;height:13px"></i>
+                <span class="auth-pill-text">Recorrências automáticas</span>
+              </span>
+            </div>
+          </div>
 
-          <p id="auth-toggle-row" style="text-align:center;margin-top:20px;font-size:.875rem;color:var(--text-muted);display:none">
-            <span id="auth-toggle-text">Não tem conta?</span>
-            <a href="#" id="auth-toggle" onclick="toggleAuthMode(event)" style="color:var(--primary-600);margin-left:4px;font-weight:600">Criar conta</a>
-          </p>
-        </div>
+          <div id="auth-brand-copyright" class="auth-visual-footer">
+            © 2026 Lumers BPO Financeiro
+          </div>
+        </section>
+
+        <!-- ── Painel do Formulário (direita) ── -->
+        <section class="auth-form-panel">
+          <div class="auth-form-inner">
+            <div class="brand-logo-container" data-variant="auth-form" style="display:none;margin-bottom:24px"></div>
+
+            <div id="auth-title" class="auth-form-title">Entrar</div>
+            <div class="auth-form-subtitle">Bem-vindo de volta ao Lumers Flow</div>
+
+            <div id="auth-name-group" class="form-group" style="display:none">
+              <label class="form-label">Nome</label>
+              <div class="input-box">
+                <i data-lucide="user" style="width:16px;height:16px"></i>
+                <input id="auth-name" type="text" placeholder="Seu nome" autocomplete="name"
+                  onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
+              </div>
+            </div>
+            <div id="auth-phone-group" class="form-group" style="display:none">
+              <label class="form-label">WhatsApp (DDI + DDD + número)</label>
+              <div class="input-box">
+                <i data-lucide="phone" style="width:16px;height:16px"></i>
+                <input id="auth-phone" type="tel" inputmode="numeric" placeholder="Ex: 5561999990000">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">E-mail</label>
+              <div class="input-box">
+                <i data-lucide="mail" style="width:16px;height:16px"></i>
+                <input id="auth-email" type="email" placeholder="seu@email.com" autocomplete="email"
+                  onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
+              </div>
+            </div>
+            <div id="auth-password-group" class="form-group">
+              <label class="form-label">Senha</label>
+              <div class="input-box">
+                <i data-lucide="lock" style="width:16px;height:16px"></i>
+                <input id="auth-password" type="password" placeholder="••••••••" autocomplete="current-password"
+                  onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
+              </div>
+            </div>
+            <div id="auth-forgot-link" style="text-align:right;margin-top:4px;margin-bottom:16px">
+              <a href="#" onclick="toggleForgotMode(event)">Esqueci minha senha</a>
+            </div>
+            <div id="auth-confirm-group" class="form-group" style="display:none">
+              <label class="form-label">Confirmar senha</label>
+              <div class="input-box">
+                <i data-lucide="lock" style="width:16px;height:16px"></i>
+                <input id="auth-confirm" type="password" placeholder="••••••••" autocomplete="new-password">
+              </div>
+            </div>
+
+            <button id="auth-submit" class="auth-submit-btn" onclick="submitAuth()">
+              Entrar no Lumers Flow
+            </button>
+
+            <p id="auth-toggle-row" style="text-align:center;margin-top:20px;font-size:.875rem;color:var(--text-muted);display:none">
+              <span id="auth-toggle-text">Não tem conta?</span>
+              <a href="#" id="auth-toggle" onclick="toggleAuthMode(event)" style="color:var(--primary-600);margin-left:4px;font-weight:600">Criar conta</a>
+            </p>
+          </div>
+        </section>
+
       </div>
     </div>
   </div>

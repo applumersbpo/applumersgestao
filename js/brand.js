@@ -274,48 +274,44 @@ function _applyLoginConfig(cfg) {
   const layout = cfg.loginLayout || 'split';
   authLayout.setAttribute('data-login-layout', layout);
 
-  // Background image — goes on brand panel (split) or on the layout itself (fullbg)
+  // Background image — vai no painel visual (split) ou no layout inteiro (fullbg)
   const bgImg      = cfg.loginPanelBgImage || '';
   const panelColor = (cfg.loginPanelBg && /^#[0-9a-fA-F]{6}$/.test(cfg.loginPanelBg)) ? cfg.loginPanelBg : '';
-  const brandPanel = authLayout.querySelector('.auth-brand-panel');
+  const visualPanel = authLayout.querySelector('.auth-visual');
 
-  if (brandPanel && layout !== 'fullbg') {
+  if (visualPanel && layout !== 'fullbg') {
     if (panelColor && bgImg) {
-      // Solid color base + image on top
-      brandPanel.style.background           = panelColor;
-      brandPanel.style.backgroundImage      = `url(${bgImg})`;
-      brandPanel.style.backgroundSize       = 'cover';
-      brandPanel.style.backgroundPosition   = 'center';
+      visualPanel.style.background         = panelColor;
+      visualPanel.style.backgroundImage    = `url(${bgImg})`;
+      visualPanel.style.backgroundSize     = 'cover';
+      visualPanel.style.backgroundPosition = 'center';
     } else if (panelColor) {
-      // Solid color only — replaces gradient
-      brandPanel.style.background           = panelColor;
-      brandPanel.style.backgroundImage      = 'none';
-      brandPanel.style.backgroundSize       = '';
-      brandPanel.style.backgroundPosition   = '';
+      visualPanel.style.background         = panelColor;
+      visualPanel.style.backgroundImage    = 'none';
+      visualPanel.style.backgroundSize     = '';
+      visualPanel.style.backgroundPosition = '';
     } else if (bgImg) {
-      // Image on top of CSS gradient (layered)
-      brandPanel.style.background           = '';
-      brandPanel.style.backgroundImage      = [
+      visualPanel.style.background         = '';
+      visualPanel.style.backgroundImage    = [
         `url(${bgImg})`,
-        'radial-gradient(circle, rgba(248,244,228,.055) 1px, transparent 1px)',
-        'radial-gradient(ellipse 60% 70% at 30% 80%, rgba(212,162,76,.22) 0%, transparent 60%)',
-        'radial-gradient(ellipse 50% 50% at 80% 20%, rgba(22,93,98,.28) 0%, transparent 55%)',
+        'radial-gradient(circle at 72% 68%, rgba(212,162,76,.6) 0%, transparent 38%)',
+        'radial-gradient(circle at 18% 28%, rgba(22,93,98,.45) 0%, transparent 35%)',
+        'linear-gradient(155deg, #132018 0%, #1c2a20 45%, #3A5A40 100%)',
       ].join(',');
-      brandPanel.style.backgroundSize       = 'cover, 26px 26px, auto, auto';
-      brandPanel.style.backgroundPosition   = 'center, 0 0, 50% 80%, 80% 20%';
+      visualPanel.style.backgroundSize     = 'cover, auto, auto, auto';
+      visualPanel.style.backgroundPosition = 'center, 72% 68%, 18% 28%, center';
     } else {
-      // Default — reset to CSS-defined gradient
-      brandPanel.style.background           = '';
-      brandPanel.style.backgroundImage      = '';
-      brandPanel.style.backgroundSize       = '';
-      brandPanel.style.backgroundPosition   = '';
+      visualPanel.style.background         = '';
+      visualPanel.style.backgroundImage    = '';
+      visualPanel.style.backgroundSize     = '';
+      visualPanel.style.backgroundPosition = '';
     }
-  } else if (brandPanel) {
-    brandPanel.style.background = '';
-    brandPanel.style.backgroundImage = '';
+  } else if (visualPanel) {
+    visualPanel.style.background      = '';
+    visualPanel.style.backgroundImage = '';
   }
 
-  // Full-bg layout: apply background image to the whole layout div
+  // fullbg: imagem de fundo no layout inteiro
   if (layout === 'fullbg' && bgImg) {
     authLayout.style.backgroundImage = `url(${bgImg})`;
   } else {
@@ -332,7 +328,7 @@ function _applyLoginConfig(cfg) {
     }
   }
 
-  // Brand panel texts
+  // Textos do painel visual
   const eyebrow = authLayout.querySelector('.auth-brand-eyebrow');
   if (eyebrow && cfg.loginBrandEyebrow) eyebrow.textContent = cfg.loginBrandEyebrow;
 
@@ -341,10 +337,6 @@ function _applyLoginConfig(cfg) {
 
   const desc = authLayout.querySelector('.auth-brand-desc');
   if (desc && cfg.loginBrandDesc) desc.textContent = cfg.loginBrandDesc;
-
-  // Mobile hero tagline
-  const tagline = authLayout.querySelector('.auth-hero-tagline');
-  if (tagline && cfg.loginHeroTagline) tagline.textContent = cfg.loginHeroTagline;
 
   // Form card title (only if in login mode — don't override signup/forgot states)
   const titleEl = document.getElementById('auth-title');

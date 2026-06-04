@@ -317,33 +317,52 @@ function _rebuildAuthCard() {
     <div class="auth-form-subtitle">Bem-vindo de volta ao Lumers Flow</div>
     <div id="auth-name-group" class="form-group" style="display:none">
       <label class="form-label">Nome</label>
-      <input id="auth-name" class="form-control" type="text" placeholder="Seu nome" autocomplete="name">
+      <div class="input-box">
+        <i data-lucide="user" style="width:16px;height:16px"></i>
+        <input id="auth-name" type="text" placeholder="Seu nome" autocomplete="name"
+          onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
+      </div>
     </div>
     <div id="auth-phone-group" class="form-group" style="display:none">
       <label class="form-label">WhatsApp (DDI + DDD + número)</label>
-      <input id="auth-phone" class="form-control" type="tel" inputmode="numeric" placeholder="Ex: 5561999990000">
+      <div class="input-box">
+        <i data-lucide="phone" style="width:16px;height:16px"></i>
+        <input id="auth-phone" type="tel" inputmode="numeric" placeholder="Ex: 5561999990000">
+      </div>
     </div>
     <div class="form-group">
       <label class="form-label">E-mail</label>
-      <input id="auth-email" class="form-control" type="email" placeholder="seu@email.com" autocomplete="email" onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
+      <div class="input-box">
+        <i data-lucide="mail" style="width:16px;height:16px"></i>
+        <input id="auth-email" type="email" placeholder="seu@email.com" autocomplete="email"
+          onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
+      </div>
     </div>
     <div id="auth-password-group" class="form-group">
       <label class="form-label">Senha</label>
-      <input id="auth-password" class="form-control" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
+      <div class="input-box">
+        <i data-lucide="lock" style="width:16px;height:16px"></i>
+        <input id="auth-password" type="password" placeholder="••••••••" autocomplete="current-password"
+          onkeydown="if(event.key==='Enter')document.getElementById('auth-submit').click()">
+      </div>
     </div>
     <div id="auth-forgot-link" style="text-align:right;margin-top:4px;margin-bottom:16px">
-      <a href="#" onclick="toggleForgotMode(event)" style="font-size:.85rem;color:var(--primary-600);font-weight:600;min-height:44px;display:inline-flex;align-items:center">Esqueci minha senha</a>
+      <a href="#" onclick="toggleForgotMode(event)">Esqueci minha senha</a>
     </div>
     <div id="auth-confirm-group" class="form-group" style="display:none">
       <label class="form-label">Confirmar senha</label>
-      <input id="auth-confirm" class="form-control" type="password" placeholder="••••••••" autocomplete="new-password">
+      <div class="input-box">
+        <i data-lucide="lock" style="width:16px;height:16px"></i>
+        <input id="auth-confirm" type="password" placeholder="••••••••" autocomplete="new-password">
+      </div>
     </div>
-    <button id="auth-submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center;margin-top:4px" onclick="submitAuth()">Entrar no Lumers Flow</button>
+    <button id="auth-submit" class="auth-submit-btn" onclick="submitAuth()">Entrar no Lumers Flow</button>
     <p id="auth-toggle-row" style="text-align:center;margin-top:20px;font-size:.875rem;color:var(--text-muted);display:${_registerAllowed ? '' : 'none'}">
       <span id="auth-toggle-text">Não tem conta?</span>
       <a href="#" id="auth-toggle" onclick="toggleAuthMode(event)" style="color:var(--primary-600);margin-left:4px;font-weight:600">Criar conta</a>
     </p>`;
   _authMode = 'login';
+  if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [card] });
 }
 
 function _checkResetToken() {
