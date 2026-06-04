@@ -47,6 +47,17 @@ const _BRAND_DEFAULTS = {
   annualSummaryAccent:'#D4A24C',
   logoData:      'lumers-flow-logotipo.png',
   faviconData:   'favicon-lumers-flow.png',
+  // Login screen customization
+  loginLayout:       'split',
+  loginPanelBg:      '',
+  loginFormBg:       '',
+  loginPanelBgImage: '',
+  loginBrandEyebrow: '',
+  loginBrandHeading: '',
+  loginBrandDesc:    '',
+  loginHeroTagline:  '',
+  loginTitle:        '',
+  loginSubtitle:     '',
 };
 
 let _brand = { ..._BRAND_DEFAULTS };
@@ -199,6 +210,7 @@ function _applyCssVars(cfg) {
 function _applyBrand(cfg) {
   _brand = _normalizeBrand(cfg);
   _applyCssVars(_brand);
+  _applyLoginConfig(_brand);
 
   const name    = _brand.appName || _BRAND_DEFAULTS.appName;
   const hasLogo = !!_brand.logoData;
@@ -247,6 +259,83 @@ function _applyBrand(cfg) {
       if (isAuth) container.style.cssText = 'margin:0 auto 10px;display:block;width:fit-content';
     }
   });
+}
+
+// ── Configuração da tela de login ─────────────────────────────────────────────
+
+function _applyLoginConfig(cfg) {
+  const authLayout = document.querySelector('.auth-layout');
+  if (!authLayout) return;
+
+  const layout = cfg.loginLayout || 'split';
+  authLayout.setAttribute('data-login-layout', layout);
+
+  // Background image — goes on brand panel (split) or on the layout itself (fullbg)
+  const bgImg      = cfg.loginPanelBgImage || '';
+  const brandPanel = authLayout.querySelector('.auth-brand-panel');
+  if (brandPanel) {
+    if (bgImg && layout === 'split') {
+      brandPanel.style.backgroundImage = [
+        `url(${bgImg})`,
+        'radial-gradient(circle, rgba(248,244,228,.055) 1px, transparent 1px)',
+        'radial-gradient(ellipse 60% 70% at 30% 80%, rgba(212,162,76,.22) 0%, transparent 60%)',
+        'radial-gradient(ellipse 50% 50% at 80% 20%, rgba(22,93,98,.28) 0%, transparent 55%)',
+      ].join(',');
+      brandPanel.style.backgroundSize     = 'cover, 26px 26px, auto, auto';
+      brandPanel.style.backgroundPosition = 'center, 0 0, 50% 80%, 80% 20%';
+    } else {
+      brandPanel.style.backgroundImage   = '';
+      brandPanel.style.backgroundSize    = '';
+      brandPanel.style.backgroundPosition = '';
+    }
+    // Optional solid color override for brand panel
+    if (cfg.loginPanelBg && /^#[0-9a-fA-F]{6}$/.test(cfg.loginPanelBg)) {
+      brandPanel.style.backgroundColor = cfg.loginPanelBg;
+    } else {
+      brandPanel.style.backgroundColor = '';
+    }
+  }
+
+  // Full-bg layout: apply background image to the whole layout div
+  if (layout === 'fullbg' && bgImg) {
+    authLayout.style.backgroundImage = `url(${bgImg})`;
+  } else {
+    authLayout.style.backgroundImage = '';
+  }
+
+  // Form panel background color
+  const formPanel = authLayout.querySelector('.auth-form-panel');
+  if (formPanel) {
+    if (cfg.loginFormBg && /^#[0-9a-fA-F]{6}$/.test(cfg.loginFormBg)) {
+      formPanel.style.background = cfg.loginFormBg;
+    } else {
+      formPanel.style.background = '';
+    }
+  }
+
+  // Brand panel texts
+  const eyebrow = authLayout.querySelector('.auth-brand-eyebrow');
+  if (eyebrow && cfg.loginBrandEyebrow) eyebrow.textContent = cfg.loginBrandEyebrow;
+
+  const heading = authLayout.querySelector('.auth-brand-heading');
+  if (heading && cfg.loginBrandHeading) heading.textContent = cfg.loginBrandHeading;
+
+  const desc = authLayout.querySelector('.auth-brand-desc');
+  if (desc && cfg.loginBrandDesc) desc.textContent = cfg.loginBrandDesc;
+
+  // Mobile hero tagline
+  const tagline = authLayout.querySelector('.auth-hero-tagline');
+  if (tagline && cfg.loginHeroTagline) tagline.textContent = cfg.loginHeroTagline;
+
+  // Form card title (only if in login mode — don't override signup/forgot states)
+  const titleEl = document.getElementById('auth-title');
+  if (titleEl && titleEl.textContent === 'Entrar' && cfg.loginTitle) {
+    titleEl.textContent = cfg.loginTitle;
+  }
+
+  // Form card subtitle
+  const subtitleEl = authLayout.querySelector('.auth-form-subtitle');
+  if (subtitleEl && cfg.loginSubtitle) subtitleEl.textContent = cfg.loginSubtitle;
 }
 
 // ── API pública ───────────────────────────────────────────────────────────────

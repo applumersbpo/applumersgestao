@@ -1,6 +1,10 @@
 // ── Estado temporário do editor de brand ──────────────────────────────────────
-let _pendingLogoData    = ''; // base64 ou URL do logo (sessão atual)
-let _pendingFaviconData = ''; // base64 ou URL do favicon (sessão atual)
+let _pendingLogoData     = ''; // base64 ou URL do logo (sessão atual)
+let _pendingFaviconData  = ''; // base64 ou URL do favicon (sessão atual)
+let _pendingLoginBgData  = ''; // base64 ou URL da imagem de fundo da tela de login
+
+// ── Mídia fixada para mensagens em massa ──────────────────────────────────────
+let _stickyMsgMedia = null; // { base64, type, name, size } — persiste entre aberturas do modal
 
 // ── Render Admin Dashboard ────────────────────────────────────────────────────
 
@@ -477,6 +481,7 @@ async function renderAdminSystem() {
     // Reseta pendentes ao entrar na página
     _pendingLogoData    = '';
     _pendingFaviconData = '';
+    _pendingLoginBgData = '';
 
     const allowReg = sysCfg.allow_registration === '1';
 
@@ -1099,20 +1104,7 @@ function openAdminMessageModal(preSelectedIds = []) {
           <!-- Mídia -->
           <div class="form-group" style="margin:0">
             <label class="form-label">Mídia (opcional)</label>
-            <div id="msg-media-preview" style="display:none;background:var(--bg-subtle);border-radius:var(--r-md);padding:9px 12px;margin-bottom:8px;align-items:center;gap:8px">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
-              <span id="msg-media-name" style="font-size:.82rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-              <button class="btn btn-icon btn-ghost" style="width:24px;height:24px" onclick="_adminMsgClearMedia()">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-            <label class="btn btn-sm btn-outline" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
-              ${icon('paperclip', 13)} Anexar arquivo
-              <input type="file" id="msg-file" style="display:none"
-                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
-                onchange="_adminMsgFileSelected(this)">
-            </label>
-            <div style="font-size:.72rem;color:var(--text-muted);margin-top:5px">Fotos, vídeos, áudios, PDF, Word, Excel…</div>
+            <div id="msg-media-section"></div>
           </div>
 
           <div id="msg-result"></div>
@@ -1128,6 +1120,7 @@ function openAdminMessageModal(preSelectedIds = []) {
   `);
 
   _renderMsgRecipients('');
+  _renderMsgMediaSection();
 }
 
 // Helper to open for a single user (avoids JSON-in-onclick)
@@ -1223,20 +1216,69 @@ function _adminMsgTemplate(idx) {
   if (t) document.getElementById('msg-text').value = t.text;
 }
 
-function _adminMsgFileSelected(input) {
+async function _adminMsgFileSelected(input) {
   const file = input.files?.[0];
   if (!file) return;
-  const preview = document.getElementById('msg-media-preview');
-  const nameEl  = document.getElementById('msg-media-name');
-  if (preview) preview.style.display = 'flex';
-  if (nameEl)  nameEl.textContent = `${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
+  try {
+    const base64 = await _fileToBase64(file);
+    _stickyMsgMedia = { base64, type: _detectMediaType(file), name: file.name, size: file.size };
+    _renderMsgMediaSection();
+  } catch(e) {
+    toast('Erro ao carregar arquivo', 'error');
+  }
 }
 
-function _adminMsgClearMedia() {
-  const input = document.getElementById('msg-file');
-  if (input) input.value = '';
-  const preview = document.getElementById('msg-media-preview');
-  if (preview) preview.style.display = 'none';
+function _clearStickyMedia() {
+  _stickyMsgMedia = null;
+  _renderMsgMediaSection();
+}
+
+function _renderMsgMediaSection() {
+  const sec = document.getElementById('msg-media-section');
+  if (!sec) return;
+  if (_stickyMsgMedia) {
+    const isImage = _stickyMsgMedia.type === 'image';
+    sec.innerHTML = `
+      <div style="background:var(--bg-subtle);border-radius:var(--r-md);padding:10px 12px;
+        display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        ${isImage
+          ? `<img src="${_stickyMsgMedia.base64}" alt=""
+              style="width:48px;height:48px;object-fit:cover;border-radius:var(--r-sm);
+              border:1px solid var(--border);flex-shrink:0">`
+          : `<div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;
+              background:var(--primary-light,#DDE7D8);border-radius:var(--r-sm);flex-shrink:0;font-size:1.5rem">📎</div>`}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.83rem;font-weight:600;color:var(--text);overflow:hidden;
+            text-overflow:ellipsis;white-space:nowrap">${_escHtml(_stickyMsgMedia.name)}</div>
+          <div style="font-size:.72rem;color:var(--income-text,#166534);margin-top:2px">
+            ${(_stickyMsgMedia.size / 1024).toFixed(0)} KB &bull; <em>Fixada — será reutilizada automaticamente</em>
+          </div>
+        </div>
+        <label style="cursor:pointer;flex-shrink:0" title="Substituir imagem">
+          <span class="btn btn-sm btn-outline" style="pointer-events:none;font-size:.78rem">Substituir</span>
+          <input type="file" style="display:none"
+            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
+            onchange="_adminMsgFileSelected(this)">
+        </label>
+        <button class="btn btn-icon btn-ghost" onclick="_clearStickyMedia()" title="Remover mídia"
+          style="width:28px;height:28px;flex-shrink:0">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>`;
+  } else {
+    sec.innerHTML = `
+      <label class="btn btn-sm btn-outline" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+        ${icon('paperclip', 13)} Anexar arquivo
+        <input type="file" style="display:none"
+          accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
+          onchange="_adminMsgFileSelected(this)">
+      </label>
+      <div style="font-size:.72rem;color:var(--text-muted);margin-top:5px">
+        Fotos, vídeos, áudios, PDF, Word, Excel… A imagem fica fixada para a próxima mensagem.
+      </div>`;
+  }
 }
 
 function _fileToBase64(file) {
@@ -1259,23 +1301,21 @@ function _detectMediaType(file) {
 async function _sendAdminMessage() {
   const userIds  = [...(window._adminMsgSelected || new Set())];
   const text     = document.getElementById('msg-text')?.value?.trim() || '';
-  const fileInput = document.getElementById('msg-file');
-  const file     = fileInput?.files?.[0] || null;
   const resultEl = document.getElementById('msg-result');
   const btn      = document.getElementById('msg-send-btn');
 
   if (!userIds.length) { toast('Selecione ao menos um destinatário', 'error'); return; }
-  if (!text && !file)  { toast('Digite uma mensagem ou anexe um arquivo', 'error'); return; }
+  if (!text && !_stickyMsgMedia) { toast('Digite uma mensagem ou anexe um arquivo', 'error'); return; }
 
   btn.disabled = true;
   btn.innerHTML = icon('loader', 14) + ' Enviando…';
 
   try {
     let media_base64 = null, media_type = null, media_name = null;
-    if (file) {
-      media_base64 = await _fileToBase64(file);
-      media_type   = _detectMediaType(file);
-      media_name   = file.name;
+    if (_stickyMsgMedia) {
+      media_base64 = _stickyMsgMedia.base64;
+      media_type   = _stickyMsgMedia.type;
+      media_name   = _stickyMsgMedia.name;
     }
 
     const res = await _api('POST', '/admin/users', {
@@ -1473,6 +1513,79 @@ function _adminBrandSection(cfg) {
       ${mediaField('b-logo', 'Logotipo', 'PNG, SVG, JPEG, WEBP — recomendado fundo transparente. Máx 4MB.', c.logoData)}
       ${mediaField('b-favicon', 'Favicon', 'PNG 32×32 ou ICO — ícone da aba do navegador. Máx 4MB.', c.faviconData)}
 
+      ${sep('Tela de Login')}
+
+      <!-- Seletor de layout -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:.75rem;font-weight:600;color:var(--text-muted);letter-spacing:.01em;display:block;margin-bottom:8px">Layout</label>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          ${[
+            { v: 'split',    emoji: '◧', title: 'Dividido',     desc: 'Painel + formulário' },
+            { v: 'centered', emoji: '⊡', title: 'Centralizado', desc: 'Formulário no centro' },
+            { v: 'fullbg',   emoji: '▣', title: 'Fundo total',  desc: 'Imagem de fundo' },
+          ].map(({ v, emoji, title, desc }) => {
+            const active = (c.loginLayout || 'split') === v;
+            return `
+              <label style="cursor:pointer">
+                <input type="radio" name="login-layout" value="${v}" ${active ? 'checked' : ''}
+                  style="display:none" onchange="_onLoginLayoutChange('${v}')">
+                <div class="login-layout-card" data-layout="${v}"
+                  style="border:2px solid ${active ? 'var(--primary)' : 'var(--border)'};
+                  background:${active ? 'var(--primary-light,#DDE7D8)' : 'var(--surface)'};
+                  border-radius:var(--r-md);padding:12px 8px;text-align:center;
+                  cursor:pointer;transition:border-color .15s,background .15s">
+                  <div style="font-size:1.4rem;margin-bottom:6px">${emoji}</div>
+                  <div style="font-size:.8rem;font-weight:700;color:var(--text)">${title}</div>
+                  <div style="font-size:.7rem;color:var(--text-muted);margin-top:3px;line-height:1.3">${desc}</div>
+                </div>
+              </label>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Imagem de fundo (painel esq. no layout split, fundo total no fullbg) -->
+      ${mediaField('b-login-bg', 'Imagem de fundo', 'Usada no painel esquerdo (layout Dividido) ou como fundo total (layout Fundo total). PNG, JPG, WEBP — Máx 4MB.', c.loginPanelBgImage)}
+
+      <!-- Cores opcionais -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:8px">
+        ${colorField('loginPanelBg', 'Cor do painel (opcional)', c.loginPanelBg || '#3A5A40', 'Substitui o gradiente verde do painel esquerdo')}
+        ${colorField('loginFormBg',  'Cor de fundo do formulário', c.loginFormBg || '#FFFFFF', 'Cor de fundo da área do formulário')}
+      </div>
+
+      <!-- Textos do painel esquerdo -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px">Textos do Painel Esquerdo</div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label" style="font-size:.76rem">Eyebrow (subtítulo pequeno acima do título)</label>
+          <input id="b-login-eyebrow" class="form-control" value="${_escHtml(c.loginBrandEyebrow || '')}" placeholder="ex: BPO Financeiro">
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label" style="font-size:.76rem">Título principal</label>
+          <input id="b-login-heading" class="form-control" value="${_escHtml(c.loginBrandHeading || '')}" placeholder="ex: Visão clara sobre seu fluxo financeiro">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" style="font-size:.76rem">Descrição</label>
+          <textarea id="b-login-desc" class="form-control" rows="2" placeholder="ex: Centralize receitas, despesas e metas em um só lugar.">${_escHtml(c.loginBrandDesc || '')}</textarea>
+        </div>
+      </div>
+
+      <!-- Textos do formulário -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px">Textos do Formulário</div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label" style="font-size:.76rem">Título do formulário</label>
+          <input id="b-login-title" class="form-control" value="${_escHtml(c.loginTitle || '')}" placeholder="ex: Entrar">
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label" style="font-size:.76rem">Subtítulo do formulário</label>
+          <input id="b-login-subtitle" class="form-control" value="${_escHtml(c.loginSubtitle || '')}" placeholder="ex: Bem-vindo de volta ao Lumers Flow">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" style="font-size:.76rem">Tagline (mobile — aparece no banner verde do topo)</label>
+          <input id="b-login-tagline" class="form-control" value="${_escHtml(c.loginHeroTagline || '')}" placeholder="ex: BPO Financeiro — Gestão Inteligente">
+        </div>
+      </div>
+
       ${sep('Cores da Marca')}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:8px">
         ${colorField('primary',      'Cor primária',    c.primary,      'Base do sistema — botões, links, ativo')}
@@ -1578,6 +1691,8 @@ function _initBrandEditor() {
     'annualCardHeader', 'annualReceiver', 'annualPayer', 'annualOverdue',
     'annualSaldoPos', 'annualSaldoNeg', 'annualSaldoZero',
     'annualBorder', 'annualSummaryAccent',
+    // Login screen
+    'loginPanelBg', 'loginFormBg',
   ];
 
   colorIds.forEach(id => {
@@ -1608,6 +1723,20 @@ function _initBrandEditor() {
       if (dp) dp.value = v;
       if (dt) dt.value = v;
     });
+  });
+}
+
+// ── Seletor de layout de login ────────────────────────────────────────────────
+
+function _onLoginLayoutChange(value) {
+  // Marca o radio correto
+  const radio = document.querySelector(`input[name="login-layout"][value="${value}"]`);
+  if (radio) radio.checked = true;
+  // Atualiza estilo visual dos cards
+  document.querySelectorAll('.login-layout-card').forEach(card => {
+    const active = card.dataset.layout === value;
+    card.style.borderColor = active ? 'var(--primary)' : 'var(--border)';
+    card.style.background  = active ? 'var(--primary-light,#DDE7D8)' : 'var(--surface)';
   });
 }
 
@@ -1647,13 +1776,16 @@ async function _onMediaFile(input, fieldId) {
   if (label) { label.textContent = 'Processando...'; label.style.color = 'var(--text-muted)'; }
 
   try {
-    const isLogo   = fieldId === 'b-logo';
-    const maxW     = isLogo ? 512 : 64;
-    const maxH     = isLogo ? 512 : 64;
-    const data     = await _compressImage(file, maxW, maxH);
+    const isLogo     = fieldId === 'b-logo';
+    const isLoginBg  = fieldId === 'b-login-bg';
+    const maxW       = (isLogo || isLoginBg) ? 1920 : 64;
+    const maxH       = (isLogo || isLoginBg) ? 1920 : 64;
+    const data       = await _compressImage(file, maxW, maxH);
 
     if (isLogo) {
       _pendingLogoData = data;
+    } else if (isLoginBg) {
+      _pendingLoginBgData = data;
     } else {
       _pendingFaviconData = data;
     }
@@ -1673,10 +1805,13 @@ async function _onMediaFile(input, fieldId) {
 
 function _onMediaUrl(input, fieldId) {
   const url = input.value.trim();
-  // Arquivo previamente carregado é descartado se o user digitar URL
   if (fieldId === 'b-logo') {
     _pendingLogoData = '';
     const lbl = document.getElementById('b-logo-file-label');
+    if (lbl) lbl.textContent = '';
+  } else if (fieldId === 'b-login-bg') {
+    _pendingLoginBgData = '';
+    const lbl = document.getElementById('b-login-bg-file-label');
     if (lbl) lbl.textContent = '';
   } else {
     _pendingFaviconData = '';
@@ -1750,6 +1885,17 @@ function _collectBrandForm() {
     annualSummaryAccent: gt('annualSummaryAccent'),
     logoData:      _pendingLogoData    || logoUrl,
     faviconData:   _pendingFaviconData || faviconUrl,
+    // Login config
+    loginLayout:       document.querySelector('input[name="login-layout"]:checked')?.value || 'split',
+    loginPanelBg:      (document.getElementById('bt-loginPanelBg')?.value || '').trim(),
+    loginFormBg:       (document.getElementById('bt-loginFormBg')?.value  || '').trim(),
+    loginPanelBgImage: _pendingLoginBgData || document.getElementById('b-login-bg-url')?.value.trim() || '',
+    loginBrandEyebrow: document.getElementById('b-login-eyebrow')?.value.trim() || '',
+    loginBrandHeading: document.getElementById('b-login-heading')?.value.trim() || '',
+    loginBrandDesc:    document.getElementById('b-login-desc')?.value.trim() || '',
+    loginTitle:        document.getElementById('b-login-title')?.value.trim() || '',
+    loginSubtitle:     document.getElementById('b-login-subtitle')?.value.trim() || '',
+    loginHeroTagline:  document.getElementById('b-login-tagline')?.value.trim() || '',
   };
 }
 
@@ -1816,6 +1962,24 @@ function _populateBrandForm(cfg) {
   const favUrlEl      = document.getElementById('b-favicon-url');
   if (favUrlEl) favUrlEl.value = c.faviconData?.startsWith('data:') ? '' : (c.faviconData || '');
   _showMediaPreview('b-favicon', c.faviconData || '');
+
+  // Login config
+  _onLoginLayoutChange(c.loginLayout || 'split');
+  if (c.loginPanelBg) set('loginPanelBg', c.loginPanelBg);
+  if (c.loginFormBg)  set('loginFormBg',  c.loginFormBg);
+
+  _pendingLoginBgData = c.loginPanelBgImage?.startsWith('data:') ? c.loginPanelBgImage : '';
+  const loginBgUrlEl  = document.getElementById('b-login-bg-url');
+  if (loginBgUrlEl) loginBgUrlEl.value = c.loginPanelBgImage?.startsWith('data:') ? '' : (c.loginPanelBgImage || '');
+  _showMediaPreview('b-login-bg', c.loginPanelBgImage || '');
+
+  const stv = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+  stv('b-login-eyebrow', c.loginBrandEyebrow);
+  stv('b-login-heading', c.loginBrandHeading);
+  stv('b-login-desc',    c.loginBrandDesc);
+  stv('b-login-title',   c.loginTitle);
+  stv('b-login-subtitle',c.loginSubtitle);
+  stv('b-login-tagline', c.loginHeroTagline);
 }
 
 // ── Ações ─────────────────────────────────────────────────────────────────────
@@ -1829,6 +1993,7 @@ function _resetBrandConfig() {
   if (!confirm('Restaurar todos os padrões visuais? A pré-visualização será aplicada mas não salva até você clicar em "Salvar tudo".')) return;
   _pendingLogoData    = '';
   _pendingFaviconData = '';
+  _pendingLoginBgData = '';
   _populateBrandForm(getBrandDefaults());
   _applyBrand(getBrandDefaults());
   toast('Padrões restaurados (pré-visualizando). Clique em Salvar tudo para confirmar.', 'success');
@@ -1837,7 +2002,7 @@ function _resetBrandConfig() {
 async function saveBrandConfig() {
   const cfg = _collectBrandForm();
 
-  // Valida hexadecimais
+  // Valida hexadecimais obrigatórios
   const hexFields = ['primary','primaryDark','primaryLight','income','incomeLight',
     'expense','expenseLight','warning','warningLight','bg','surface','border',
     'text','textMuted','sidebarBg','sidebarText','sidebarActive',
@@ -1854,6 +2019,13 @@ async function saveBrandConfig() {
       return;
     }
   }
+  // Valida hexadecimais opcionais (login)
+  for (const f of ['loginPanelBg', 'loginFormBg']) {
+    if (cfg[f] && !hexRe.test(cfg[f])) {
+      toast(`Cor inválida em "${f}". Use o formato #rrggbb`, 'error');
+      return;
+    }
+  }
 
   const btn = document.querySelector('[onclick="saveBrandConfig()"]');
   if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
@@ -1862,6 +2034,7 @@ async function saveBrandConfig() {
     await saveBrand(cfg);
     _pendingLogoData    = '';
     _pendingFaviconData = '';
+    _pendingLoginBgData = '';
     toast('Identidade visual salva com sucesso!', 'success');
   } catch(e) {
     toast('Erro ao salvar: ' + (e.message || 'falha'), 'error');

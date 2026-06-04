@@ -400,6 +400,74 @@ input, select, textarea { font: inherit; }
   .auth-hero-name { font-size: 1.4rem; }
 }
 
+/* ── Login Layout: centered ── */
+.auth-layout[data-login-layout="centered"] .auth-brand-panel { display: none !important; }
+.auth-layout[data-login-layout="centered"] {
+  justify-content: center;
+  align-items: center;
+}
+.auth-layout[data-login-layout="centered"] .auth-form-panel {
+  flex: none;
+  width: 100%;
+  max-width: 520px;
+  border-left: none;
+  justify-content: center;
+}
+@media (max-width: 768px) {
+  .auth-layout[data-login-layout="centered"] .auth-hero-mobile { display: none; }
+  .auth-layout[data-login-layout="centered"] .auth-form-panel {
+    justify-content: center;
+    align-items: center;
+    padding: 40px 24px;
+  }
+  .auth-layout[data-login-layout="centered"] .auth-form-inner {
+    max-width: 400px;
+    margin: 0 auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-xl);
+    box-shadow: var(--shadow-md);
+    padding: 36px 32px;
+  }
+}
+
+/* ── Login Layout: fullbg ── */
+.auth-layout[data-login-layout="fullbg"] .auth-brand-panel { display: none !important; }
+.auth-layout[data-login-layout="fullbg"] {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  position: relative;
+}
+.auth-layout[data-login-layout="fullbg"]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.auth-layout[data-login-layout="fullbg"] .auth-form-panel {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  border-left: none;
+  justify-content: center;
+  align-items: center;
+}
+.auth-layout[data-login-layout="fullbg"] .auth-form-inner {
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(8px);
+}
+@media (max-width: 768px) {
+  .auth-layout[data-login-layout="fullbg"] .auth-hero-mobile { display: none; }
+  .auth-layout[data-login-layout="fullbg"] .auth-form-panel { padding: 40px 24px; }
+  .auth-layout[data-login-layout="fullbg"] .auth-form-inner {
+    max-width: 400px;
+    margin: 0 auto;
+    border-radius: var(--r-xl);
+  }
+}
+
 /* ── Layout ── */
 #app {
   display: flex;

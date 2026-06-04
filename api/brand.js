@@ -53,6 +53,17 @@ const DEFAULTS = {
   annualSummaryAccent: '#D4A24C',
   logoData:      'lumers-flow-logotipo.png',
   faviconData:   'favicon-lumers-flow.png',
+  // Login screen customization
+  loginLayout:       'split',
+  loginPanelBg:      '',
+  loginFormBg:       '',
+  loginPanelBgImage: '',
+  loginBrandEyebrow: '',
+  loginBrandHeading: '',
+  loginBrandDesc:    '',
+  loginHeroTagline:  '',
+  loginTitle:        '',
+  loginSubtitle:     '',
 };
 
 export default async function handler(req, res) {
@@ -95,16 +106,21 @@ export default async function handler(req, res) {
         'bottomNavBg', 'bottomNavText', 'bottomNavActive', 'bottomNavHover',
         'annualCardHeader', 'annualReceiver', 'annualPayer', 'annualOverdue',
         'annualSaldoPos', 'annualSaldoNeg', 'annualSaldoZero',
-        'annualBorder', 'annualSummaryAccent'];
+        'annualBorder', 'annualSummaryAccent',
+        // Login screen
+        'loginLayout', 'loginPanelBg', 'loginFormBg',
+        'loginBrandEyebrow', 'loginBrandHeading', 'loginBrandDesc',
+        'loginHeroTagline', 'loginTitle', 'loginSubtitle'];
 
       const cfg = {};
       for (const f of textFields) {
         cfg[f] = typeof body[f] === 'string' ? body[f].slice(0, 200) : (DEFAULTS[f] || '');
       }
 
-      // logoData e faviconData podem ser base64 ou URLs
-      cfg.logoData    = typeof body.logoData    === 'string' ? body.logoData.slice(0, 4_000_000)    : '';
-      cfg.faviconData = typeof body.faviconData === 'string' ? body.faviconData.slice(0, 4_000_000) : '';
+      // Campos de mídia: podem ser base64 ou URLs
+      cfg.logoData          = typeof body.logoData          === 'string' ? body.logoData.slice(0, 4_000_000)          : '';
+      cfg.faviconData       = typeof body.faviconData       === 'string' ? body.faviconData.slice(0, 4_000_000)       : '';
+      cfg.loginPanelBgImage = typeof body.loginPanelBgImage === 'string' ? body.loginPanelBgImage.slice(0, 4_000_000) : '';
 
       const value = JSON.stringify(cfg);
 
