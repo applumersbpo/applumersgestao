@@ -216,7 +216,7 @@ async function importBankCatalog() {
     await db.banks.add({
       name:       entry.name,
       code:       entry.code,
-      logo_url:   bankLogoUrl(entry.path),
+      logo_url:   entry.logo_url || '',
       notes:      '',
       published:  1,
       user_id:    userId,
