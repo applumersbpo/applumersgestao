@@ -149,6 +149,14 @@ const app = {
     const y = this.currentYear;
 
     try {
+      // Super admin vai direto para o painel admin, não para o dashboard pessoal
+      const _authUser = pb.authStore.model || pb.authStore.record;
+      const _isSuperAdmin = _authUser?.role === 'super_admin' || _authUser?.email === 'applumergestao@gmail.com';
+      if (this.currentPage === 'dashboard' && _isSuperAdmin) {
+        location.hash = '#/admin';
+        return;
+      }
+
       switch (this.currentPage) {
         case 'dashboard':  await renderDashboard(m, y);  break;
   

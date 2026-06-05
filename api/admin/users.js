@@ -46,46 +46,62 @@ export default async function handler(req, res) {
         { rows: topBankRows },
         { rows: recentTxRows },
       ] = await Promise.all([
-        db.execute('SELECT COUNT(*) as total FROM users'),
-        db.execute("SELECT COALESCE(SUM(monthly_fee),0) as mrr FROM user_plans WHERE active=1"),
+        // Total de usuários comuns (não admins)
+        db.execute('SELECT COUNT(*) as total FROM users WHERE is_admin = 0'),
+        // MRR apenas de usuários comuns
+        db.execute("SELECT COALESCE(SUM(up.monthly_fee),0) as mrr FROM user_plans up INNER JOIN users u ON u.id=up.user_id WHERE up.active=1 AND u.is_admin=0"),
+        // Receitas e despesas apenas de usuários comuns
         db.execute(`SELECT
-          SUM(CASE WHEN transaction_type='income' THEN amount ELSE 0 END) as total_income,
-          SUM(CASE WHEN transaction_type IN ('expense','general','daily','installment') THEN amount ELSE 0 END) as total_expense
-          FROM transactions`),
+          SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE 0 END) as total_income,
+          SUM(CASE WHEN t.transaction_type IN ('expense','general','daily','installment') THEN t.amount ELSE 0 END) as total_expense
+          FROM transactions t
+          INNER JOIN users u ON u.id = t.user_id
+          WHERE u.is_admin = 0`),
+        // Lista de usuários comuns com seus dados financeiros
         db.execute(`SELECT u.id, u.name, u.email, u.phone, u.role, u.is_admin, u.last_login, u.created_at,
           COUNT(t.id) as tx_count,
           COALESCE(SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE 0 END),0) as total_income,
           COALESCE(SUM(CASE WHEN t.transaction_type IN ('expense','general','daily','installment') THEN t.amount ELSE 0 END),0) as total_expense
           FROM users u
           LEFT JOIN transactions t ON t.user_id=u.id
+          WHERE u.is_admin = 0
           GROUP BY u.id
           ORDER BY tx_count DESC`),
+        // Bancos usados por usuários comuns
         db.execute(`SELECT a.bank_name, COUNT(DISTINCT a.user_id) as user_count,
           COUNT(*) as account_count,
           COALESCE(SUM(a.initial_balance),0) as total_balance
           FROM accounts a
-          WHERE a.bank_name != ''
+          INNER JOIN users u ON u.id = a.user_id
+          WHERE a.bank_name != '' AND u.is_admin = 0
           GROUP BY a.bank_name
           ORDER BY account_count DESC
           LIMIT 10`),
-        db.execute(`SELECT id, name, email, last_login FROM users WHERE last_login IS NOT NULL ORDER BY last_login DESC LIMIT 1`),
+        // Último usuário comum ativo
+        db.execute(`SELECT id, name, email, last_login FROM users WHERE last_login IS NOT NULL AND is_admin = 0 ORDER BY last_login DESC LIMIT 1`),
+        // Categorias mais usadas por usuários comuns
         db.execute(`SELECT c.name, COUNT(t.id) as count
           FROM transactions t
+          INNER JOIN users u ON u.id = t.user_id
           LEFT JOIN categories c ON c.id = t.category_id
-          WHERE c.name IS NOT NULL
+          WHERE c.name IS NOT NULL AND u.is_admin = 0
           GROUP BY c.id, c.name
           ORDER BY count DESC
           LIMIT 5`),
+        // Bancos mais usados por usuários comuns
         db.execute(`SELECT a.bank_name as name, COUNT(*) as count
           FROM accounts a
-          WHERE a.bank_name != ''
+          INNER JOIN users u ON u.id = a.user_id
+          WHERE a.bank_name != '' AND u.is_admin = 0
           GROUP BY a.bank_name
           ORDER BY count DESC
           LIMIT 5`),
+        // Movimentações recentes de usuários comuns
         db.execute(`SELECT t.id, t.amount, t.transaction_type as type, t.name as description, t.created_at,
           u.name as user_name, u.email as user_email
           FROM transactions t
-          LEFT JOIN users u ON u.id = t.user_id
+          INNER JOIN users u ON u.id = t.user_id
+          WHERE u.is_admin = 0
           ORDER BY t.created_at DESC
           LIMIT 10`),
       ]);
