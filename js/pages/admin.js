@@ -186,6 +186,60 @@ function _renderAdminDashHtml(stats) {
   // ── Dashboard Blocks ──────────────────────────────────────────────────────
   const lockBtn = () => `<button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)" title="Travar posição"><i data-lucide="lock-open" style="width:13px;height:13px"></i></button>`;
 
+  const blockUsers = `
+    <div class="admin-dash-block" data-block-id="users" draggable="true">
+      <div class="admin-dash-block-header">
+        <span class="admin-dash-block-title"><i data-lucide="users" style="width:12px;height:12px"></i> Total de Usuários</span>
+        ${lockBtn()}
+      </div>
+      <div class="admin-dash-block-body">
+        <div class="admin-dash-block-value" id="admin-stat-users-block">${stats.total_users || 0}</div>
+        <div class="admin-dash-block-sub" id="admin-stat-wpp-block">${withPhone} com WhatsApp</div>
+      </div>
+    </div>`;
+
+  const blockValue = `
+    <div class="admin-dash-block" data-block-id="value" draggable="true">
+      <div class="admin-dash-block-header">
+        <span class="admin-dash-block-title"><i data-lucide="activity" style="width:12px;height:12px"></i> Valor em Movimento</span>
+        ${lockBtn()}
+      </div>
+      <div class="admin-dash-block-body">
+        <div class="admin-dash-block-value" id="admin-stat-value" style="font-size:1.5rem">${fmt(totalMove)}</div>
+        <div class="admin-dash-block-sub">
+          <span style="color:var(--income-text)">↑ ${fmt(stats.total_income || 0)}</span>
+          &nbsp;·&nbsp;
+          <span style="color:var(--expense)">↓ ${fmt(stats.total_expense || 0)}</span>
+        </div>
+      </div>
+    </div>`;
+
+  const blockLastActive = `
+    <div class="admin-dash-block" data-block-id="last-active" draggable="true">
+      <div class="admin-dash-block-header">
+        <span class="admin-dash-block-title"><i data-lucide="clock" style="width:12px;height:12px"></i> Último Ativo</span>
+        ${lockBtn()}
+      </div>
+      <div class="admin-dash-block-body">
+        <div class="admin-dash-block-value" id="admin-stat-last-active-block" style="font-size:1.1rem;word-break:break-word">
+          ${lastUser ? _escHtml(lastUser.name || lastUser.email || '—') : '—'}
+        </div>
+        <div class="admin-dash-block-sub" id="admin-stat-last-active-time-block">${lastUser ? _timeAgo(lastUser.last_login) : '—'}</div>
+      </div>
+    </div>`;
+
+  const blockMrr = `
+    <div class="admin-dash-block" data-block-id="mrr" draggable="true">
+      <div class="admin-dash-block-header">
+        <span class="admin-dash-block-title"><i data-lucide="dollar-sign" style="width:12px;height:12px"></i> MRR</span>
+        ${lockBtn()}
+      </div>
+      <div class="admin-dash-block-body">
+        <div class="admin-dash-block-value" id="admin-stat-mrr-block" style="font-size:1.5rem">${fmt(stats.mrr || 0)}</div>
+        <div class="admin-dash-block-sub">receita mensal recorrente</div>
+      </div>
+    </div>`;
+
   const blockCats = `
     <div class="admin-dash-block" data-block-id="categories" draggable="true">
       <div class="admin-dash-block-header">
@@ -283,6 +337,10 @@ function _renderAdminDashHtml(stats) {
     </div>
     ${kpiRow}
     <div class="admin-dash-grid" id="admin-dash-grid">
+      ${blockUsers}
+      ${blockValue}
+      ${blockLastActive}
+      ${blockMrr}
       ${blockCats}
       ${blockBanks}
       ${blockRecent}
@@ -296,6 +354,7 @@ function _updateAdminDashValues(stats) {
   const withPhone = allUsers.filter(u => u.phone && _hasValidDDI(u.phone)).length;
   const balance   = (stats.total_income || 0) - (stats.total_expense || 0);
 
+  // KPI row
   if (el('admin-stat-users'))           el('admin-stat-users').textContent  = stats.total_users || 0;
   if (el('admin-stat-wpp'))             el('admin-stat-wpp').textContent    = `${withPhone} com WhatsApp`;
   if (el('admin-stat-income'))          el('admin-stat-income').textContent = fmt(stats.total_income || 0);
@@ -306,9 +365,18 @@ function _updateAdminDashValues(stats) {
   }
   if (el('admin-stat-mrr'))             el('admin-stat-mrr').textContent   = fmt(stats.mrr || 0);
 
+  // Draggable blocks
+  const totalMove = (stats.total_income || 0) + (stats.total_expense || 0);
+  if (el('admin-stat-users-block'))     el('admin-stat-users-block').textContent = stats.total_users || 0;
+  if (el('admin-stat-wpp-block'))       el('admin-stat-wpp-block').textContent   = `${withPhone} com WhatsApp`;
+  if (el('admin-stat-value'))           el('admin-stat-value').textContent        = fmt(totalMove);
+  if (el('admin-stat-mrr-block'))       el('admin-stat-mrr-block').textContent    = fmt(stats.mrr || 0);
+
   const lastUser = stats.last_active_user;
-  if (el('admin-stat-last-active'))      el('admin-stat-last-active').textContent      = lastUser ? ((lastUser.name || lastUser.email || '—').split(' ')[0]) : '—';
-  if (el('admin-stat-last-active-time')) el('admin-stat-last-active-time').textContent = lastUser ? _timeAgo(lastUser.last_login) : '—';
+  if (el('admin-stat-last-active'))           el('admin-stat-last-active').textContent           = lastUser ? ((lastUser.name || lastUser.email || '—').split(' ')[0]) : '—';
+  if (el('admin-stat-last-active-time'))      el('admin-stat-last-active-time').textContent      = lastUser ? _timeAgo(lastUser.last_login) : '—';
+  if (el('admin-stat-last-active-block'))     el('admin-stat-last-active-block').textContent     = lastUser ? (lastUser.name || lastUser.email || '—') : '—';
+  if (el('admin-stat-last-active-time-block'))el('admin-stat-last-active-time-block').textContent= lastUser ? _timeAgo(lastUser.last_login) : '—';
 
   const topCats = stats.top_categories || [];
   if (el('admin-stat-cats')) {
