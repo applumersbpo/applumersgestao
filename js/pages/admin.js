@@ -83,6 +83,25 @@ function _timeAgo(dateStr) {
   return `há ${days} dia${days !== 1 ? 's' : ''}`;
 }
 
+// ── Admin Nav Bar ─────────────────────────────────────────────────────────────
+
+function _adminNavBar(active) {
+  const _user = pb.authStore.model;
+  const isSuperAdmin = _user?.role === 'super_admin' || _user?.email === 'applumergestao@gmail.com';
+  const tabs = [
+    { id: 'dashboard', href: '#/admin',        lucide: 'layout-dashboard', label: 'Dashboard' },
+    { id: 'users',     href: '#/admin-users',  lucide: 'users',            label: 'Usuários'  },
+    { id: 'plans',     href: '#/admin-plans',  lucide: 'credit-card',      label: 'Planos'    },
+  ];
+  if (isSuperAdmin) tabs.push({ id: 'system', href: '#/admin-system', lucide: 'settings', label: 'Sistema' });
+  return `<nav class="admin-nav-tabs">${tabs.map(t => `
+    <a href="${t.href}" class="admin-nav-tab${active === t.id ? ' active' : ''}" onclick="event.preventDefault();location.hash='${t.href.slice(1)}'">
+      <i data-lucide="${t.lucide}" style="width:14px;height:14px"></i>
+      <span>${t.label}</span>
+    </a>`).join('')}
+  </nav>`;
+}
+
 // ── Render Admin Dashboard ────────────────────────────────────────────────────
 
 async function renderAdmin() {
@@ -116,69 +135,74 @@ async function renderAdmin() {
 }
 
 function _renderAdminDashHtml(stats) {
-  const content = document.getElementById('content');
+  const content  = document.getElementById('content');
   const lastUser = stats.last_active_user;
-  const topCats  = stats.top_categories  || [];
-  const topBanks = stats.top_banks       || [];
+  const topCats  = stats.top_categories     || [];
+  const topBanks = stats.top_banks          || [];
   const recentTx = stats.recent_transactions || [];
-  const allUsers = stats.users || [];
+  const allUsers = stats.users              || [];
 
-  const blockUsers = `
-    <div class="admin-dash-block" data-block-id="users" draggable="true">
-      <div class="admin-dash-block-header">
-        <span class="admin-dash-block-title">${icon('users',12)} Total de Usuários</span>
-        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
-      </div>
-      <div class="admin-dash-block-body">
-        <div class="admin-dash-block-value" id="admin-stat-users">${stats.total_users || 0}</div>
-        <div class="admin-dash-block-sub">usuários cadastrados</div>
-      </div>
-    </div>`;
+  const withPhone  = allUsers.filter(u => u.phone && _hasValidDDI(u.phone)).length;
+  const totalMove  = (stats.total_income || 0) + (stats.total_expense || 0);
+  const balance    = (stats.total_income || 0) - (stats.total_expense || 0);
 
-  const totalMove = (stats.total_income || 0) + (stats.total_expense || 0);
-  const blockValue = `
-    <div class="admin-dash-block" data-block-id="value" draggable="true">
-      <div class="admin-dash-block-header">
-        <span class="admin-dash-block-title">${icon('activity',12)} Valor em Movimento</span>
-        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
+  // ── KPI Row ──────────────────────────────────────────────────────────────
+  const kpiRow = `
+    <div class="admin-kpi-row" id="admin-kpi-row">
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-label"><i data-lucide="users" style="width:12px;height:12px"></i> Usuários</div>
+        <div class="admin-kpi-value" id="admin-stat-users">${stats.total_users || 0}</div>
+        <div class="admin-kpi-sub" id="admin-stat-wpp">${withPhone} com WhatsApp</div>
       </div>
-      <div class="admin-dash-block-body">
-        <div class="admin-dash-block-value" id="admin-stat-value" style="font-size:1.4rem">${fmt(totalMove)}</div>
-        <div class="admin-dash-block-sub">
-          <span style="color:var(--income)">${icon('trending-up',11)} ${fmt(stats.total_income || 0)}</span>
-          &nbsp;·&nbsp;
-          <span style="color:var(--expense)">${icon('trending-down',11)} ${fmt(stats.total_expense || 0)}</span>
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-label"><i data-lucide="trending-up" style="width:12px;height:12px"></i> Receitas</div>
+        <div class="admin-kpi-value" id="admin-stat-income" style="color:var(--income-text)">${fmt(stats.total_income || 0)}</div>
+        <div class="admin-kpi-sub">total acumulado</div>
+      </div>
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-label"><i data-lucide="trending-down" style="width:12px;height:12px"></i> Despesas</div>
+        <div class="admin-kpi-value" id="admin-stat-expense" style="color:var(--expense)">${fmt(stats.total_expense || 0)}</div>
+        <div class="admin-kpi-sub">total acumulado</div>
+      </div>
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-label"><i data-lucide="activity" style="width:12px;height:12px"></i> Saldo geral</div>
+        <div class="admin-kpi-value" id="admin-stat-balance" style="color:${balance >= 0 ? 'var(--income-text)' : 'var(--expense)'}">${balance >= 0 ? '+' : ''}${fmt(balance)}</div>
+        <div class="admin-kpi-sub">receita − despesa</div>
+      </div>
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-label"><i data-lucide="dollar-sign" style="width:12px;height:12px"></i> MRR</div>
+        <div class="admin-kpi-value" id="admin-stat-mrr">${fmt(stats.mrr || 0)}</div>
+        <div class="admin-kpi-sub">receita recorrente</div>
+      </div>
+      <div class="admin-kpi-card">
+        <div class="admin-kpi-label"><i data-lucide="clock" style="width:12px;height:12px"></i> Último acesso</div>
+        <div class="admin-kpi-value" id="admin-stat-last-active" style="font-size:1rem;word-break:break-word">
+          ${lastUser ? _escHtml((lastUser.name || lastUser.email || '—').split(' ')[0]) : '—'}
         </div>
+        <div class="admin-kpi-sub" id="admin-stat-last-active-time">${lastUser ? _timeAgo(lastUser.last_login) : '—'}</div>
       </div>
     </div>`;
 
-  const blockLastActive = `
-    <div class="admin-dash-block" data-block-id="last-active" draggable="true">
-      <div class="admin-dash-block-header">
-        <span class="admin-dash-block-title">${icon('clock',12)} Último Ativo</span>
-        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
-      </div>
-      <div class="admin-dash-block-body">
-        <div class="admin-dash-block-value" id="admin-stat-last-active" style="font-size:1.1rem;word-break:break-word">
-          ${lastUser ? _escHtml(lastUser.name || lastUser.email || '—') : '—'}
-        </div>
-        <div class="admin-dash-block-sub" id="admin-stat-last-active-time">${lastUser ? _timeAgo(lastUser.last_login) : '—'}</div>
-      </div>
-    </div>`;
+  // ── Dashboard Blocks ──────────────────────────────────────────────────────
+  const lockBtn = () => `<button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)" title="Travar posição"><i data-lucide="lock-open" style="width:13px;height:13px"></i></button>`;
 
   const blockCats = `
     <div class="admin-dash-block" data-block-id="categories" draggable="true">
       <div class="admin-dash-block-header">
-        <span class="admin-dash-block-title">${icon('tags',12)} Categorias Mais Usadas</span>
-        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
+        <span class="admin-dash-block-title"><i data-lucide="tags" style="width:12px;height:12px"></i> Categorias mais usadas</span>
+        ${lockBtn()}
       </div>
       <div class="admin-dash-block-body" id="admin-stat-cats">
         ${topCats.length === 0
-          ? '<p style="color:var(--text-muted);font-size:.85rem">Sem dados</p>'
-          : topCats.map(c => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
-              <span style="font-size:.85rem">${_escHtml(c.name)}</span>
-              <span style="font-size:.8rem;font-weight:700;color:var(--primary)">${c.count}×</span>
+          ? '<p style="color:var(--text-muted);font-size:.85rem;padding:8px 0">Sem dados ainda</p>'
+          : topCats.map((c,i) => `
+            <div class="admin-dash-list-row">
+              <span style="display:flex;align-items:center;gap:6px">
+                <span style="font-size:.7rem;font-weight:700;color:var(--text-muted);min-width:14px">${i+1}.</span>
+                <span>${_escHtml(c.name)}</span>
+              </span>
+              <span style="font-size:.78rem;font-weight:700;background:var(--primary-light);color:var(--primary-600);
+                padding:2px 8px;border-radius:10px">${c.count}×</span>
             </div>`).join('')}
       </div>
     </div>`;
@@ -186,74 +210,79 @@ function _renderAdminDashHtml(stats) {
   const blockBanks = `
     <div class="admin-dash-block" data-block-id="banks" draggable="true">
       <div class="admin-dash-block-header">
-        <span class="admin-dash-block-title">${icon('landmark',12)} Bancos Mais Usados</span>
-        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
+        <span class="admin-dash-block-title"><i data-lucide="landmark" style="width:12px;height:12px"></i> Bancos mais usados</span>
+        ${lockBtn()}
       </div>
       <div class="admin-dash-block-body" id="admin-stat-banks">
         ${topBanks.length === 0
-          ? '<p style="color:var(--text-muted);font-size:.85rem">Sem dados</p>'
-          : topBanks.map(b => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
-              <span style="font-size:.85rem">${_escHtml(b.name)}</span>
-              <span style="font-size:.8rem;font-weight:700;color:var(--primary)">${b.count}×</span>
+          ? '<p style="color:var(--text-muted);font-size:.85rem;padding:8px 0">Sem dados ainda</p>'
+          : topBanks.map((b,i) => `
+            <div class="admin-dash-list-row">
+              <span style="display:flex;align-items:center;gap:6px">
+                <span style="font-size:.7rem;font-weight:700;color:var(--text-muted);min-width:14px">${i+1}.</span>
+                <span>${_escHtml(b.name)}</span>
+              </span>
+              <span style="font-size:.78rem;font-weight:700;background:var(--bg-subtle);color:var(--text-muted);
+                padding:2px 8px;border-radius:10px">${b.count}×</span>
             </div>`).join('')}
       </div>
     </div>`;
 
   const blockRecent = `
-    <div class="admin-dash-block" data-block-id="recent-tx" draggable="true" style="grid-column:span 2">
+    <div class="admin-dash-block admin-dash-wide" data-block-id="recent-tx" draggable="true">
       <div class="admin-dash-block-header">
-        <span class="admin-dash-block-title">${icon('list',12)} Movimentações Recentes</span>
-        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
+        <span class="admin-dash-block-title"><i data-lucide="list" style="width:12px;height:12px"></i> Movimentações recentes</span>
+        ${lockBtn()}
       </div>
-      <div class="admin-dash-block-body" id="admin-stat-recent-tx" style="overflow-x:auto">
+      <div class="admin-dash-block-body" id="admin-stat-recent-tx">
         ${recentTx.length === 0
-          ? '<p style="color:var(--text-muted);font-size:.85rem">Sem movimentações recentes</p>'
-          : `<table style="width:100%;border-collapse:collapse;font-size:.82rem">
-              <thead>
-                <tr style="color:var(--text-muted);font-size:.75rem;border-bottom:1px solid var(--border)">
-                  <th style="padding:4px 8px;text-align:left;font-weight:600">Usuário</th>
-                  <th style="padding:4px 8px;text-align:left;font-weight:600">Descrição</th>
-                  <th style="padding:4px 8px;text-align:right;font-weight:600">Valor</th>
-                  <th style="padding:4px 8px;text-align:left;font-weight:600">Data</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${recentTx.map(t => `
-                  <tr style="border-bottom:1px solid var(--border)">
-                    <td style="padding:5px 8px">${_escHtml(t.user_name || t.user_email || '—')}</td>
-                    <td style="padding:5px 8px;color:var(--text-muted)">${_escHtml(t.description || '—')}</td>
-                    <td style="padding:5px 8px;text-align:right;font-weight:600;color:${t.type === 'income' ? 'var(--income)' : 'var(--expense)'}">
-                      ${t.type === 'income' ? '+' : '-'}${fmt(t.amount || 0)}
-                    </td>
-                    <td style="padding:5px 8px;color:var(--text-muted);font-size:.75rem">${t.created_at ? fmtDate(t.created_at) : '—'}</td>
-                  </tr>`).join('')}
-              </tbody>
-            </table>`}
+          ? '<p style="color:var(--text-muted);font-size:.85rem;padding:8px 0">Sem movimentações recentes</p>'
+          : `<div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:.81rem;min-width:400px">
+                <thead>
+                  <tr style="border-bottom:2px solid var(--border)">
+                    <th style="padding:5px 8px;text-align:left;font-weight:600;color:var(--text-muted);font-size:.72rem;text-transform:uppercase">Usuário</th>
+                    <th style="padding:5px 8px;text-align:left;font-weight:600;color:var(--text-muted);font-size:.72rem;text-transform:uppercase">Descrição</th>
+                    <th style="padding:5px 8px;text-align:right;font-weight:600;color:var(--text-muted);font-size:.72rem;text-transform:uppercase">Valor</th>
+                    <th style="padding:5px 8px;text-align:left;font-weight:600;color:var(--text-muted);font-size:.72rem;text-transform:uppercase">Data</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${recentTx.map(t => `
+                    <tr style="border-bottom:1px solid var(--border)">
+                      <td style="padding:6px 8px;font-weight:500">${_escHtml(t.user_name || t.user_email || '—')}</td>
+                      <td style="padding:6px 8px;color:var(--text-muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_escHtml(t.description || '—')}</td>
+                      <td style="padding:6px 8px;text-align:right;font-weight:700;color:${t.type === 'income' ? 'var(--income-text)' : 'var(--expense)'}">
+                        ${t.type === 'income' ? '+' : '−'}${fmt(t.amount || 0)}
+                      </td>
+                      <td style="padding:6px 8px;color:var(--text-muted);font-size:.75rem;white-space:nowrap">${t.created_at ? fmtDate(t.created_at) : '—'}</td>
+                    </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>`}
       </div>
     </div>`;
 
   const blockMap = `
-    <div class="admin-dash-block admin-dash-block-map" data-block-id="map" draggable="true" style="grid-column:span 2">
+    <div class="admin-dash-block admin-dash-block-map admin-dash-wide" data-block-id="map" draggable="true">
       <div class="admin-dash-block-header">
-        <span class="admin-dash-block-title">${icon('map-pin',12)} Localização por DDD</span>
-        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
+        <span class="admin-dash-block-title"><i data-lucide="map-pin" style="width:12px;height:12px"></i> Distribuição geográfica (por DDD)</span>
+        ${lockBtn()}
       </div>
-      <div id="admin-map-leaflet" style="height:240px;border-radius:var(--r-md);overflow:hidden"></div>
+      <div class="admin-dash-block-body">
+        <div id="admin-map-leaflet"></div>
+      </div>
     </div>`;
 
+  const now = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   content.innerHTML = `
-    <!-- Quick links -->
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
-      <a href="#/admin-users" class="btn btn-primary btn-sm">${icon('users',14)} Gerenciar Usuários</a>
-      <a href="#/admin-plans" class="btn btn-secondary btn-sm">${icon('credit-card',14)} Planos de Assinatura</a>
-      <a href="#/admin-system" class="btn btn-outline btn-sm">${icon('settings',14)} Configurações do Sistema</a>
-      <a href="#/banks" class="btn btn-outline btn-sm">${icon('landmark',14)} Bancos (Admin)</a>
+    ${_adminNavBar('dashboard')}
+    <div class="admin-refresh-badge" id="admin-refresh-badge">
+      <i data-lucide="refresh-cw" style="width:11px;height:11px"></i>
+      Atualizado às ${now} · auto-refresh 30s
     </div>
+    ${kpiRow}
     <div class="admin-dash-grid" id="admin-dash-grid">
-      ${blockUsers}
-      ${blockValue}
-      ${blockLastActive}
       ${blockCats}
       ${blockBanks}
       ${blockRecent}
@@ -263,58 +292,85 @@ function _renderAdminDashHtml(stats) {
 
 function _updateAdminDashValues(stats) {
   const el = id => document.getElementById(id);
-  if (el('admin-stat-users'))           el('admin-stat-users').textContent = stats.total_users || 0;
-  if (el('admin-stat-value'))           el('admin-stat-value').textContent = fmt((stats.total_income || 0) + (stats.total_expense || 0));
+  const allUsers = stats.users || [];
+  const withPhone = allUsers.filter(u => u.phone && _hasValidDDI(u.phone)).length;
+  const balance   = (stats.total_income || 0) - (stats.total_expense || 0);
+
+  if (el('admin-stat-users'))           el('admin-stat-users').textContent  = stats.total_users || 0;
+  if (el('admin-stat-wpp'))             el('admin-stat-wpp').textContent    = `${withPhone} com WhatsApp`;
+  if (el('admin-stat-income'))          el('admin-stat-income').textContent = fmt(stats.total_income || 0);
+  if (el('admin-stat-expense'))         el('admin-stat-expense').textContent= fmt(stats.total_expense || 0);
+  if (el('admin-stat-balance')) {
+    el('admin-stat-balance').textContent = (balance >= 0 ? '+' : '') + fmt(balance);
+    el('admin-stat-balance').style.color = balance >= 0 ? 'var(--income-text)' : 'var(--expense)';
+  }
+  if (el('admin-stat-mrr'))             el('admin-stat-mrr').textContent   = fmt(stats.mrr || 0);
 
   const lastUser = stats.last_active_user;
-  if (el('admin-stat-last-active'))      el('admin-stat-last-active').textContent = lastUser ? (lastUser.name || lastUser.email || '—') : '—';
+  if (el('admin-stat-last-active'))      el('admin-stat-last-active').textContent      = lastUser ? ((lastUser.name || lastUser.email || '—').split(' ')[0]) : '—';
   if (el('admin-stat-last-active-time')) el('admin-stat-last-active-time').textContent = lastUser ? _timeAgo(lastUser.last_login) : '—';
 
   const topCats = stats.top_categories || [];
   if (el('admin-stat-cats')) {
     el('admin-stat-cats').innerHTML = topCats.length === 0
-      ? '<p style="color:var(--text-muted);font-size:.85rem">Sem dados</p>'
-      : topCats.map(c => `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
-          <span style="font-size:.85rem">${_escHtml(c.name)}</span>
-          <span style="font-size:.8rem;font-weight:700;color:var(--primary)">${c.count}×</span>
+      ? '<p style="color:var(--text-muted);font-size:.85rem;padding:8px 0">Sem dados ainda</p>'
+      : topCats.map((c,i) => `<div class="admin-dash-list-row">
+          <span style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:.7rem;font-weight:700;color:var(--text-muted);min-width:14px">${i+1}.</span>
+            <span>${_escHtml(c.name)}</span>
+          </span>
+          <span style="font-size:.78rem;font-weight:700;background:var(--primary-light);color:var(--primary-600);padding:2px 8px;border-radius:10px">${c.count}×</span>
         </div>`).join('');
   }
 
   const topBanks = stats.top_banks || [];
   if (el('admin-stat-banks')) {
     el('admin-stat-banks').innerHTML = topBanks.length === 0
-      ? '<p style="color:var(--text-muted);font-size:.85rem">Sem dados</p>'
-      : topBanks.map(b => `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
-          <span style="font-size:.85rem">${_escHtml(b.name)}</span>
-          <span style="font-size:.8rem;font-weight:700;color:var(--primary)">${b.count}×</span>
+      ? '<p style="color:var(--text-muted);font-size:.85rem;padding:8px 0">Sem dados ainda</p>'
+      : topBanks.map((b,i) => `<div class="admin-dash-list-row">
+          <span style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:.7rem;font-weight:700;color:var(--text-muted);min-width:14px">${i+1}.</span>
+            <span>${_escHtml(b.name)}</span>
+          </span>
+          <span style="font-size:.78rem;font-weight:700;background:var(--bg-subtle);color:var(--text-muted);padding:2px 8px;border-radius:10px">${b.count}×</span>
         </div>`).join('');
   }
 
   const recentTx = stats.recent_transactions || [];
   if (el('admin-stat-recent-tx')) {
     el('admin-stat-recent-tx').innerHTML = recentTx.length === 0
-      ? '<p style="color:var(--text-muted);font-size:.85rem">Sem movimentações recentes</p>'
-      : `<table style="width:100%;border-collapse:collapse;font-size:.82rem">
-          <thead>
-            <tr style="color:var(--text-muted);font-size:.75rem;border-bottom:1px solid var(--border)">
-              <th style="padding:4px 8px;text-align:left;font-weight:600">Usuário</th>
-              <th style="padding:4px 8px;text-align:left;font-weight:600">Descrição</th>
-              <th style="padding:4px 8px;text-align:right;font-weight:600">Valor</th>
-              <th style="padding:4px 8px;text-align:left;font-weight:600">Data</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${recentTx.map(t => `
-              <tr style="border-bottom:1px solid var(--border)">
-                <td style="padding:5px 8px">${_escHtml(t.user_name || t.user_email || '—')}</td>
-                <td style="padding:5px 8px;color:var(--text-muted)">${_escHtml(t.description || '—')}</td>
-                <td style="padding:5px 8px;text-align:right;font-weight:600;color:${t.type === 'income' ? 'var(--income)' : 'var(--expense)'}">
-                  ${t.type === 'income' ? '+' : '-'}${fmt(t.amount || 0)}
-                </td>
-                <td style="padding:5px 8px;color:var(--text-muted);font-size:.75rem">${t.created_at ? fmtDate(t.created_at) : '—'}</td>
-              </tr>`).join('')}
-          </tbody>
-        </table>`;
+      ? '<p style="color:var(--text-muted);font-size:.85rem;padding:8px 0">Sem movimentações recentes</p>'
+      : `<div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:.81rem;min-width:400px">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border)">
+                <th style="padding:5px 8px;text-align:left;font-weight:600;color:var(--text-muted);font-size:.72rem;text-transform:uppercase">Usuário</th>
+                <th style="padding:5px 8px;text-align:left;font-weight:600;color:var(--text-muted);font-size:.72rem;text-transform:uppercase">Descrição</th>
+                <th style="padding:5px 8px;text-align:right;font-weight:600;color:var(--text-muted);font-size:.72rem;text-transform:uppercase">Valor</th>
+                <th style="padding:5px 8px;text-align:left;font-weight:600;color:var(--text-muted);font-size:.72rem;text-transform:uppercase">Data</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${recentTx.map(t => `
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:6px 8px;font-weight:500">${_escHtml(t.user_name || t.user_email || '—')}</td>
+                  <td style="padding:6px 8px;color:var(--text-muted)">${_escHtml(t.description || '—')}</td>
+                  <td style="padding:6px 8px;text-align:right;font-weight:700;color:${t.type === 'income' ? 'var(--income-text)' : 'var(--expense)'}">
+                    ${t.type === 'income' ? '+' : '−'}${fmt(t.amount || 0)}
+                  </td>
+                  <td style="padding:6px 8px;color:var(--text-muted);font-size:.75rem;white-space:nowrap">${t.created_at ? fmtDate(t.created_at) : '—'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+  }
+
+  // Update refresh badge time
+  const badge = document.getElementById('admin-refresh-badge');
+  if (badge) {
+    const now = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    badge.innerHTML = `<i data-lucide="refresh-cw" style="width:11px;height:11px"></i> Atualizado às ${now} · auto-refresh 30s`;
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [badge] });
   }
 }
 
@@ -427,6 +483,7 @@ function _renderAdminUsersHtml(searchTerm) {
     : users;
 
   content.innerHTML = `
+    ${_adminNavBar('users')}
     <!-- Barra de ações -->
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:16px">
       <div style="flex:1;min-width:180px">
@@ -597,9 +654,10 @@ async function renderAdminUserProfile(userId) {
     const maxCat = topCategories && topCategories.length ? (topCategories[0].total || 1) : 1;
 
     content.innerHTML = `
+      ${_adminNavBar('users')}
       <!-- Voltar -->
       <button class="btn btn-ghost btn-sm" style="margin-bottom:16px;gap:6px" onclick="renderAdminUsers()">
-        ${icon('arrow-left',14)} Usuários
+        ${icon('arrow-left',14)} Voltar para Usuários
       </button>
 
       <!-- Header do usuário -->
@@ -752,8 +810,9 @@ async function renderAdminUserProfile(userId) {
     if (typeof lucide !== 'undefined') lucide.createIcons();
   } catch(e) {
     content.innerHTML = `
+      ${_adminNavBar('users')}
       <button class="btn btn-ghost btn-sm" style="margin-bottom:16px" onclick="renderAdminUsers()">
-        ${icon('arrow-left',14)} Voltar
+        ${icon('arrow-left',14)} Voltar para Usuários
       </button>
       <div class="empty-state"><p style="color:var(--expense)">Erro ao carregar perfil: ${_escHtml(e.message)}</p></div>`;
     if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -769,10 +828,12 @@ async function renderAdminSystem() {
   const _user = pb.authStore.model;
   const isSuperAdmin = _user?.role === 'super_admin' || _user?.email === 'applumergestao@gmail.com';
   if (!isSuperAdmin) {
-    content.innerHTML = `<div style="padding:48px;text-align:center;color:var(--text-muted)">
-      <i data-lucide="shield-off" style="width:40px;height:40px;opacity:.3;display:block;margin:0 auto 12px"></i>
-      <p>Acesso restrito a Super Admin.</p>
-    </div>`;
+    content.innerHTML = `
+      ${_adminNavBar('system')}
+      <div style="padding:48px;text-align:center;color:var(--text-muted)">
+        <i data-lucide="shield-off" style="width:40px;height:40px;opacity:.3;display:block;margin:0 auto 12px"></i>
+        <p>Acesso restrito a Super Admin.</p>
+      </div>`;
     if (typeof lucide !== 'undefined') lucide.createIcons();
     return;
   }
@@ -791,6 +852,7 @@ async function renderAdminSystem() {
     const allowReg = sysCfg.allow_registration === '1';
 
     content.innerHTML = `
+      ${_adminNavBar('system')}
       <div class="card" style="margin-bottom:20px">
         <div class="card-title" style="margin-bottom:16px">${icon('shield', 14)} Acesso e Cadastro</div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
@@ -1141,6 +1203,7 @@ function _renderAdminPlansHtml(templates) {
   }).join('');
 
   content.innerHTML = `
+    ${_adminNavBar('plans')}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div style="font-size:.82rem;color:var(--text-muted)">${icon('credit-card',13)} <strong>${templates.length}</strong> plano(s) cadastrado(s)</div>
       <button class="btn btn-sm btn-primary" onclick="_openEditTemplateModal(null)">
