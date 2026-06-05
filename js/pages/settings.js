@@ -7,6 +7,19 @@ async function renderSettings() {
 
       <div class="card">
         <div class="card-title" style="margin-bottom:16px">Perfil</div>
+        <div class="form-group" style="text-align:center;margin-bottom:24px">
+          <div id="settings-avatar-preview" style="
+            width:80px;height:80px;border-radius:50%;background:var(--primary-light);
+            color:var(--primary);display:flex;align-items:center;justify-content:center;
+            font-size:2rem;font-weight:700;margin:0 auto 12px;overflow:hidden;cursor:pointer;
+            border:2px solid var(--border)" onclick="document.getElementById('settings-avatar-input').click()">
+          </div>
+          <input type="file" id="settings-avatar-input" accept="image/*" style="display:none" onchange="_onAvatarFileChange(this)">
+          <button class="btn btn-sm btn-outline" onclick="document.getElementById('settings-avatar-input').click()">
+            ${icon('camera',14)} Alterar foto
+          </button>
+          <div id="settings-avatar-feedback" style="font-size:.78rem;margin-top:6px"></div>
+        </div>
         <div class="form-group">
           <label class="form-label">Nome</label>
           <input id="set-name" class="form-control" value="${user.name || ''}" placeholder="Seu nome">
@@ -32,7 +45,7 @@ async function renderSettings() {
             <input id="set-phone" class="form-control" type="tel" inputmode="numeric"
               value="${_phoneDisplay(user.phone)}"
               placeholder="(61) 99999-0000"
-              oninput="this.value=this.value.replace(/\D/g,'')">
+              oninput="this.value=this.value.replace(/\\D/g,'')">
           </div>
           <p style="font-size:.78rem;color:var(--text-muted);margin:6px 0 0">
             DDI do Brasil (+55) aplicado automaticamente. Para outros países, inclua o DDI no início. Ex: <strong>5561999990000</strong>
@@ -70,6 +83,47 @@ async function renderSettings() {
 
     </div>
   `;
+
+  _initAvatarPreview();
+}
+
+async function _initAvatarPreview() {
+  const user    = pb.authStore.model;
+  const preview = document.getElementById('settings-avatar-preview');
+  if (!preview) return;
+  if (user?.avatar) {
+    preview.innerHTML = `<img src="${user.avatar}" style="width:100%;height:100%;object-fit:cover">`;
+  } else {
+    preview.textContent = (user?.name || user?.email || 'U').charAt(0).toUpperCase();
+  }
+}
+
+async function _onAvatarFileChange(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { toast('Imagem máxima: 2MB', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const base64 = e.target.result;
+    const preview = document.getElementById('settings-avatar-preview');
+    if (preview) preview.innerHTML = `<img src="${base64}" style="width:100%;height:100%;object-fit:cover">`;
+    const fb = document.getElementById('settings-avatar-feedback');
+    if (fb) { fb.textContent = 'Salvando...'; fb.style.color = 'var(--text-muted)'; }
+    try {
+      const user = pb.authStore.model;
+      await _api('PUT', `/collections/users/records/${user.id}`, { avatar: base64 });
+      const updated = { ...user, avatar: base64 };
+      pb.authStore.model.avatar = base64;
+      // Atualiza sidebar
+      const sidebarAvatar = document.getElementById('sidebar-profile-avatar');
+      if (sidebarAvatar) sidebarAvatar.innerHTML = `<img src="${base64}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+      if (fb) { fb.textContent = 'Foto atualizada!'; fb.style.color = 'var(--income)'; }
+      setTimeout(() => { if (fb) fb.textContent = ''; }, 3000);
+    } catch (_) {
+      if (fb) { fb.textContent = 'Erro ao salvar foto.'; fb.style.color = 'var(--expense)'; }
+    }
+  };
+  reader.readAsDataURL(file);
 }
 
 /** Exibe o número sem o DDI 55 se o usuário for BR */
@@ -121,6 +175,9 @@ async function saveProfileName() {
     pb.authStore.model.name = name;
     const el = document.getElementById('user-name');
     if (el) el.textContent = name;
+    // Update sidebar profile name too
+    const profileName = document.getElementById('sidebar-profile-name');
+    if (profileName) profileName.textContent = name;
     toast('Nome atualizado!', 'success');
   } catch(e) {
     toast('Erro ao salvar', 'error');

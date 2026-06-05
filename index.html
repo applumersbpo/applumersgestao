@@ -12,6 +12,7 @@
   <link rel="icon" href="favicon-lumers-flow.png" type="image/png">
   <link rel="apple-touch-icon" href="lumers-flow-logotipo.png">
   <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <title>Lumers Flow</title>
 </head>
 <body>
@@ -222,6 +223,13 @@
 
       <div class="sidebar-user-footer">
         <a href="#/settings" id="user-name" class="sidebar-user-name sidebar-user-name--link" data-page="settings" title="Editar perfil"></a>
+        <div class="sidebar-profile" id="sidebar-profile" onclick="location.hash='#/settings'">
+          <div class="sidebar-profile-avatar" id="sidebar-profile-avatar"></div>
+          <div class="sidebar-profile-info">
+            <div class="sidebar-profile-name" id="sidebar-profile-name">Carregando...</div>
+            <div class="sidebar-profile-role" id="sidebar-profile-role">Usuário</div>
+          </div>
+        </div>
         <button class="nav-item sidebar-logout" onclick="logout()">
           <i data-lucide="log-out" style="width:16px;height:16px"></i>
           Sair
@@ -284,6 +292,7 @@
   <div id="modal-container"></div>
   <div id="toast-container"></div>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>

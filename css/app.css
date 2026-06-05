@@ -1484,12 +1484,37 @@ input, select, textarea { font: inherit; }
 }
 .sidebar-credits a {
   font-size: .65rem;
-  color: rgba(230,224,204,.35);
+  color: var(--sidebar-text);
+  opacity: 0.4;
   line-height: 1.4;
   display: block;
-  transition: color .2s;
+  transition: color .2s, opacity .2s;
 }
-.sidebar-credits a:hover { color: rgba(230,224,204,.65); }
+.sidebar-credits a:hover { opacity: 0.75; }
+
+/* ── Sidebar Profile ── */
+.sidebar-profile {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; cursor: pointer; border-radius: var(--r-md);
+  margin: 0 8px 4px; transition: background .15s;
+}
+.sidebar-profile:hover { background: var(--sidebar-hover-bg); }
+.sidebar-profile-avatar {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  background: var(--sidebar-active-bg);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: .9rem; color: var(--sidebar-active);
+  overflow: hidden;
+}
+.sidebar-profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.sidebar-profile-name {
+  font-size: .85rem; font-weight: 600; color: var(--sidebar-active);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sidebar-profile-role {
+  font-size: .7rem; color: var(--sidebar-text); opacity: .7;
+  text-transform: capitalize;
+}
 
 /* ── Dashboard — Carteiras ── */
 .acc-row {
@@ -1578,4 +1603,53 @@ input, select, textarea { font: inherit; }
 /* Admin user list desktop: hide mobile badge row */
 .admin-user-stats { display: flex; align-items: center; }
 .admin-user-stats-mobile { display: none; }
+
+/* ── Admin Dashboard Drag Blocks ── */
+.admin-dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.admin-dash-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  cursor: grab;
+  transition: box-shadow .2s, opacity .2s;
+  position: relative;
+}
+.admin-dash-block.dragging { opacity: .5; box-shadow: 0 8px 32px rgba(0,0,0,.15); }
+.admin-dash-block.locked { cursor: default; }
+.admin-dash-block-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.admin-dash-block-title {
+  font-size: .75rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--text-muted);
+}
+.admin-dash-lock-btn {
+  background: none; border: none; cursor: pointer; padding: 4px;
+  color: var(--text-muted); border-radius: var(--r-md);
+  transition: color .15s;
+}
+.admin-dash-lock-btn:hover { color: var(--primary); }
+.admin-dash-lock-btn[data-locked="true"] { color: var(--primary); }
+.admin-dash-block-value {
+  font-size: 2rem; font-weight: 700; color: var(--text);
+  line-height: 1.1;
+}
+.admin-dash-block-sub {
+  font-size: .82rem; color: var(--text-muted); margin-top: 4px;
+}
+.admin-dash-block-map {
+  height: 280px;
+}
+.admin-dash-block-map > div {
+  height: 100%;
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
 

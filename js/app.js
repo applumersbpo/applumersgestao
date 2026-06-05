@@ -111,8 +111,24 @@ const app = {
     if (banksLink) banksLink.style.display = isAdmin ? '' : 'none';
     const adminUsersLink = document.getElementById('admin-users-link');
     if (adminUsersLink) adminUsersLink.style.display = isAdmin ? '' : 'none';
+
+    const isSuperAdmin2 = user?.role === 'super_admin' || user?.email === 'applumergestao@gmail.com';
     const adminSystemLink = document.getElementById('admin-system-link');
-    if (adminSystemLink) adminSystemLink.style.display = isAdmin ? '' : 'none';
+    if (adminSystemLink) adminSystemLink.style.display = isSuperAdmin2 ? '' : 'none';
+
+    // Sidebar profile
+    const profileName   = document.getElementById('sidebar-profile-name');
+    const profileRole   = document.getElementById('sidebar-profile-role');
+    const profileAvatar = document.getElementById('sidebar-profile-avatar');
+    if (profileName)   profileName.textContent  = (user?.name || user?.email?.split('@')[0] || 'Usuário');
+    if (profileRole)   profileRole.textContent  = user?.role === 'super_admin' ? 'Super Admin' : user?.role === 'admin' ? 'Admin' : 'Usuário';
+    if (profileAvatar) {
+      if (user?.avatar) {
+        profileAvatar.innerHTML = `<img src="${user.avatar}" alt="${user.name || ''}">`;
+      } else {
+        profileAvatar.textContent = (user?.name || user?.email || 'U').charAt(0).toUpperCase();
+      }
+    }
   },
 
   async route() {

@@ -6,6 +6,83 @@ let _pendingLoginBgData  = ''; // base64 ou URL da imagem de fundo da tela de lo
 // ── Mídia fixada para mensagens em massa ──────────────────────────────────────
 let _stickyMsgMedia = null; // { base64, type, name, size } — persiste entre aberturas do modal
 
+// ── DDD → Coordenadas ────────────────────────────────────────────────────────
+const DDD_COORDS = {
+  '11': [-23.5505, -46.6333], '21': [-22.9068, -43.1729], '31': [-19.9167, -43.9345],
+  '41': [-25.4284, -49.2733], '51': [-30.0346, -51.2177], '61': [-15.7801, -47.9292],
+  '71': [-12.9714, -38.5014], '81': [-8.0476, -34.8770],  '85': [-3.7172, -38.5437],
+  '91': [-1.4558, -48.4902],  '92': [-3.1190, -60.0217],  '62': [-16.6799, -49.2550],
+  '27': [-20.3155, -40.3128], '47': [-26.9060, -49.0661], '48': [-27.5954, -48.5480],
+  '63': [-10.1840, -48.3336], '65': [-15.5989, -56.0949], '67': [-20.4428, -54.6462],
+  '68': [-9.9754, -67.8249],  '69': [-8.7612, -63.9004],  '73': [-14.8669, -40.8444],
+  '74': [-9.4014, -40.4898],  '75': [-11.8608, -39.4488], '77': [-14.8669, -40.8444],
+  '79': [-10.9472, -37.0731], '82': [-9.6658, -35.7350],  '83': [-7.1195, -34.8450],
+  '84': [-5.7945, -35.2120],  '86': [-5.0892, -42.8019],  '87': [-8.3833, -36.9000],
+  '88': [-7.2161, -39.3112],  '89': [-7.0748, -41.7008],  '93': [-3.7006, -52.2337],
+  '94': [-5.3544, -49.1181],  '95': [2.8235,  -60.6758],  '96': [0.0389,  -51.0664],
+  '97': [-3.3841, -64.7171],  '98': [-2.5297, -44.3028],  '99': [-4.9609, -44.3028],
+};
+
+function _extractDdd(phone) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  // Remove DDI 55 if present
+  const local = digits.startsWith('55') && digits.length >= 12 ? digits.slice(2) : digits;
+  if (local.length >= 10) return local.slice(0, 2);
+  return null;
+}
+
+function _renderAdminMap(users) {
+  const mapEl = document.getElementById('admin-map-leaflet');
+  if (!mapEl || typeof L === 'undefined') return;
+
+  // Build DDD → count
+  const dddCount = {};
+  (users || []).forEach(u => {
+    const ddd = _extractDdd(u.phone);
+    if (ddd && DDD_COORDS[ddd]) dddCount[ddd] = (dddCount[ddd] || 0) + 1;
+  });
+
+  const map = L.map(mapEl, { scrollWheelZoom: false }).setView([-14.2350, -51.9253], 4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap',
+    maxZoom: 18,
+  }).addTo(map);
+
+  const markers = [];
+  Object.entries(dddCount).forEach(([ddd, count]) => {
+    const coords = DDD_COORDS[ddd];
+    const m = L.circleMarker(coords, {
+      radius: Math.min(6 + count * 3, 20),
+      fillColor: '#3A5A40',
+      color: '#2C4630',
+      weight: 1,
+      opacity: 0.9,
+      fillOpacity: 0.7,
+    }).addTo(map);
+    m.bindPopup(`DDD ${ddd} — ${count} usuário${count !== 1 ? 's' : ''}`);
+    markers.push(m);
+  });
+
+  if (markers.length > 1) {
+    const group = L.featureGroup(markers);
+    map.fitBounds(group.getBounds().pad(0.3));
+  }
+}
+
+// ── _timeAgo ─────────────────────────────────────────────────────────────────
+function _timeAgo(dateStr) {
+  if (!dateStr) return '—';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins  = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days  = Math.floor(diff / 86400000);
+  if (mins < 1)   return 'agora mesmo';
+  if (mins < 60)  return `há ${mins} min`;
+  if (hours < 24) return `há ${hours}h`;
+  return `há ${days} dia${days !== 1 ? 's' : ''}`;
+}
+
 // ── Render Admin Dashboard ────────────────────────────────────────────────────
 
 async function renderAdmin() {
@@ -14,95 +91,312 @@ async function renderAdmin() {
 
   try {
     const stats = await _api('GET', '/admin/users?stats=true');
-
-    const topUsers = (stats.users || []).slice(0, 5);
-
-    content.innerHTML = `
-      <div class="summary-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:20px">
-        <div class="summary-card">
-          <div class="label">${icon('users', 13)} Total de usuários</div>
-          <div class="value">${stats.total_users || 0}</div>
-        </div>
-        <div class="summary-card">
-          <div class="label">${icon('dollar-sign', 13)} MRR</div>
-          <div class="value">${fmt(stats.mrr || 0)}</div>
-        </div>
-        <div class="summary-card">
-          <div class="label">${icon('trending-up', 13)} Receita gerenciada</div>
-          <div class="value" style="color:var(--income)">${fmt(stats.total_income || 0)}</div>
-        </div>
-        <div class="summary-card">
-          <div class="label">${icon('trending-down', 13)} Despesa gerenciada</div>
-          <div class="value" style="color:var(--expense)">${fmt(stats.total_expense || 0)}</div>
-        </div>
-      </div>
-
-      <!-- Quick links -->
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
-        <a href="#/admin-users" class="btn btn-primary btn-sm">
-          ${icon('users', 14)} Gerenciar Usuários
-        </a>
-        <a href="#/admin-plans" class="btn btn-secondary btn-sm">
-          ${icon('credit-card', 14)} Planos de Assinatura
-        </a>
-        <a href="#/admin-system" class="btn btn-outline btn-sm">
-          ${icon('settings', 14)} Configurações do Sistema
-        </a>
-        <a href="#/banks" class="btn btn-outline btn-sm">
-          ${icon('landmark', 14)} Bancos (Admin)
-        </a>
-      </div>
-
-      <!-- Usuários mais ativos -->
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-title" style="margin-bottom:12px">${icon('zap', 14)} Usuários mais ativos</div>
-        ${topUsers.length === 0
-          ? '<p style="color:var(--text-muted);font-size:.9rem">Nenhum dado disponível.</p>'
-          : `<div style="overflow-x:auto">
-              <table style="width:100%;border-collapse:collapse;font-size:.85rem">
-                <thead>
-                  <tr style="border-bottom:1px solid var(--border);color:var(--text-muted);font-size:.78rem;text-align:left">
-                    <th style="padding:6px 8px;font-weight:600">Nome</th>
-                    <th style="padding:6px 8px;font-weight:600">E-mail</th>
-                    <th style="padding:6px 8px;font-weight:600;text-align:right">Transações</th>
-                    <th style="padding:6px 8px;font-weight:600">Último acesso</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${topUsers.map(u => `
-                    <tr style="border-bottom:1px solid var(--border)">
-                      <td style="padding:8px;font-weight:500">${_escHtml(u.name || u.email.split('@')[0])}</td>
-                      <td style="padding:8px;color:var(--text-muted)">${_escHtml(u.email)}</td>
-                      <td style="padding:8px;text-align:right;font-weight:600">${u.tx_count || 0}</td>
-                      <td style="padding:8px;color:var(--text-muted);font-size:.8rem">${u.last_login ? fmtDate(u.last_login) : '—'}</td>
-                    </tr>`).join('')}
-                </tbody>
-              </table>
-             </div>`}
-      </div>
-
-      <!-- Bancos mais utilizados -->
-      ${stats.banks && stats.banks.length ? `
-      <div class="card">
-        <div class="card-title" style="margin-bottom:12px">${icon('landmark', 14)} Bancos mais utilizados</div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          ${stats.banks.map(b => `
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg-subtle);border-radius:var(--r-md)">
-              <div style="font-weight:600;font-size:.9rem">${_escHtml(b.bank_name)}</div>
-              <div style="display:flex;gap:16px;align-items:center">
-                <span style="font-size:.8rem;color:var(--text-muted)">${b.user_count} usuário${b.user_count !== 1 ? 's' : ''}</span>
-                <span style="font-size:.8rem;color:var(--text-muted)">${b.account_count} conta${b.account_count !== 1 ? 's' : ''}</span>
-                <span style="font-size:.85rem;font-weight:600;color:var(--income)">${fmt(b.total_balance || 0)}</span>
-              </div>
-            </div>`).join('')}
-        </div>
-      </div>` : ''}
-    `;
+    _renderAdminDashHtml(stats);
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
+    _loadAdminDashLayout();
+    _initAdminDashDrag();
+    _renderAdminMap(stats.users || []);
+
+    // Auto-refresh every 30s
+    if (window._adminDashInterval) clearInterval(window._adminDashInterval);
+    window._adminDashInterval = setInterval(async () => {
+      if (document.getElementById('admin-dash-grid')) {
+        try {
+          const fresh = await _api('GET', '/admin/users?stats=true');
+          _updateAdminDashValues(fresh);
+        } catch (_) {}
+      } else {
+        clearInterval(window._adminDashInterval);
+      }
+    }, 30000);
   } catch(e) {
     content.innerHTML = `<p style="color:var(--expense);padding:16px">Erro: ${e.message}</p>`;
   }
+}
+
+function _renderAdminDashHtml(stats) {
+  const content = document.getElementById('content');
+  const lastUser = stats.last_active_user;
+  const topCats  = stats.top_categories  || [];
+  const topBanks = stats.top_banks       || [];
+  const recentTx = stats.recent_transactions || [];
+  const allUsers = stats.users || [];
+
+  const blockUsers = `
+    <div class="admin-dash-block" data-block-id="users" draggable="true">
+      <div class="admin-dash-block-header">
+        <span class="admin-dash-block-title">${icon('users',12)} Total de Usuários</span>
+        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
+      </div>
+      <div class="admin-dash-block-body">
+        <div class="admin-dash-block-value" id="admin-stat-users">${stats.total_users || 0}</div>
+        <div class="admin-dash-block-sub">usuários cadastrados</div>
+      </div>
+    </div>`;
+
+  const totalMove = (stats.total_income || 0) + (stats.total_expense || 0);
+  const blockValue = `
+    <div class="admin-dash-block" data-block-id="value" draggable="true">
+      <div class="admin-dash-block-header">
+        <span class="admin-dash-block-title">${icon('activity',12)} Valor em Movimento</span>
+        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
+      </div>
+      <div class="admin-dash-block-body">
+        <div class="admin-dash-block-value" id="admin-stat-value" style="font-size:1.4rem">${fmt(totalMove)}</div>
+        <div class="admin-dash-block-sub">
+          <span style="color:var(--income)">${icon('trending-up',11)} ${fmt(stats.total_income || 0)}</span>
+          &nbsp;·&nbsp;
+          <span style="color:var(--expense)">${icon('trending-down',11)} ${fmt(stats.total_expense || 0)}</span>
+        </div>
+      </div>
+    </div>`;
+
+  const blockLastActive = `
+    <div class="admin-dash-block" data-block-id="last-active" draggable="true">
+      <div class="admin-dash-block-header">
+        <span class="admin-dash-block-title">${icon('clock',12)} Último Ativo</span>
+        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
+      </div>
+      <div class="admin-dash-block-body">
+        <div class="admin-dash-block-value" id="admin-stat-last-active" style="font-size:1.1rem;word-break:break-word">
+          ${lastUser ? _escHtml(lastUser.name || lastUser.email || '—') : '—'}
+        </div>
+        <div class="admin-dash-block-sub" id="admin-stat-last-active-time">${lastUser ? _timeAgo(lastUser.last_login) : '—'}</div>
+      </div>
+    </div>`;
+
+  const blockCats = `
+    <div class="admin-dash-block" data-block-id="categories" draggable="true">
+      <div class="admin-dash-block-header">
+        <span class="admin-dash-block-title">${icon('tags',12)} Categorias Mais Usadas</span>
+        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
+      </div>
+      <div class="admin-dash-block-body" id="admin-stat-cats">
+        ${topCats.length === 0
+          ? '<p style="color:var(--text-muted);font-size:.85rem">Sem dados</p>'
+          : topCats.map(c => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:.85rem">${_escHtml(c.name)}</span>
+              <span style="font-size:.8rem;font-weight:700;color:var(--primary)">${c.count}×</span>
+            </div>`).join('')}
+      </div>
+    </div>`;
+
+  const blockBanks = `
+    <div class="admin-dash-block" data-block-id="banks" draggable="true">
+      <div class="admin-dash-block-header">
+        <span class="admin-dash-block-title">${icon('landmark',12)} Bancos Mais Usados</span>
+        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
+      </div>
+      <div class="admin-dash-block-body" id="admin-stat-banks">
+        ${topBanks.length === 0
+          ? '<p style="color:var(--text-muted);font-size:.85rem">Sem dados</p>'
+          : topBanks.map(b => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:.85rem">${_escHtml(b.name)}</span>
+              <span style="font-size:.8rem;font-weight:700;color:var(--primary)">${b.count}×</span>
+            </div>`).join('')}
+      </div>
+    </div>`;
+
+  const blockRecent = `
+    <div class="admin-dash-block" data-block-id="recent-tx" draggable="true" style="grid-column:span 2">
+      <div class="admin-dash-block-header">
+        <span class="admin-dash-block-title">${icon('list',12)} Movimentações Recentes</span>
+        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
+      </div>
+      <div class="admin-dash-block-body" id="admin-stat-recent-tx" style="overflow-x:auto">
+        ${recentTx.length === 0
+          ? '<p style="color:var(--text-muted);font-size:.85rem">Sem movimentações recentes</p>'
+          : `<table style="width:100%;border-collapse:collapse;font-size:.82rem">
+              <thead>
+                <tr style="color:var(--text-muted);font-size:.75rem;border-bottom:1px solid var(--border)">
+                  <th style="padding:4px 8px;text-align:left;font-weight:600">Usuário</th>
+                  <th style="padding:4px 8px;text-align:left;font-weight:600">Descrição</th>
+                  <th style="padding:4px 8px;text-align:right;font-weight:600">Valor</th>
+                  <th style="padding:4px 8px;text-align:left;font-weight:600">Data</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${recentTx.map(t => `
+                  <tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:5px 8px">${_escHtml(t.user_name || t.user_email || '—')}</td>
+                    <td style="padding:5px 8px;color:var(--text-muted)">${_escHtml(t.description || '—')}</td>
+                    <td style="padding:5px 8px;text-align:right;font-weight:600;color:${t.type === 'income' ? 'var(--income)' : 'var(--expense)'}">
+                      ${t.type === 'income' ? '+' : '-'}${fmt(t.amount || 0)}
+                    </td>
+                    <td style="padding:5px 8px;color:var(--text-muted);font-size:.75rem">${t.created_at ? fmtDate(t.created_at) : '—'}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>`}
+      </div>
+    </div>`;
+
+  const blockMap = `
+    <div class="admin-dash-block admin-dash-block-map" data-block-id="map" draggable="true" style="grid-column:span 2">
+      <div class="admin-dash-block-header">
+        <span class="admin-dash-block-title">${icon('map-pin',12)} Localização por DDD</span>
+        <button class="admin-dash-lock-btn" data-locked="false" onclick="_toggleBlockLock(this)"><i data-lucide="lock-open" style="width:14px;height:14px"></i></button>
+      </div>
+      <div id="admin-map-leaflet" style="height:240px;border-radius:var(--r-md);overflow:hidden"></div>
+    </div>`;
+
+  content.innerHTML = `
+    <!-- Quick links -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+      <a href="#/admin-users" class="btn btn-primary btn-sm">${icon('users',14)} Gerenciar Usuários</a>
+      <a href="#/admin-plans" class="btn btn-secondary btn-sm">${icon('credit-card',14)} Planos de Assinatura</a>
+      <a href="#/admin-system" class="btn btn-outline btn-sm">${icon('settings',14)} Configurações do Sistema</a>
+      <a href="#/banks" class="btn btn-outline btn-sm">${icon('landmark',14)} Bancos (Admin)</a>
+    </div>
+    <div class="admin-dash-grid" id="admin-dash-grid">
+      ${blockUsers}
+      ${blockValue}
+      ${blockLastActive}
+      ${blockCats}
+      ${blockBanks}
+      ${blockRecent}
+      ${blockMap}
+    </div>`;
+}
+
+function _updateAdminDashValues(stats) {
+  const el = id => document.getElementById(id);
+  if (el('admin-stat-users'))           el('admin-stat-users').textContent = stats.total_users || 0;
+  if (el('admin-stat-value'))           el('admin-stat-value').textContent = fmt((stats.total_income || 0) + (stats.total_expense || 0));
+
+  const lastUser = stats.last_active_user;
+  if (el('admin-stat-last-active'))      el('admin-stat-last-active').textContent = lastUser ? (lastUser.name || lastUser.email || '—') : '—';
+  if (el('admin-stat-last-active-time')) el('admin-stat-last-active-time').textContent = lastUser ? _timeAgo(lastUser.last_login) : '—';
+
+  const topCats = stats.top_categories || [];
+  if (el('admin-stat-cats')) {
+    el('admin-stat-cats').innerHTML = topCats.length === 0
+      ? '<p style="color:var(--text-muted);font-size:.85rem">Sem dados</p>'
+      : topCats.map(c => `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:.85rem">${_escHtml(c.name)}</span>
+          <span style="font-size:.8rem;font-weight:700;color:var(--primary)">${c.count}×</span>
+        </div>`).join('');
+  }
+
+  const topBanks = stats.top_banks || [];
+  if (el('admin-stat-banks')) {
+    el('admin-stat-banks').innerHTML = topBanks.length === 0
+      ? '<p style="color:var(--text-muted);font-size:.85rem">Sem dados</p>'
+      : topBanks.map(b => `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:.85rem">${_escHtml(b.name)}</span>
+          <span style="font-size:.8rem;font-weight:700;color:var(--primary)">${b.count}×</span>
+        </div>`).join('');
+  }
+
+  const recentTx = stats.recent_transactions || [];
+  if (el('admin-stat-recent-tx')) {
+    el('admin-stat-recent-tx').innerHTML = recentTx.length === 0
+      ? '<p style="color:var(--text-muted);font-size:.85rem">Sem movimentações recentes</p>'
+      : `<table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="color:var(--text-muted);font-size:.75rem;border-bottom:1px solid var(--border)">
+              <th style="padding:4px 8px;text-align:left;font-weight:600">Usuário</th>
+              <th style="padding:4px 8px;text-align:left;font-weight:600">Descrição</th>
+              <th style="padding:4px 8px;text-align:right;font-weight:600">Valor</th>
+              <th style="padding:4px 8px;text-align:left;font-weight:600">Data</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${recentTx.map(t => `
+              <tr style="border-bottom:1px solid var(--border)">
+                <td style="padding:5px 8px">${_escHtml(t.user_name || t.user_email || '—')}</td>
+                <td style="padding:5px 8px;color:var(--text-muted)">${_escHtml(t.description || '—')}</td>
+                <td style="padding:5px 8px;text-align:right;font-weight:600;color:${t.type === 'income' ? 'var(--income)' : 'var(--expense)'}">
+                  ${t.type === 'income' ? '+' : '-'}${fmt(t.amount || 0)}
+                </td>
+                <td style="padding:5px 8px;color:var(--text-muted);font-size:.75rem">${t.created_at ? fmtDate(t.created_at) : '—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+  }
+}
+
+function _initAdminDashDrag() {
+  const grid = document.getElementById('admin-dash-grid');
+  if (!grid) return;
+  let dragSrc = null;
+  grid.querySelectorAll('.admin-dash-block').forEach(block => {
+    block.addEventListener('dragstart', e => {
+      if (block.classList.contains('locked')) { e.preventDefault(); return; }
+      dragSrc = block;
+      block.classList.add('dragging');
+    });
+    block.addEventListener('dragend', () => {
+      block.classList.remove('dragging');
+      _saveAdminDashLayout();
+    });
+    block.addEventListener('dragover', e => { e.preventDefault(); });
+    block.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!dragSrc || dragSrc === block) return;
+      const allBlocks = [...grid.querySelectorAll('.admin-dash-block')];
+      const srcIdx  = allBlocks.indexOf(dragSrc);
+      const destIdx = allBlocks.indexOf(block);
+      if (srcIdx < destIdx) block.after(dragSrc);
+      else block.before(dragSrc);
+    });
+  });
+}
+
+function _saveAdminDashLayout() {
+  const userId = pb.authStore.model?.id || 'default';
+  const grid   = document.getElementById('admin-dash-grid');
+  if (!grid) return;
+  const order = [...grid.querySelectorAll('.admin-dash-block')].map(b => b.dataset.blockId);
+  const locks = {};
+  grid.querySelectorAll('.admin-dash-block').forEach(b => {
+    locks[b.dataset.blockId] = b.querySelector('.admin-dash-lock-btn')?.dataset.locked === 'true';
+  });
+  localStorage.setItem(`admin_dash_layout_${userId}`, JSON.stringify({ order, locks }));
+}
+
+function _loadAdminDashLayout() {
+  const userId = pb.authStore.model?.id || 'default';
+  const saved  = localStorage.getItem(`admin_dash_layout_${userId}`);
+  if (!saved) return;
+  try {
+    const { order, locks } = JSON.parse(saved);
+    const grid = document.getElementById('admin-dash-grid');
+    if (!grid || !order?.length) return;
+    order.forEach(id => {
+      const block = grid.querySelector(`[data-block-id="${id}"]`);
+      if (block) grid.appendChild(block);
+    });
+    Object.entries(locks || {}).forEach(([id, locked]) => {
+      const btn = grid.querySelector(`[data-block-id="${id}"] .admin-dash-lock-btn`);
+      if (btn) {
+        btn.dataset.locked = locked ? 'true' : 'false';
+        const ico = btn.querySelector('i[data-lucide]');
+        if (ico) ico.setAttribute('data-lucide', locked ? 'lock' : 'lock-open');
+        const block = btn.closest('.admin-dash-block');
+        if (block) {
+          block.setAttribute('draggable', locked ? 'false' : 'true');
+          block.classList.toggle('locked', locked);
+        }
+      }
+    });
+  } catch (_) {}
+}
+
+function _toggleBlockLock(btn) {
+  const locked = btn.dataset.locked === 'true';
+  btn.dataset.locked = locked ? 'false' : 'true';
+  const ico = btn.querySelector('i[data-lucide]');
+  if (ico) ico.setAttribute('data-lucide', locked ? 'lock-open' : 'lock');
+  const block = btn.closest('.admin-dash-block');
+  if (block) {
+    block.setAttribute('draggable', locked ? 'true' : 'false');
+    block.classList.toggle('locked', !locked);
+  }
+  if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
+  _saveAdminDashLayout();
 }
 
 // ── Render Admin Users ────────────────────────────────────────────────────────
@@ -471,6 +765,17 @@ async function renderAdminUserProfile(userId) {
 async function renderAdminSystem() {
   const content = document.getElementById('content');
   content.innerHTML = '<div class="loading-screen"><div class="spinner"></div></div>';
+
+  const _user = pb.authStore.model;
+  const isSuperAdmin = _user?.role === 'super_admin' || _user?.email === 'applumergestao@gmail.com';
+  if (!isSuperAdmin) {
+    content.innerHTML = `<div style="padding:48px;text-align:center;color:var(--text-muted)">
+      <i data-lucide="shield-off" style="width:40px;height:40px;opacity:.3;display:block;margin:0 auto 12px"></i>
+      <p>Acesso restrito a Super Admin.</p>
+    </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
 
   try {
     const [brandCfg, sysCfg] = await Promise.all([

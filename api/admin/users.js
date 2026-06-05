@@ -41,6 +41,10 @@ export default async function handler(req, res) {
         { rows: txSumRows },
         { rows: userRows },
         { rows: bankRows },
+        { rows: lastActiveRows },
+        { rows: topCatRows },
+        { rows: topBankRows },
+        { rows: recentTxRows },
       ] = await Promise.all([
         db.execute('SELECT COUNT(*) as total FROM users'),
         db.execute("SELECT COALESCE(SUM(monthly_fee),0) as mrr FROM user_plans WHERE active=1"),
@@ -64,19 +68,44 @@ export default async function handler(req, res) {
           GROUP BY a.bank_name
           ORDER BY account_count DESC
           LIMIT 10`),
+        db.execute(`SELECT id, name, email, last_login FROM users WHERE last_login IS NOT NULL ORDER BY last_login DESC LIMIT 1`),
+        db.execute(`SELECT c.name, COUNT(t.id) as count
+          FROM transactions t
+          LEFT JOIN categories c ON c.id = t.category_id
+          WHERE c.name IS NOT NULL
+          GROUP BY c.id, c.name
+          ORDER BY count DESC
+          LIMIT 5`),
+        db.execute(`SELECT a.bank_name as name, COUNT(*) as count
+          FROM accounts a
+          WHERE a.bank_name != ''
+          GROUP BY a.bank_name
+          ORDER BY count DESC
+          LIMIT 5`),
+        db.execute(`SELECT t.id, t.amount, t.transaction_type as type, t.description, t.created_at,
+          u.name as user_name, u.email as user_email
+          FROM transactions t
+          LEFT JOIN users u ON u.id = t.user_id
+          ORDER BY t.created_at DESC
+          LIMIT 10`),
       ]);
 
-      const totals  = rowsToObjects(totalRows)[0]  || {};
-      const mrrData = rowsToObjects(mrrRows)[0]    || {};
-      const txSums  = rowsToObjects(txSumRows)[0]  || {};
+      const totals     = rowsToObjects(totalRows)[0]     || {};
+      const mrrData    = rowsToObjects(mrrRows)[0]       || {};
+      const txSums     = rowsToObjects(txSumRows)[0]     || {};
+      const lastActive = rowsToObjects(lastActiveRows)[0] || null;
 
       return res.status(200).json({
-        total_users:   totals.total        || 0,
-        mrr:           mrrData.mrr         || 0,
-        total_income:  txSums.total_income  || 0,
-        total_expense: txSums.total_expense || 0,
-        users:  rowsToObjects(userRows),
-        banks:  rowsToObjects(bankRows),
+        total_users:          totals.total         || 0,
+        mrr:                  mrrData.mrr          || 0,
+        total_income:         txSums.total_income  || 0,
+        total_expense:        txSums.total_expense || 0,
+        last_active_user:     lastActive,
+        top_categories:       rowsToObjects(topCatRows),
+        top_banks:            rowsToObjects(topBankRows),
+        recent_transactions:  rowsToObjects(recentTxRows),
+        users:                rowsToObjects(userRows),
+        banks:                rowsToObjects(bankRows),
       });
     }
 
