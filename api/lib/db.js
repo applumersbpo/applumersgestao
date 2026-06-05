@@ -220,6 +220,15 @@ export async function initDb() {
     // Migrate existing is_admin=1 users to role='admin'
     await db.execute("UPDATE users SET role='admin' WHERE is_admin=1 AND role='user'");
   }
+  if (!uColNames.includes('avatar')) {
+    await db.execute("ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT ''");
+  }
+
+  // Garante que o super admin sempre tenha role e is_admin corretos
+  await db.execute({
+    sql: "UPDATE users SET role = 'super_admin', is_admin = 1 WHERE email = 'applumergestao@gmail.com'",
+    args: [],
+  });
 
   // Migrations — user_plans table
   const { rows: upcols } = await db.execute("PRAGMA table_info('user_plans')");
