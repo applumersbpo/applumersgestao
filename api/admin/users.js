@@ -82,7 +82,7 @@ export default async function handler(req, res) {
           GROUP BY a.bank_name
           ORDER BY count DESC
           LIMIT 5`),
-        db.execute(`SELECT t.id, t.amount, t.transaction_type as type, t.description, t.created_at,
+        db.execute(`SELECT t.id, t.amount, t.transaction_type as type, t.name as description, t.created_at,
           u.name as user_name, u.email as user_email
           FROM transactions t
           LEFT JOIN users u ON u.id = t.user_id
