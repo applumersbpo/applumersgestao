@@ -573,7 +573,7 @@ function _renderAdminUsersPage() {
 
     <!-- Filtros -->
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;padding:12px 14px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:var(--r-md)">
-      <select class="form-control" style="flex:1;min-width:130px;max-width:180px;height:36px;font-size:.83rem"
+      <select class="form-control" style="flex:1;min-width:130px;max-width:180px;height:40px;padding:10px;font-size:.83rem"
         onchange="_adminUsersSet('role',this.value)">
         <option value="" ${_adminUsersF.role===''?'selected':''}>Todos os perfis</option>
         <option value="user"        ${_adminUsersF.role==='user'?'selected':''}>Usuário</option>
@@ -581,14 +581,14 @@ function _renderAdminUsersPage() {
         <option value="super_admin" ${_adminUsersF.role==='super_admin'?'selected':''}>Super Admin</option>
       </select>
 
-      <select class="form-control" style="flex:1;min-width:130px;max-width:180px;height:36px;font-size:.83rem"
+      <select class="form-control" style="flex:1;min-width:130px;max-width:180px;height:40px;padding:10px;font-size:.83rem"
         onchange="_adminUsersSet('status',this.value)">
         <option value="" ${_adminUsersF.status===''?'selected':''}>Qualquer status</option>
         <option value="active"   ${_adminUsersF.status==='active'?'selected':''}>Ativo (já logou)</option>
         <option value="inactive" ${_adminUsersF.status==='inactive'?'selected':''}>Inativo (nunca logou)</option>
       </select>
 
-      <select class="form-control" style="flex:1;min-width:130px;max-width:180px;height:36px;font-size:.83rem"
+      <select class="form-control" style="flex:1;min-width:130px;max-width:180px;height:40px;padding:10px;font-size:.83rem"
         onchange="_adminUsersSet('saldo',this.value)">
         <option value="" ${_adminUsersF.saldo===''?'selected':''}>Qualquer saldo</option>
         <option value="positive" ${_adminUsersF.saldo==='positive'?'selected':''}>Saldo positivo</option>
@@ -596,7 +596,7 @@ function _renderAdminUsersPage() {
         <option value="zero"     ${_adminUsersF.saldo==='zero'?'selected':''}>Sem movimentação</option>
       </select>
 
-      <select class="form-control" style="flex:1;min-width:140px;max-width:190px;height:36px;font-size:.83rem"
+      <select class="form-control" style="flex:1;min-width:140px;max-width:190px;height:40px;padding:10px;font-size:.83rem"
         onchange="_adminUsersSet('cadastro',this.value)">
         <option value="" ${_adminUsersF.cadastro===''?'selected':''}>Qualquer cadastro</option>
         <option value="7d"  ${_adminUsersF.cadastro==='7d'?'selected':''}>Últimos 7 dias</option>
@@ -605,7 +605,7 @@ function _renderAdminUsersPage() {
         <option value="old" ${_adminUsersF.cadastro==='old'?'selected':''}>Mais de 90 dias</option>
       </select>
 
-      <select class="form-control" style="flex:1;min-width:140px;max-width:190px;height:36px;font-size:.83rem"
+      <select class="form-control" style="flex:1;min-width:140px;max-width:190px;height:40px;padding:10px;font-size:.83rem"
         onchange="_adminUsersSet('acesso',this.value)">
         <option value="" ${_adminUsersF.acesso===''?'selected':''}>Qualquer acesso</option>
         <option value="7d"   ${_adminUsersF.acesso==='7d'?'selected':''}>Acessou em 7 dias</option>
@@ -614,7 +614,7 @@ function _renderAdminUsersPage() {
         <option value="never"${_adminUsersF.acesso==='never'?'selected':''}>Nunca acessou</option>
       </select>
 
-      <select class="form-control" style="flex:1;min-width:130px;max-width:170px;height:36px;font-size:.83rem"
+      <select class="form-control" style="flex:1;min-width:130px;max-width:170px;height:40px;padding:10px;font-size:.83rem"
         onchange="_adminUsersSet('sort',this.value)">
         <option value="name"    ${_adminUsersF.sort==='name'?'selected':''}>Ordenar: Nome</option>
         <option value="recent"  ${_adminUsersF.sort==='recent'?'selected':''}>Ordenar: Mais recente</option>
@@ -624,7 +624,7 @@ function _renderAdminUsersPage() {
         <option value="tx"      ${_adminUsersF.sort==='tx'?'selected':''}>Ordenar: Transações</option>
       </select>
 
-      <button class="btn btn-sm btn-ghost" style="height:36px;white-space:nowrap" onclick="_adminUsersClearFilters()">
+      <button class="btn btn-sm btn-ghost" style="height:40px;padding:10px;white-space:nowrap" onclick="_adminUsersClearFilters()">
         ${icon('x',13)} Limpar filtros
       </button>
     </div>
