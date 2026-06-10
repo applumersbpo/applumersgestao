@@ -150,11 +150,6 @@ function _renderAdminDashHtml(stats) {
   const kpiRow = `
     <div class="admin-kpi-row" id="admin-kpi-row">
       <div class="admin-kpi-card">
-        <div class="admin-kpi-label"><i data-lucide="users" style="width:12px;height:12px"></i> Usuários</div>
-        <div class="admin-kpi-value" id="admin-stat-users">${stats.total_users || 0}</div>
-        <div class="admin-kpi-sub" id="admin-stat-wpp">${withPhone} com WhatsApp</div>
-      </div>
-      <div class="admin-kpi-card">
         <div class="admin-kpi-label"><i data-lucide="trending-up" style="width:12px;height:12px"></i> Receitas</div>
         <div class="admin-kpi-value" id="admin-stat-income" style="color:var(--income-text)">${fmt(stats.total_income || 0)}</div>
         <div class="admin-kpi-sub">total acumulado</div>
@@ -173,13 +168,6 @@ function _renderAdminDashHtml(stats) {
         <div class="admin-kpi-label"><i data-lucide="dollar-sign" style="width:12px;height:12px"></i> MRR</div>
         <div class="admin-kpi-value" id="admin-stat-mrr">${fmt(stats.mrr || 0)}</div>
         <div class="admin-kpi-sub">receita recorrente</div>
-      </div>
-      <div class="admin-kpi-card">
-        <div class="admin-kpi-label"><i data-lucide="clock" style="width:12px;height:12px"></i> Último acesso</div>
-        <div class="admin-kpi-value" id="admin-stat-last-active" style="font-size:1rem;word-break:break-word">
-          ${lastUser ? _escHtml((lastUser.name || lastUser.email || '—').split(' ')[0]) : '—'}
-        </div>
-        <div class="admin-kpi-sub" id="admin-stat-last-active-time">${lastUser ? _timeAgo(lastUser.last_login) : '—'}</div>
       </div>
     </div>`;
 
