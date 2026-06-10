@@ -526,6 +526,7 @@ function _toggleBlockLock(btn) {
 // ── Render Admin Users ────────────────────────────────────────────────────────
 
 let _adminUsersCache = [];
+let _adminUsersF = { search: '', role: '', status: '', saldo: '', cadastro: '', acesso: '', sort: 'name' };
 
 async function renderAdminUsers() {
   const content = document.getElementById('content');
@@ -533,32 +534,28 @@ async function renderAdminUsers() {
   try {
     const stats = await _api('GET', '/admin/users?stats=true');
     _adminUsersCache = stats.users || [];
-    _renderAdminUsersHtml('');
+    _adminUsersF = { search: '', role: '', status: '', saldo: '', cadastro: '', acesso: '', sort: 'name' };
+    _renderAdminUsersPage();
   } catch(e) {
     content.innerHTML = `<div class="empty-state"><p style="color:var(--expense)">Erro ao carregar: ${e.message}</p></div>`;
   }
 }
 
-function _renderAdminUsersHtml(searchTerm) {
+function _renderAdminUsersPage() {
   const content = document.getElementById('content');
   const users   = _adminUsersCache;
   const comWpp  = users.filter(u => u.phone).length;
-  const filtered = searchTerm
-    ? users.filter(u =>
-        (u.name  || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (u.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (u.phone || '').includes(searchTerm))
-    : users;
 
   content.innerHTML = `
     ${_adminNavBar('users')}
-    <!-- Barra de ações -->
-    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:16px">
+
+    <!-- Busca + Ações -->
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px">
       <div style="flex:1;min-width:180px">
         <input id="admin-user-search" class="form-control" type="search"
           placeholder="Buscar por nome, e-mail ou telefone..."
-          value="${_escHtml(searchTerm)}"
-          oninput="_adminUsersFilterInput(this.value)">
+          value="${_escHtml(_adminUsersF.search)}"
+          oninput="_adminUsersSet('search',this.value)">
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0">
         <button class="btn btn-sm btn-outline" onclick="adminNormalizePhones()">
@@ -574,16 +571,156 @@ function _renderAdminUsersHtml(searchTerm) {
       </div>
     </div>
 
-    <!-- Contadores -->
-    <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-      <span style="font-size:.82rem;color:var(--text-muted)">${icon('users',13)} <strong>${users.length}</strong> usuários</span>
-      <span style="font-size:.82rem;color:var(--income-text)">${icon('message-circle',13)} <strong>${comWpp}</strong> com WhatsApp</span>
-      ${filtered.length !== users.length ? `<span style="font-size:.82rem;color:var(--warning)">${icon('filter',12)} ${filtered.length} resultado(s)</span>` : ''}
+    <!-- Filtros -->
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;padding:12px 14px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:var(--r-md)">
+      <select class="form-control" style="flex:1;min-width:130px;max-width:180px;height:36px;font-size:.83rem"
+        onchange="_adminUsersSet('role',this.value)">
+        <option value="" ${_adminUsersF.role===''?'selected':''}>Todos os perfis</option>
+        <option value="user"        ${_adminUsersF.role==='user'?'selected':''}>Usuário</option>
+        <option value="admin"       ${_adminUsersF.role==='admin'?'selected':''}>Admin</option>
+        <option value="super_admin" ${_adminUsersF.role==='super_admin'?'selected':''}>Super Admin</option>
+      </select>
+
+      <select class="form-control" style="flex:1;min-width:130px;max-width:180px;height:36px;font-size:.83rem"
+        onchange="_adminUsersSet('status',this.value)">
+        <option value="" ${_adminUsersF.status===''?'selected':''}>Qualquer status</option>
+        <option value="active"   ${_adminUsersF.status==='active'?'selected':''}>Ativo (já logou)</option>
+        <option value="inactive" ${_adminUsersF.status==='inactive'?'selected':''}>Inativo (nunca logou)</option>
+      </select>
+
+      <select class="form-control" style="flex:1;min-width:130px;max-width:180px;height:36px;font-size:.83rem"
+        onchange="_adminUsersSet('saldo',this.value)">
+        <option value="" ${_adminUsersF.saldo===''?'selected':''}>Qualquer saldo</option>
+        <option value="positive" ${_adminUsersF.saldo==='positive'?'selected':''}>Saldo positivo</option>
+        <option value="negative" ${_adminUsersF.saldo==='negative'?'selected':''}>Saldo negativo</option>
+        <option value="zero"     ${_adminUsersF.saldo==='zero'?'selected':''}>Sem movimentação</option>
+      </select>
+
+      <select class="form-control" style="flex:1;min-width:140px;max-width:190px;height:36px;font-size:.83rem"
+        onchange="_adminUsersSet('cadastro',this.value)">
+        <option value="" ${_adminUsersF.cadastro===''?'selected':''}>Qualquer cadastro</option>
+        <option value="7d"  ${_adminUsersF.cadastro==='7d'?'selected':''}>Últimos 7 dias</option>
+        <option value="30d" ${_adminUsersF.cadastro==='30d'?'selected':''}>Últimos 30 dias</option>
+        <option value="90d" ${_adminUsersF.cadastro==='90d'?'selected':''}>Últimos 90 dias</option>
+        <option value="old" ${_adminUsersF.cadastro==='old'?'selected':''}>Mais de 90 dias</option>
+      </select>
+
+      <select class="form-control" style="flex:1;min-width:140px;max-width:190px;height:36px;font-size:.83rem"
+        onchange="_adminUsersSet('acesso',this.value)">
+        <option value="" ${_adminUsersF.acesso===''?'selected':''}>Qualquer acesso</option>
+        <option value="7d"   ${_adminUsersF.acesso==='7d'?'selected':''}>Acessou em 7 dias</option>
+        <option value="30d"  ${_adminUsersF.acesso==='30d'?'selected':''}>Acessou em 30 dias</option>
+        <option value="old"  ${_adminUsersF.acesso==='old'?'selected':''}>Mais de 30 dias</option>
+        <option value="never"${_adminUsersF.acesso==='never'?'selected':''}>Nunca acessou</option>
+      </select>
+
+      <select class="form-control" style="flex:1;min-width:130px;max-width:170px;height:36px;font-size:.83rem"
+        onchange="_adminUsersSet('sort',this.value)">
+        <option value="name"    ${_adminUsersF.sort==='name'?'selected':''}>Ordenar: Nome</option>
+        <option value="recent"  ${_adminUsersF.sort==='recent'?'selected':''}>Ordenar: Mais recente</option>
+        <option value="oldest"  ${_adminUsersF.sort==='oldest'?'selected':''}>Ordenar: Mais antigo</option>
+        <option value="balance" ${_adminUsersF.sort==='balance'?'selected':''}>Ordenar: Saldo</option>
+        <option value="login"   ${_adminUsersF.sort==='login'?'selected':''}>Ordenar: Último acesso</option>
+        <option value="tx"      ${_adminUsersF.sort==='tx'?'selected':''}>Ordenar: Transações</option>
+      </select>
+
+      <button class="btn btn-sm btn-ghost" style="height:36px;white-space:nowrap" onclick="_adminUsersClearFilters()">
+        ${icon('x',13)} Limpar filtros
+      </button>
     </div>
 
-    <!-- Lista -->
+    <!-- Contadores + lista -->
+    <div id="admin-users-list"></div>
+  `;
+
+  _adminUsersRefreshList();
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function _adminUsersSet(key, value) {
+  _adminUsersF[key] = value;
+  _adminUsersRefreshList();
+}
+
+function _adminUsersClearFilters() {
+  _adminUsersF = { search: '', role: '', status: '', saldo: '', cadastro: '', acesso: '', sort: 'name' };
+  _renderAdminUsersPage();
+}
+
+function _adminUsersRefreshList() {
+  const listEl = document.getElementById('admin-users-list');
+  if (!listEl) return;
+
+  const now    = new Date();
+  const daysAgo = d => new Date(now.getTime() - d * 86400000);
+  const f = _adminUsersF;
+
+  let filtered = _adminUsersCache.filter(u => {
+    const balance = (u.total_income || 0) - (u.total_expense || 0);
+    const role    = u.role || (u.is_admin ? 'admin' : 'user');
+
+    // Busca texto
+    if (f.search) {
+      const term = f.search.toLowerCase();
+      if (!(u.name || '').toLowerCase().includes(term) &&
+          !(u.email || '').toLowerCase().includes(term) &&
+          !(u.phone || '').includes(f.search)) return false;
+    }
+    // Perfil
+    if (f.role && role !== f.role) return false;
+    // Status
+    if (f.status === 'active'   && !u.last_login) return false;
+    if (f.status === 'inactive' &&  u.last_login) return false;
+    // Saldo
+    if (f.saldo === 'positive' && balance <= 0) return false;
+    if (f.saldo === 'negative' && balance >= 0) return false;
+    if (f.saldo === 'zero'     && (u.tx_count || 0) > 0) return false;
+    // Data de cadastro
+    if (f.cadastro) {
+      const created = u.created_at ? new Date(u.created_at) : null;
+      if (!created) return false;
+      if (f.cadastro === '7d'  && created < daysAgo(7))   return false;
+      if (f.cadastro === '30d' && created < daysAgo(30))  return false;
+      if (f.cadastro === '90d' && created < daysAgo(90))  return false;
+      if (f.cadastro === 'old' && created >= daysAgo(90)) return false;
+    }
+    // Último acesso
+    if (f.acesso) {
+      const login = u.last_login ? new Date(u.last_login) : null;
+      if (f.acesso === 'never' && login)                  return false;
+      if (f.acesso !== 'never' && !login)                 return false;
+      if (f.acesso === '7d'  && login < daysAgo(7))       return false;
+      if (f.acesso === '30d' && login < daysAgo(30))      return false;
+      if (f.acesso === 'old' && login >= daysAgo(30))     return false;
+    }
+    return true;
+  });
+
+  // Ordenação
+  filtered = [...filtered].sort((a, b) => {
+    const balA = (a.total_income||0)-(a.total_expense||0);
+    const balB = (b.total_income||0)-(b.total_expense||0);
+    if (f.sort === 'name')    return (a.name||a.email).localeCompare(b.name||b.email);
+    if (f.sort === 'recent')  return new Date(b.created_at||0) - new Date(a.created_at||0);
+    if (f.sort === 'oldest')  return new Date(a.created_at||0) - new Date(b.created_at||0);
+    if (f.sort === 'balance') return balB - balA;
+    if (f.sort === 'login')   return new Date(b.last_login||0) - new Date(a.last_login||0);
+    if (f.sort === 'tx')      return (b.tx_count||0) - (a.tx_count||0);
+    return 0;
+  });
+
+  const users  = _adminUsersCache;
+  const comWpp = users.filter(u => u.phone).length;
+  const hasFilters = f.search || f.role || f.status || f.saldo || f.cadastro || f.acesso;
+
+  listEl.innerHTML = `
+    <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:.82rem;color:var(--text-muted)">${icon('users',13)} <strong>${users.length}</strong> total</span>
+      <span style="font-size:.82rem;color:var(--income-text)">${icon('message-circle',13)} <strong>${comWpp}</strong> com WhatsApp</span>
+      ${hasFilters ? `<span style="font-size:.82rem;color:var(--warning-text);background:var(--warning-light);padding:2px 8px;border-radius:10px">${icon('filter',12)} ${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}</span>` : ''}
+    </div>
     ${filtered.length === 0
-      ? `<div class="empty-state">${icon('search-x',36)}<p>Nenhum usuário encontrado</p></div>`
+      ? `<div class="empty-state">${icon('search-x',36)}<p>Nenhum usuário encontrado com esses filtros</p><button class="btn btn-sm btn-ghost" onclick="_adminUsersClearFilters()">Limpar filtros</button></div>`
       : `<div style="display:flex;flex-direction:column;gap:8px">
           ${filtered.map(u => _adminUserRow(u)).join('')}
          </div>`}
@@ -593,7 +730,7 @@ function _renderAdminUsersHtml(searchTerm) {
 }
 
 function _adminUsersFilterInput(term) {
-  _renderAdminUsersHtml(term);
+  _adminUsersSet('search', term);
 }
 
 function _adminRoleBadge(role) {
