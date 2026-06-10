@@ -21,18 +21,18 @@ async function openQuickAdd(type = 'expense') {
         </div>
         <div class="modal-body">
 
-          <div style="display:flex;background:var(--surface);border-radius:var(--radius-sm);padding:4px;margin-bottom:16px">
+          <div style="display:flex;background:var(--surface);border-radius:var(--radius-sm);padding:4px;margin-bottom:16px;gap:4px">
             <button id="fab-type-expense" onclick="fabSetType('expense')"
-              style="flex:1;padding:8px;border-radius:6px;font-size:.85rem;font-weight:600;transition:all .15s;
-                background:${type === 'expense' ? 'var(--expense)' : 'transparent'};
-                color:${type === 'expense' ? '#fff' : 'var(--text-muted)'}">
-              Despesa
+              style="flex:1;padding:8px;border-radius:6px;font-size:.85rem;font-weight:600;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px;
+                background:${type === 'expense' ? 'var(--expense)' : 'var(--expense-light)'};
+                color:${type === 'expense' ? '#fff' : 'var(--expense-text)'}">
+              ${icon('trending-down', 15)} Despesa
             </button>
             <button id="fab-type-income" onclick="fabSetType('income')"
-              style="flex:1;padding:8px;border-radius:6px;font-size:.85rem;font-weight:600;transition:all .15s;
-                background:${type === 'income' ? 'var(--income)' : 'transparent'};
-                color:${type === 'income' ? '#fff' : 'var(--text-muted)'}">
-              Receita
+              style="flex:1;padding:8px;border-radius:6px;font-size:.85rem;font-weight:600;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px;
+                background:${type === 'income' ? 'var(--income)' : 'var(--income-light)'};
+                color:${type === 'income' ? '#fff' : 'var(--income-text)'}">
+              ${icon('trending-up', 15)} Receita
             </button>
           </div>
 
@@ -84,10 +84,10 @@ async function fabSetType(type) {
 
   const expBtn = document.getElementById('fab-type-expense');
   const incBtn = document.getElementById('fab-type-income');
-  expBtn.style.background = type === 'expense' ? 'var(--expense)' : 'transparent';
-  expBtn.style.color      = type === 'expense' ? '#fff' : 'var(--text-muted)';
-  incBtn.style.background = type === 'income'  ? 'var(--income)'  : 'transparent';
-  incBtn.style.color      = type === 'income'  ? '#fff' : 'var(--text-muted)';
+  expBtn.style.background = type === 'expense' ? 'var(--expense)' : 'var(--expense-light)';
+  expBtn.style.color      = type === 'expense' ? '#fff' : 'var(--expense-text)';
+  incBtn.style.background = type === 'income'  ? 'var(--income)'  : 'var(--income-light)';
+  incBtn.style.color      = type === 'income'  ? '#fff' : 'var(--income-text)';
 
   const sel = document.getElementById('fab-cat');
   sel.innerHTML = '<option value="">Sem categoria</option>' +
