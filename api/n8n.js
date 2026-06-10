@@ -1,5 +1,5 @@
-import { getDb, initDb, rowsToObjects } from './lib/db.js';
-import { cors } from './lib/auth.js';
+import { getDb, initDb, rowsToObjects } from './_lib/db.js';
+import { cors } from './_lib/auth.js';
 
 const N8N_SECRET = process.env.N8N_SECRET || 'lumers-n8n-2025';
 

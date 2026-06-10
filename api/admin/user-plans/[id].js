@@ -1,5 +1,5 @@
-import { getDb, initDb } from '../../lib/db.js';
-import { requireAuth, cors } from '../../lib/auth.js';
+import { getDb, initDb } from '../../_lib/db.js';
+import { requireAuth, cors } from '../../_lib/auth.js';
 
 export default async function handler(req, res) {
   cors(res);

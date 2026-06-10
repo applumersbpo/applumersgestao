@@ -1,5 +1,5 @@
-import { getDb, initDb } from './lib/db.js';
-import { requireAuth, cors } from './lib/auth.js';
+import { getDb, initDb } from './_lib/db.js';
+import { requireAuth, cors } from './_lib/auth.js';
 
 // Aumenta o limite para comportar logos em base64 (~2MB imagem → ~2.7MB base64)
 export const config = {

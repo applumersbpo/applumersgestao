@@ -1,5 +1,5 @@
-import { getDb, initDb, rowsToObjects, getSystemSetting } from '../lib/db.js';
-import { cors } from '../lib/auth.js';
+import { getDb, initDb, rowsToObjects, getSystemSetting } from '../_lib/db.js';
+import { cors } from '../_lib/auth.js';
 import bcrypt from 'bcryptjs';
 
 export default async function handler(req, res) {

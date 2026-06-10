@@ -1,5 +1,5 @@
-import { getDb, initDb, rowsToObjects } from '../../lib/db.js';
-import { requireAuth, cors } from '../../lib/auth.js';
+import { getDb, initDb, rowsToObjects } from '../../_lib/db.js';
+import { requireAuth, cors } from '../../_lib/auth.js';
 
 const ALLOWED = ['categories', 'templates', 'transactions', 'settings', 'installments', 'goals', 'accounts', 'banks'];
 

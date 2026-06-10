@@ -1,5 +1,5 @@
-import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from '../lib/db.js';
-import { requireAuth, cors } from '../lib/auth.js';
+import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from '../_lib/db.js';
+import { requireAuth, cors } from '../_lib/auth.js';
 import bcrypt from 'bcryptjs';
 
 const SYSTEM_SETTING_KEYS = ['allow_registration'];
