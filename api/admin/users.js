@@ -57,16 +57,15 @@ export default async function handler(req, res) {
           FROM transactions t
           INNER JOIN users u ON u.id = t.user_id
           WHERE u.is_admin = 0`),
-        // Lista de usuários comuns com seus dados financeiros
+        // Lista de todos os usuários com seus dados financeiros
         db.execute(`SELECT u.id, u.name, u.email, u.phone, u.role, u.is_admin, u.last_login, u.created_at,
           COUNT(t.id) as tx_count,
           COALESCE(SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE 0 END),0) as total_income,
           COALESCE(SUM(CASE WHEN t.transaction_type IN ('expense','general','daily','installment') THEN t.amount ELSE 0 END),0) as total_expense
           FROM users u
           LEFT JOIN transactions t ON t.user_id=u.id
-          WHERE u.is_admin = 0
           GROUP BY u.id
-          ORDER BY tx_count DESC`),
+          ORDER BY u.is_admin ASC, tx_count DESC`),
         // Bancos usados por usuários comuns
         db.execute(`SELECT a.bank_name, COUNT(DISTINCT a.user_id) as user_count,
           COUNT(*) as account_count,
