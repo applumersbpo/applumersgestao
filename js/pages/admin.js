@@ -794,7 +794,7 @@ function _adminUserRow(u) {
           </div>
           <div style="text-align:center;padding:0 12px">
             <div style="font-size:.72rem;color:var(--text-muted)">Último acesso</div>
-            <div style="font-size:.78rem;color:var(--text-muted)">${u.last_login ? fmtDate(u.last_login) : '—'}</div>
+            <div style="font-size:.78rem;color:var(--text-muted)">${u.last_login ? fmtDateTime(u.last_login) : '—'}</div>
           </div>
         </div>
 
@@ -824,7 +824,7 @@ function _adminUserRow(u) {
         <span style="font-size:.78rem;color:${phoneOk ? 'var(--income-text)' : phone ? 'var(--warning)' : 'var(--text-muted)'}">
           ${phone ? (phoneOk ? '✓ WhatsApp' : '⚠ sem DDI') : 'Sem WhatsApp'}
         </span>
-        <span style="font-size:.78rem;color:var(--text-muted);margin-left:auto">${u.last_login ? fmtDate(u.last_login) : 'Nunca logou'}</span>
+        <span style="font-size:.78rem;color:var(--text-muted);margin-left:auto">${u.last_login ? fmtDateTime(u.last_login) : 'Nunca logou'}</span>
       </div>
     </div>`;
 }
@@ -885,7 +885,7 @@ async function renderAdminUserProfile(userId) {
                 ${icon('calendar',11)} Desde ${fmtDate((user.created_at || '').split('T')[0])}
               </span>
               <span style="font-size:.78rem;padding:3px 9px;border-radius:20px;background:var(--bg-subtle);color:var(--text-muted)">
-                ${icon('clock',11)} Acesso: ${user.last_login ? fmtDate(user.last_login) : 'Nunca'}
+                ${icon('clock',11)} Acesso: ${user.last_login ? fmtDateTime(user.last_login) : 'Nunca'}
               </span>
             </div>
           </div>
