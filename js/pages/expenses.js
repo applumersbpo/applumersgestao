@@ -210,16 +210,11 @@ async function openExpenseModal(month, year, data = null) {
             <label class="form-label">Descrição</label>
             <input id="exp-name" class="form-control" placeholder="Ex: Pagamento funcionário, Material..." value="${data?.name || ''}">
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Valor (R$)</label>
-              <input id="exp-amount" class="form-control" type="text" inputmode="decimal" placeholder="0,00" value="${data?.amount || ''}">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Data</label>
-              <input id="exp-date" class="form-control" type="date" value="${data?.due_date || today()}">
-            </div>
+          <div class="form-group">
+            <label class="form-label">Valor (R$)</label>
+            <input id="exp-amount" class="form-control" type="text" inputmode="decimal" placeholder="0,00" value="${data?.amount || ''}">
           </div>
+          <input type="hidden" id="exp-date" value="${data?.due_date || today()}">
 
           <div class="form-group">
             <label class="form-label">Conta</label>
