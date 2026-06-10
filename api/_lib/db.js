@@ -190,6 +190,59 @@ export async function initDb() {
       active INTEGER DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now'))
     )`,
+    `CREATE TABLE IF NOT EXISTS investments (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      ticker TEXT DEFAULT '',
+      asset_class TEXT DEFAULT 'other',
+      quantity REAL DEFAULT 0,
+      avg_price REAL DEFAULT 0,
+      current_price REAL DEFAULT 0,
+      current_price_date TEXT DEFAULT '',
+      institution TEXT DEFAULT '',
+      icon TEXT DEFAULT '📈',
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS investment_transactions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      investment_id TEXT NOT NULL,
+      tx_type TEXT NOT NULL,
+      quantity REAL DEFAULT 0,
+      unit_price REAL DEFAULT 0,
+      amount REAL DEFAULT 0,
+      date TEXT NOT NULL,
+      month INTEGER DEFAULT 0,
+      year INTEGER DEFAULT 0,
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS assets (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      asset_type TEXT DEFAULT 'other',
+      acquisition_value REAL DEFAULT 0,
+      current_value REAL DEFAULT 0,
+      current_value_date TEXT DEFAULT '',
+      acquisition_date TEXT DEFAULT '',
+      debt_amount REAL DEFAULT 0,
+      description TEXT DEFAULT '',
+      icon TEXT DEFAULT '',
+      color TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS asset_valuations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      asset_id TEXT NOT NULL,
+      value REAL NOT NULL,
+      date TEXT NOT NULL,
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {

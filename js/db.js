@@ -197,14 +197,18 @@ function makeCollection(name) {
 }
 
 const db = {
-  categories:   makeCollection('categories'),
-  templates:    makeCollection('templates'),
-  transactions: makeCollection('transactions'),
-  accounts:     makeCollection('accounts'),
-  banks:        makeCollection('banks'),
-  settings:     makeCollection('settings'),
-  installments: makeCollection('installments'),
-  goals:        makeCollection('goals'),
+  categories:            makeCollection('categories'),
+  templates:             makeCollection('templates'),
+  transactions:          makeCollection('transactions'),
+  accounts:              makeCollection('accounts'),
+  banks:                 makeCollection('banks'),
+  settings:              makeCollection('settings'),
+  installments:          makeCollection('installments'),
+  goals:                 makeCollection('goals'),
+  investments:           makeCollection('investments'),
+  investmentTransactions: makeCollection('investment_transactions'),
+  assets:                makeCollection('assets'),
+  assetValuations:       makeCollection('asset_valuations'),
 };
 
 // ── Auth UI ───────────────────────────────────────────────────────────────────

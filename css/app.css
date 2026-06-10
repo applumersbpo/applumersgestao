@@ -1765,3 +1765,60 @@ input, select, textarea { font: inherit; }
   margin-bottom: 16px;
 }
 
+/* ── Investment Module ── */
+.inv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.inv-item {
+  border-radius: var(--radius);
+  transition: box-shadow .15s;
+}
+.inv-item:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,.08);
+}
+.inv-item-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.inv-item-data {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-bottom: 8px;
+}
+.inv-data-cell {
+  display: flex;
+  flex-direction: column;
+}
+.inv-data-label {
+  font-size: .72rem;
+  color: var(--text-muted);
+}
+.inv-data-value {
+  font-size: .85rem;
+  font-weight: 600;
+}
+.inv-item-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+/* ── Asset Cards ── */
+.asset-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.asset-card {
+  border-radius: var(--radius);
+  transition: box-shadow .15s;
+}
+.asset-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,.08);
+}
+

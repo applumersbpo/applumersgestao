@@ -1,19 +1,23 @@
 import { getDb, initDb, rowsToObjects } from '../_lib/db.js';
 import { requireAuth, cors } from '../_lib/auth.js';
 
-const ALLOWED = ['categories', 'templates', 'transactions', 'settings', 'installments', 'goals', 'accounts', 'banks', 'annual-reports'];
+const ALLOWED = ['categories', 'templates', 'transactions', 'settings', 'installments', 'goals', 'accounts', 'banks', 'annual-reports', 'investments', 'investment_transactions', 'assets', 'asset_valuations', 'investments_summary'];
 
 const EXPENSE_TYPES_AR = ['expense', 'installment', 'general', 'daily'];
 
 const FIELDS = {
-  categories:   ['name', 'type', 'color', 'icon'],
-  templates:    ['name', 'category_id', 'transaction_type', 'kind', 'amount', 'due_day', 'active'],
-  transactions: ['template_id', 'name', 'category_id', 'account_id', 'transaction_type', 'kind', 'amount', 'due_date', 'paid_date', 'cash_date', 'competence_date', 'status', 'month', 'year', 'notes'],
-  settings:     ['key', 'value'],
-  installments: ['name', 'category_id', 'total_amount', 'installments', 'paid_installments', 'due_day', 'notes'],
-  goals:        ['name', 'target_amount', 'current_amount', 'deadline', 'color', 'icon'],
-  accounts:     ['bank_id', 'name', 'bank_name', 'type', 'currency', 'initial_balance', 'initial_balance_date', 'notes'],
-  banks:        ['code', 'name', 'logo_url', 'published', 'approved_by', 'notes'],
+  categories:              ['name', 'type', 'color', 'icon'],
+  templates:               ['name', 'category_id', 'transaction_type', 'kind', 'amount', 'due_day', 'active'],
+  transactions:            ['template_id', 'name', 'category_id', 'account_id', 'transaction_type', 'kind', 'amount', 'due_date', 'paid_date', 'cash_date', 'competence_date', 'status', 'month', 'year', 'notes'],
+  settings:                ['key', 'value'],
+  installments:            ['name', 'category_id', 'total_amount', 'installments', 'paid_installments', 'due_day', 'notes'],
+  goals:                   ['name', 'target_amount', 'current_amount', 'deadline', 'color', 'icon'],
+  accounts:                ['bank_id', 'name', 'bank_name', 'type', 'currency', 'initial_balance', 'initial_balance_date', 'notes'],
+  banks:                   ['code', 'name', 'logo_url', 'published', 'approved_by', 'notes'],
+  investments:             ['name', 'ticker', 'asset_class', 'quantity', 'avg_price', 'current_price', 'current_price_date', 'institution', 'icon', 'notes'],
+  investment_transactions: ['investment_id', 'tx_type', 'quantity', 'unit_price', 'amount', 'date', 'month', 'year', 'notes'],
+  assets:                  ['name', 'asset_type', 'acquisition_value', 'current_value', 'current_value_date', 'acquisition_date', 'debt_amount', 'description', 'icon', 'color'],
+  asset_valuations:        ['asset_id', 'value', 'date', 'notes'],
 };
 
 export default async function handler(req, res) {
@@ -90,6 +94,49 @@ export default async function handler(req, res) {
           saldo_com_atrasos: months.reduce((s, m) => s + m.saldo_com_atrasos, 0),
         };
         return res.json({ year, months, annual });
+      }
+
+      if (name === 'investments_summary') {
+        const [{ rows: invRows }, { rows: txRows }, { rows: astRows }] = await Promise.all([
+          db.execute({ sql: `SELECT * FROM investments WHERE user_id = ?`, args: [user.sub] }),
+          db.execute({ sql: `SELECT tx_type, amount FROM investment_transactions WHERE user_id = ?`, args: [user.sub] }),
+          db.execute({ sql: `SELECT current_value, debt_amount FROM assets WHERE user_id = ?`, args: [user.sub] }),
+        ]);
+        const investments = (invRows || []);
+        const txs         = (txRows  || []);
+        const astList     = (astRows  || []);
+
+        const total_current_value = investments.reduce((s, i) => s + ((parseFloat(i.quantity)||0) * (parseFloat(i.current_price)||0)), 0);
+        const total_cost          = investments.reduce((s, i) => s + ((parseFloat(i.quantity)||0) * (parseFloat(i.avg_price)||0)), 0);
+        const rentability_pct     = total_cost > 0 ? ((total_current_value - total_cost) / total_cost) * 100 : 0;
+        const proventos           = txs.filter(t => ['dividend','interest','bonus'].includes(t.tx_type)).reduce((s, t) => s + (parseFloat(t.amount)||0), 0);
+        const assets_value        = astList.reduce((s, a) => s + (parseFloat(a.current_value)||0), 0);
+        const assets_debt         = astList.reduce((s, a) => s + (parseFloat(a.debt_amount)||0), 0);
+        const net_worth           = total_current_value + assets_value - assets_debt;
+
+        const by_class = {};
+        for (const i of investments) {
+          const cls = i.asset_class || 'other';
+          by_class[cls] = (by_class[cls] || 0) + ((parseFloat(i.quantity)||0) * (parseFloat(i.current_price)||0));
+        }
+
+        return res.status(200).json({ total_current_value, total_cost, rentability_pct, proventos, assets_value, assets_debt, net_worth, by_class });
+      }
+
+      if (name === 'investment_transactions' && req.query.investment_id) {
+        const { rows } = await db.execute({
+          sql: `SELECT * FROM investment_transactions WHERE user_id = ? AND investment_id = ? ORDER BY date DESC`,
+          args: [user.sub, req.query.investment_id],
+        });
+        return res.status(200).json((rows || []).map(r => r || {}));
+      }
+
+      if (name === 'asset_valuations' && req.query.asset_id) {
+        const { rows } = await db.execute({
+          sql: `SELECT * FROM asset_valuations WHERE user_id = ? AND asset_id = ? ORDER BY date DESC`,
+          args: [user.sub, req.query.asset_id],
+        });
+        return res.status(200).json((rows || []).map(r => r || {}));
       }
 
       if (name === 'banks') {

@@ -163,6 +163,9 @@ case 'accounts':   await renderAccounts();       break;
         case 'annual-reports':  await renderAnnualReports(y);     break;
         case 'import':     renderImport();               break;
         case 'settings':   await renderSettings();        break;
+        case 'investments':  await renderInvestments();    break;
+        case 'assets':       await renderAssets();         break;
+        case 'wealth':       await renderWealth();         break;
         case 'admin':      await renderAdmin();           break;
         case 'admin-users':  await renderAdminUsers();  break;
         case 'admin-system': await renderAdminSystem(); break;
@@ -204,6 +207,9 @@ case 'accounts':   await renderAccounts();       break;
       goals:        'Metas Financeiras',
       reports:          'Relatórios',
       'annual-reports': 'Fluxo Anual',
+      investments:  'Investimentos',
+      assets:       'Patrimônio Físico',
+      wealth:       'Meu Patrimônio',
 import:     'Importar Dados',
       settings:   'Configurações',
       admin:        'Admin — Dashboard',
