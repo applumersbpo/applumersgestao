@@ -2,11 +2,12 @@ async function renderDashboard(month, year) {
   window._currentPeriod = { month, year };
   const content = document.getElementById('content');
 
-  const [transactions, catsMap, accounts, banks] = await Promise.all([
+  const [transactions, catsMap, accounts, banks, investments] = await Promise.all([
     db.transactions.filter(`month = ${month} && year = ${year}`).toArray(),
     getCategoriesMap(),
     db.accounts.toArray(),
-    db.banks.toArray()
+    db.banks.toArray(),
+    db.investments.toArray().catch(() => []),
   ]);
   const banksMapById = Object.fromEntries(banks.map(b => [b.id, b]));
 
@@ -171,6 +172,61 @@ async function renderDashboard(month, year) {
       </div>`;
   })();
 
+  // ── Widget de Investimentos ──────────────────────────────────────────────────
+  const investmentsHTML = (() => {
+    if (!investments || investments.length === 0) return '';
+    const totalCurrent  = investments.reduce((s, i) => s + ((i.quantity || 0) * (i.current_price || 0)), 0);
+    const totalInvested = investments.reduce((s, i) => s + ((i.quantity || 0) * (i.avg_price || 0)), 0);
+    const rentPct       = totalInvested > 0 ? ((totalCurrent - totalInvested) / totalInvested) * 100 : 0;
+    const rentColor     = rentPct >= 0 ? 'var(--income-text)' : 'var(--expense)';
+    const top4 = [...investments]
+      .sort((a, b) => ((b.quantity||0)*(b.current_price||0)) - ((a.quantity||0)*(a.current_price||0)))
+      .slice(0, 4);
+    return `
+      <div class="card" style="margin-bottom:20px">
+        <div class="section-header" style="margin-bottom:14px">
+          <div class="section-title">${icon('line-chart', 16)} Carteira de Investimentos</div>
+          <a href="#/wealth" class="btn btn-sm btn-ghost">Ver patrimônio →</a>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+          <div style="flex:1;min-width:120px;background:var(--primary-50);border-radius:var(--r-md);padding:10px 14px">
+            <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:2px">Patrimônio Total</div>
+            <div style="font-size:1.1rem;font-weight:700;color:var(--primary-700)">${fmt(totalCurrent)}</div>
+          </div>
+          <div style="flex:1;min-width:100px;background:${rentPct >= 0 ? 'var(--income-light)' : 'var(--expense-light)'};border-radius:var(--r-md);padding:10px 14px">
+            <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:2px">Rentabilidade</div>
+            <div style="font-size:1.1rem;font-weight:700;color:${rentColor}">${rentPct >= 0 ? '+' : ''}${rentPct.toFixed(2)}%</div>
+          </div>
+          <div style="flex:1;min-width:80px;background:var(--neutral-50);border-radius:var(--r-md);padding:10px 14px">
+            <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:2px">Ativos</div>
+            <div style="font-size:1.1rem;font-weight:700;color:var(--text)">${investments.length}</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${top4.map(i => {
+            const val  = (i.quantity || 0) * (i.current_price || 0);
+            const pct  = totalCurrent > 0 ? ((val / totalCurrent) * 100).toFixed(1) : '0.0';
+            const diff = (i.quantity||0)*(i.avg_price||0) > 0 ? ((val - (i.quantity||0)*(i.avg_price||0)) / ((i.quantity||0)*(i.avg_price||0))) * 100 : 0;
+            const clr  = ASSET_CLASS_COLORS[i.asset_class] || '#ADA897';
+            const diffC = diff >= 0 ? 'var(--income-text)' : 'var(--expense)';
+            return `
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-md)">
+                <div style="width:32px;height:32px;border-radius:8px;background:${clr}22;color:${clr};display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">${i.icon || '📈'}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:700;font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_escHtml(i.ticker || i.name)}</div>
+                  <div style="font-size:.72rem;color:var(--text-muted)">${pct}% da carteira</div>
+                </div>
+                <div style="text-align:right;flex-shrink:0">
+                  <div style="font-size:.88rem;font-weight:700">${fmt(val)}</div>
+                  <div style="font-size:.72rem;font-weight:600;color:${diffC}">${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%</div>
+                </div>
+              </div>`;
+          }).join('')}
+          ${investments.length > 4 ? `<a href="#/investments" style="font-size:.78rem;color:var(--text-muted);text-align:center;display:block;padding:4px 0">+ ${investments.length - 4} outros ativos</a>` : ''}
+        </div>
+      </div>`;
+  })();
+
   content.innerHTML = `
     <!-- KPI Grid -->
     <div class="summary-grid">
@@ -215,6 +271,9 @@ async function renderDashboard(month, year) {
 
     <!-- Visão por Carteiras -->
     ${accountsHTML}
+
+    <!-- Widget Investimentos -->
+    ${investmentsHTML}
 
     <!-- Top categorias de despesa -->
     ${(() => {

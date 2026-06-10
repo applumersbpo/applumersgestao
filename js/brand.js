@@ -383,3 +383,110 @@ async function saveBrand(cfg) {
 
 function getBrand()         { return { ..._brand }; }
 function getBrandDefaults() { return { ..._BRAND_DEFAULTS }; }
+
+// ── Icon Picker ───────────────────────────────────────────────────────────────
+const _ICON_SETS = {
+  finance: {
+    label: 'Finanças',
+    icons: ['📈','📉','💹','💰','💵','💴','💶','💷','💎','🏦','💳','🪙','💸','🤑','📊','📋','🧾','🔑','⭐','🌟','💫','🎯','🏆','🥇','🥈','🥉'],
+  },
+  assets: {
+    label: 'Bens',
+    icons: ['🏠','🏡','🏢','🏗️','🏭','🏬','🏪','🚗','🚙','🚕','🏍️','✈️','🛥️','⛵','🚁','🛢️','💻','🖥️','📱','📺','📡','🔌','⚡','🔋'],
+  },
+  nature: {
+    label: 'Outros',
+    icons: ['🌾','🌿','🌊','☀️','🌙','⚙️','🔧','🔨','⚒️','🛠️','🔩','⛏️','🎨','🎪','🎭','🎬','🎵','🏋️','🌏','🌐','🗺️','🧩','🔮','💡'],
+  },
+};
+
+function showIconPicker(currentIcon, onSelect) {
+  const el = document.createElement('div');
+  el.id = 'icon-picker-overlay';
+  el.style.cssText = `
+    position:fixed;inset:0;z-index:9999;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(0,0,0,.45);
+  `;
+
+  const tabs = Object.entries(_ICON_SETS).map(([k, s]) =>
+    `<button class="icon-picker-tab" data-tab="${k}" style="
+      padding:6px 12px;border:none;background:none;cursor:pointer;
+      font-size:.8rem;font-weight:600;color:var(--text-muted);
+      border-bottom:2px solid transparent;transition:.15s;
+    ">${s.label}</button>`
+  ).join('');
+
+  el.innerHTML = `
+    <div style="
+      background:var(--surface);border-radius:16px;
+      box-shadow:0 16px 48px rgba(0,0,0,.2);
+      width:calc(100vw - 32px);max-width:360px;
+      display:flex;flex-direction:column;overflow:hidden;
+    ">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 0">
+        <div style="font-weight:700;font-size:.92rem;color:var(--text)">Escolher Ícone</div>
+        <button id="icon-picker-close" style="
+          background:none;border:none;cursor:pointer;padding:4px;
+          color:var(--text-muted);font-size:1.1rem;line-height:1;
+        ">✕</button>
+      </div>
+      <div style="display:flex;gap:4px;padding:8px 16px 0;border-bottom:1px solid var(--border)">
+        ${tabs}
+      </div>
+      <div id="icon-picker-grid" style="
+        display:grid;grid-template-columns:repeat(8,1fr);gap:4px;
+        padding:12px 14px;max-height:240px;overflow-y:auto;
+      "></div>
+      <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
+        <span style="font-size:.78rem;color:var(--text-muted)">Ou digite:</span>
+        <input id="icon-picker-custom" class="form-control" style="flex:1;height:34px;font-size:1rem;text-align:center"
+          maxlength="4" placeholder="✍️" value="${currentIcon || ''}">
+        <button id="icon-picker-confirm" class="btn btn-primary btn-sm">OK</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(el);
+
+  function renderTab(tabKey) {
+    const grid = el.querySelector('#icon-picker-grid');
+    const icons = _ICON_SETS[tabKey]?.icons || [];
+    grid.innerHTML = icons.map(ico => `
+      <button class="icon-picker-btn" data-ico="${ico}" style="
+        background:none;border:1px solid transparent;border-radius:8px;
+        padding:6px;font-size:1.4rem;cursor:pointer;text-align:center;
+        transition:.12s;line-height:1;
+        ${ico === currentIcon ? 'background:var(--primary-100);border-color:var(--primary-400)' : ''}
+      " title="${ico}">${ico}</button>
+    `).join('');
+
+    el.querySelectorAll('.icon-picker-tab').forEach(t => {
+      const active = t.dataset.tab === tabKey;
+      t.style.color      = active ? 'var(--primary-600)' : 'var(--text-muted)';
+      t.style.borderBottomColor = active ? 'var(--primary-600)' : 'transparent';
+    });
+  }
+
+  renderTab('finance');
+
+  el.querySelectorAll('.icon-picker-tab').forEach(t => {
+    t.addEventListener('click', () => renderTab(t.dataset.tab));
+  });
+
+  el.querySelector('#icon-picker-grid').addEventListener('click', e => {
+    const btn = e.target.closest('[data-ico]');
+    if (!btn) return;
+    onSelect(btn.dataset.ico);
+    el.remove();
+  });
+
+  el.querySelector('#icon-picker-close').addEventListener('click', () => el.remove());
+  el.addEventListener('click', e => { if (e.target === el) el.remove(); });
+
+  el.querySelector('#icon-picker-confirm').addEventListener('click', () => {
+    const val = el.querySelector('#icon-picker-custom').value.trim();
+    if (val) onSelect(val);
+    el.remove();
+  });
+}

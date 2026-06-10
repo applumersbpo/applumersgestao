@@ -223,7 +223,11 @@ async function openInvestmentModal(id = null) {
           <div class="form-row">
             <div class="form-group" style="max-width:90px">
               <label class="form-label">Ícone</label>
-              <input id="inv-icon" class="form-control" placeholder="📈" maxlength="4" value="${_escHtml(data?.icon || '')}">
+              <input type="hidden" id="inv-icon" value="${_escHtml(data?.icon || '📈')}">
+              <button type="button" id="inv-icon-btn" onclick="showIconPicker(document.getElementById('inv-icon').value, v => { document.getElementById('inv-icon').value = v; document.getElementById('inv-icon-btn').textContent = v; })"
+                style="width:100%;height:40px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center">
+                ${data?.icon || '📈'}
+              </button>
             </div>
             <div class="form-group" style="flex:1">
               <label class="form-label">Ticker *</label>

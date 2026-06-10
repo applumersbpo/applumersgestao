@@ -140,7 +140,11 @@ async function openAssetModal(id = null) {
           <div class="form-row">
             <div class="form-group" style="max-width:80px">
               <label class="form-label">Ícone</label>
-              <input id="ast-icon" class="form-control" placeholder="🏠" maxlength="4" value="${_escHtml(data?.icon || '')}">
+              <input type="hidden" id="ast-icon" value="${_escHtml(data?.icon || ASSET_TYPE_ICONS[data?.asset_type || 'other'] || '🏠')}">
+              <button type="button" id="ast-icon-btn" onclick="showIconPicker(document.getElementById('ast-icon').value, v => { document.getElementById('ast-icon').value = v; document.getElementById('ast-icon-btn').textContent = v; })"
+                style="width:100%;height:40px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center">
+                ${data?.icon || ASSET_TYPE_ICONS[data?.asset_type || 'other'] || '🏠'}
+              </button>
             </div>
             <div class="form-group" style="flex:1">
               <label class="form-label">Nome *</label>
