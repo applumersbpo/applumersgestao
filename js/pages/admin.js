@@ -93,7 +93,10 @@ function _adminNavBar(active) {
     { id: 'users',     href: '#/admin-users',  lucide: 'users',            label: 'Usuários'  },
     { id: 'plans',     href: '#/admin-plans',  lucide: 'credit-card',      label: 'Planos'    },
   ];
-  if (isSuperAdmin) tabs.push({ id: 'system', href: '#/admin-system', lucide: 'settings', label: 'Sistema' });
+  if (isSuperAdmin) {
+    tabs.push({ id: 'system', href: '#/admin-system', lucide: 'settings',    label: 'Sistema' });
+    tabs.push({ id: 'theme',  href: '#/admin-theme',  lucide: 'palette',     label: 'Tema'    });
+  }
   return `<nav class="admin-nav-tabs">${tabs.map(t => `
     <a href="${t.href}" class="admin-nav-tab${active === t.id ? ' active' : ''}" onclick="event.preventDefault();location.hash='${t.href.slice(1)}'">
       <i data-lucide="${t.lucide}" style="width:14px;height:14px"></i>
@@ -1032,17 +1035,10 @@ async function renderAdminSystem() {
   }
 
   try {
-    const [brandCfg, sysCfg] = await Promise.all([
-      fetch('/api/brand').then(r => r.json()).catch(() => ({})),
-      _api('GET', '/admin/users?resource=system-settings').catch(() => ({})),
-    ]);
+    const sysCfg = await _api('GET', '/admin/users?resource=system-settings').catch(() => ({}));
 
-    // Reseta pendentes ao entrar na página
-    _pendingLogoData    = '';
-    _pendingFaviconData = '';
-    _pendingLoginBgData = '';
-
-    const allowReg = sysCfg.allow_registration === '1';
+    const allowReg   = sysCfg.allow_registration === '1';
+    const evoGlobalKey = sysCfg.evolution_global_key || '';
 
     content.innerHTML = `
       ${_adminNavBar('system')}
@@ -1071,12 +1067,262 @@ async function renderAdminSystem() {
         </div>
         <div id="toggle-reg-feedback" style="font-size:.8rem;margin-top:10px;display:none"></div>
       </div>
+      ${await _renderEvolutionSection(evoGlobalKey)}`;
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } catch(e) {
+    content.innerHTML = `<p style="color:var(--expense);padding:16px">Erro: ${e.message}</p>`;
+  }
+}
+
+// ── Render Admin Theme ────────────────────────────────────────────────────────
+
+async function renderAdminTheme() {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading-screen"><div class="spinner"></div></div>';
+
+  const _user = pb.authStore.model;
+  const isSuperAdmin = _user?.role === 'super_admin' || _user?.email === 'applumergestao@gmail.com';
+  if (!isSuperAdmin) {
+    content.innerHTML = `
+      ${_adminNavBar('theme')}
+      <div style="padding:48px;text-align:center;color:var(--text-muted)">
+        <i data-lucide="shield-off" style="width:40px;height:40px;opacity:.3;display:block;margin:0 auto 12px"></i>
+        <p>Acesso restrito a Super Admin.</p>
+      </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+
+  try {
+    const brandCfg = await fetch('/api/brand').then(r => r.json()).catch(() => ({}));
+
+    // Reseta pendentes ao entrar na página
+    _pendingLogoData    = '';
+    _pendingFaviconData = '';
+    _pendingLoginBgData = '';
+
+    content.innerHTML = `
+      ${_adminNavBar('theme')}
       ${_adminBrandSection(brandCfg)}`;
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
     _initBrandEditor();
   } catch(e) {
     content.innerHTML = `<p style="color:var(--expense);padding:16px">Erro: ${e.message}</p>`;
+  }
+}
+
+// ── Evolution API Instance Management ────────────────────────────────────────
+
+async function _renderEvolutionSection(evoGlobalKey = '') {
+  let instances = [];
+  try { instances = await _api('GET', '/admin/users?resource=evolution-instances'); } catch {}
+  const statusColor = s => s === 'open' ? 'var(--income-text,#16a34a)' : 'var(--expense,#dc2626)';
+  const statusLabel = s => s === 'open' ? 'Conectada' : 'Desconectada';
+  const rows = instances.map(inst => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;
+      padding:10px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font-weight:600;font-size:.9rem">${_escHtml(inst.name)}</div>
+        <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">
+          ${inst.number ? inst.number : 'Sem número'} &nbsp;·&nbsp;
+          <span style="color:${statusColor(inst.connectionStatus)};font-weight:600">
+            ${statusLabel(inst.connectionStatus)}
+          </span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        ${inst.connectionStatus !== 'open' ? `
+          <button class="btn btn-sm" onclick="_evoConnectInstance('${_escHtml(inst.name)}')"
+            style="font-size:.78rem;padding:4px 10px">
+            ${icon('qr-code', 12)} QR Code
+          </button>` : ''}
+        <button class="btn btn-sm" onclick="_evoDeleteInstance('${_escHtml(inst.name)}')"
+          style="font-size:.78rem;padding:4px 10px;background:var(--expense-light,#fee2e2);color:var(--expense,#dc2626);border:none">
+          ${icon('trash-2', 12)} Excluir
+        </button>
+      </div>
+    </div>`).join('');
+
+  return `
+    <div class="card" style="margin-bottom:20px" id="evolution-section">
+      <div class="card-title" style="margin-bottom:16px">${icon('message-circle', 14)} WhatsApp — Instâncias Evolution</div>
+      <div id="evo-instances-list">
+        ${rows || '<div style="color:var(--text-muted);font-size:.85rem">Nenhuma instância encontrada.</div>'}
+      </div>
+      <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">Chave global (para criar/excluir instâncias)</div>
+        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px">
+          Chave <code>AUTHENTICATION_API_KEY</code> do servidor Evolution — diferente do token da instância.
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <input id="evo-global-key" type="password" class="form-input"
+            placeholder="Cole aqui a chave global…"
+            value="${_escHtml(evoGlobalKey)}"
+            style="flex:1;font-size:.85rem;font-family:monospace">
+          <button class="btn btn-outline" onclick="_evoTestGlobalKey()" id="evo-key-test-btn"
+            style="font-size:.85rem;white-space:nowrap">
+            ${icon('zap', 14)} Testar
+          </button>
+          <button class="btn btn-primary" onclick="_evoSaveGlobalKey()" id="evo-key-btn"
+            style="font-size:.85rem;white-space:nowrap">
+            ${icon('save', 14)} Salvar
+          </button>
+        </div>
+        <div id="evo-key-feedback" style="margin-bottom:12px"></div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:8px">Criar nova instância</div>
+        <div style="display:flex;gap:8px">
+          <input id="evo-new-name" type="text" class="form-input" placeholder="Nome da instância (ex: app-lumers2)"
+            style="flex:1;font-size:.85rem" onkeydown="if(event.key==='Enter')_evoCreateInstance()">
+          <button class="btn btn-primary" onclick="_evoCreateInstance()" id="evo-create-btn"
+            style="font-size:.85rem;white-space:nowrap">
+            ${icon('plus', 14)} Criar
+          </button>
+        </div>
+        <div id="evo-create-feedback" style="margin-top:10px"></div>
+      </div>
+      <div id="evo-qr-panel" style="display:none;margin-top:16px;text-align:center"></div>
+    </div>`;
+}
+
+async function _evoTestGlobalKey() {
+  const keyEl  = document.getElementById('evo-global-key');
+  const testBtn = document.getElementById('evo-key-test-btn');
+  const fb      = document.getElementById('evo-key-feedback');
+  const key     = keyEl?.value?.trim();
+  if (!key) { toast('Informe a chave antes de testar', 'error'); return; }
+
+  // Salva temporariamente para o backend usar na verificação
+  testBtn.disabled = true;
+  testBtn.innerHTML = icon('loader', 14) + ' Testando…';
+  try {
+    // Salva a chave antes de testar para que o backend a use
+    await _api('PUT', '/admin/users?resource=system-settings', { evolution_global_key: key });
+    const res = await _api('POST', '/admin/users', { action: 'test-evolution-key' });
+    if (res.ok) {
+      if (fb) fb.innerHTML = `<div style="background:var(--income-light,#dcfce7);border-radius:var(--r-md);
+        padding:6px 10px;font-size:.8rem;color:var(--income-text,#16a34a)">
+        ✓ Chave válida! (${_escHtml(res.key_preview)}) Agora você pode criar instâncias.
+      </div>`;
+      toast('Chave global válida!', 'success');
+    } else {
+      if (fb) fb.innerHTML = `<div style="background:#fee2e2;border-radius:var(--r-md);
+        padding:6px 10px;font-size:.8rem;color:#dc2626">
+        ✗ ${_escHtml(res.error || 'Chave inválida')}
+      </div>`;
+    }
+  } catch(e) {
+    if (fb) fb.innerHTML = `<div style="background:#fee2e2;border-radius:var(--r-md);
+      padding:6px 10px;font-size:.8rem;color:#dc2626">Erro: ${_escHtml(e.message)}</div>`;
+  } finally {
+    testBtn.disabled = false;
+    testBtn.innerHTML = icon('zap', 14) + ' Testar';
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [testBtn] });
+  }
+}
+
+async function _evoSaveGlobalKey() {
+  const keyEl = document.getElementById('evo-global-key');
+  const btn   = document.getElementById('evo-key-btn');
+  const fb    = document.getElementById('evo-key-feedback');
+  const key   = keyEl?.value?.trim();
+  if (!key) { toast('Informe a chave global', 'error'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = icon('loader', 14) + ' Salvando…';
+  try {
+    await _api('PUT', '/admin/users?resource=system-settings', { evolution_global_key: key });
+    if (fb) {
+      fb.innerHTML = `<div style="background:var(--income-light,#dcfce7);border-radius:var(--r-md);
+        padding:6px 10px;font-size:.8rem;color:var(--income-text,#16a34a)">
+        ✓ Chave global salva com sucesso.
+      </div>`;
+      setTimeout(() => { if (fb) fb.innerHTML = ''; }, 3000);
+    }
+    toast('Chave global salva', 'success');
+  } catch(e) {
+    if (fb) fb.innerHTML = `<div style="background:#fee2e2;border-radius:var(--r-md);
+      padding:6px 10px;font-size:.8rem;color:#dc2626">Erro: ${_escHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = icon('save', 14) + ' Salvar';
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
+  }
+}
+
+async function _evoCreateInstance() {
+  const nameEl = document.getElementById('evo-new-name');
+  const btn    = document.getElementById('evo-create-btn');
+  const fb     = document.getElementById('evo-create-feedback');
+  const name   = nameEl?.value?.trim();
+  if (!name) { toast('Informe o nome da instância', 'error'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = icon('loader', 14) + ' Criando…';
+  try {
+    const res = await _api('POST', '/admin/users', { action: 'create-evolution-instance', instanceName: name });
+    if (fb) {
+      fb.innerHTML = `<div style="background:var(--income-light,#dcfce7);border-radius:var(--r-md);
+        padding:8px 12px;font-size:.82rem;color:var(--income-text,#16a34a)">
+        ✓ Instância <strong>${_escHtml(name)}</strong> criada. Aguarde o QR Code…
+      </div>`;
+    }
+    if (nameEl) nameEl.value = '';
+    // Aguarda a instância inicializar antes de buscar o QR Code
+    await new Promise(r => setTimeout(r, 2000));
+    await _evoConnectInstance(name);
+    // Reload instance list
+    setTimeout(() => renderAdminSystem(), 4000);
+  } catch(e) {
+    if (fb) fb.innerHTML = `<div style="background:#fee2e2;border-radius:var(--r-md);
+      padding:8px 12px;font-size:.82rem;color:#dc2626">Erro: ${_escHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = icon('plus', 14) + ' Criar';
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
+  }
+}
+
+async function _evoConnectInstance(name) {
+  const panel = document.getElementById('evo-qr-panel');
+  if (!panel) return;
+  panel.style.display = '';
+  panel.innerHTML = `<div style="color:var(--text-muted);font-size:.85rem">${icon('loader', 14)} Gerando QR Code…</div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [panel] });
+  try {
+    const res = await _api('GET', `/admin/users?resource=evolution-qr&instance=${encodeURIComponent(name)}`);
+    const base64 = res?.base64 || res?.qrcode?.base64 || res?.code;
+    if (base64) {
+      const src = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
+      panel.innerHTML = `
+        <div style="font-size:.85rem;font-weight:600;margin-bottom:8px">
+          Escaneie com o WhatsApp → <em>${_escHtml(name)}</em>
+        </div>
+        <img src="${src}" style="width:220px;height:220px;border:2px solid var(--border);border-radius:var(--r-md)">
+        <div style="font-size:.75rem;color:var(--text-muted);margin-top:6px">
+          O QR Code expira em ~60 segundos. Recarregue a página se precisar de um novo.
+        </div>`;
+    } else {
+      panel.innerHTML = `<div style="font-size:.82rem;color:var(--text-muted)">
+        Instância pode já estar conectada, ou aguarde e recarregue a página.
+      </div>`;
+    }
+  } catch(e) {
+    panel.innerHTML = `<div style="font-size:.82rem;color:#dc2626">Erro ao gerar QR: ${_escHtml(e.message)}</div>`;
+  }
+}
+
+async function _evoDeleteInstance(name) {
+  if (!confirm(`Excluir a instância "${name}"? Esta ação não pode ser desfeita.`)) return;
+  try {
+    await _api('POST', '/admin/users', { action: 'delete-evolution-instance', instanceName: name });
+    toast(`Instância ${name} excluída`, 'success');
+    renderAdminSystem();
+  } catch(e) {
+    toast('Erro: ' + e.message, 'error');
   }
 }
 
@@ -1662,6 +1908,59 @@ function openAdminMessageModal(preSelectedIds = []) {
             </div>
           </div>
 
+          <!-- Variáveis personalizadas -->
+          <div>
+            <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px">
+              Variáveis — clique para inserir
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px">
+              ${['{nome}','{email}','{telefone}','{status}','{plano}','{saldo}'].map(v => `
+                <button class="btn btn-sm" onclick="_msgInsertVar('${v}')"
+                  style="font-size:.75rem;padding:3px 9px;font-family:monospace;background:var(--surface-alt,#f1f5f9);border:1px solid var(--border)">
+                  ${v}
+                </button>`).join('')}
+            </div>
+          </div>
+
+          <!-- Variações / Spin Syntax -->
+          <div style="background:var(--surface-alt,#f8fafc);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px">
+            <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px">
+              ${icon('shuffle', 11)} Variações de texto (spin)
+            </div>
+            <div style="font-size:.78rem;color:var(--text-muted);line-height:1.5">
+              Use <code style="background:var(--border);padding:1px 5px;border-radius:3px">{opção1|opção2|opção3}</code>
+              — cada destinatário recebe uma variação aleatória diferente.<br>
+              <span style="color:var(--text-muted);font-size:.73rem">
+                Ex: <em>{Oi|Olá|Ei}, {nome}! Tudo bem?</em>
+              </span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">
+              ${['{Oi|Olá|Ei}','{Tudo bem?|Como vai?|Tudo certo?}','{Aproveite|Não perca|Confira}'].map(v => `
+                <button class="btn btn-sm" onclick="_msgInsertVar('${v}')"
+                  style="font-size:.73rem;padding:2px 8px;font-family:monospace;background:var(--surface);border:1px dashed var(--border)">
+                  ${v}
+                </button>`).join('')}
+            </div>
+          </div>
+
+          <!-- Cadência -->
+          <div class="form-group" style="margin:0">
+            <label class="form-label" style="display:flex;align-items:center;gap:6px">
+              ${icon('timer', 13)} Cadência (delay entre mensagens)
+            </label>
+            <div style="display:flex;align-items:center;gap:10px">
+              <input id="msg-delay-range" type="range" min="0" max="30" step="1" value="2"
+                style="flex:1;accent-color:var(--primary)"
+                oninput="document.getElementById('msg-delay-val').textContent=this.value">
+              <span style="font-size:.85rem;font-weight:600;min-width:52px;text-align:right">
+                <span id="msg-delay-val">2</span> s
+              </span>
+            </div>
+            <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">
+              0 = sem delay · recomendado 2–5 s para evitar bloqueios do WhatsApp
+            </div>
+          </div>
+
           <!-- Mídia -->
           <div class="form-group" style="margin:0">
             <label class="form-label">Mídia (opcional)</label>
@@ -1859,17 +2158,34 @@ function _detectMediaType(file) {
   return 'document';
 }
 
+function _msgInsertVar(varText) {
+  const el = document.getElementById('msg-text');
+  if (!el) return;
+  const s = el.selectionStart, e = el.selectionEnd;
+  el.value = el.value.slice(0, s) + varText + el.value.slice(e);
+  el.selectionStart = el.selectionEnd = s + varText.length;
+  el.focus();
+}
+
 async function _sendAdminMessage() {
   const userIds  = [...(window._adminMsgSelected || new Set())];
   const text     = document.getElementById('msg-text')?.value?.trim() || '';
   const resultEl = document.getElementById('msg-result');
   const btn      = document.getElementById('msg-send-btn');
+  const delayS   = parseInt(document.getElementById('msg-delay-range')?.value || '2', 10);
+  const delay_ms = delayS * 1000;
 
   if (!userIds.length) { toast('Selecione ao menos um destinatário', 'error'); return; }
   if (!text && !_stickyMsgMedia) { toast('Digite uma mensagem ou anexe um arquivo', 'error'); return; }
 
   btn.disabled = true;
   btn.innerHTML = icon('loader', 14) + ' Enviando…';
+
+  // Estimativa de tempo para o usuário
+  if (delay_ms > 0 && userIds.length > 1) {
+    const estimSec = Math.round(delay_ms * (userIds.length - 1) / 1000);
+    toast(`Disparo iniciado — estimativa: ~${estimSec}s com cadência de ${delayS}s`, 'warning');
+  }
 
   try {
     let media_base64 = null, media_type = null, media_name = null;
@@ -1883,6 +2199,7 @@ async function _sendAdminMessage() {
       action: 'send-message',
       user_ids: userIds,
       text: text || ' ',
+      delay_ms,
       ...(media_base64 ? { media_base64, media_type, media_name } : {}),
     });
 

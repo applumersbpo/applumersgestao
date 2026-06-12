@@ -169,6 +169,7 @@ case 'accounts':   await renderAccounts();       break;
         case 'admin':      await renderAdmin();           break;
         case 'admin-users':  await renderAdminUsers();  break;
         case 'admin-system': await renderAdminSystem(); break;
+        case 'admin-theme':  await renderAdminTheme();  break;
         case 'admin-plans':  await renderAdminPlans();  break;
         default:           await renderDashboard(m, y);
       }
@@ -215,6 +216,7 @@ import:     'Importar Dados',
       admin:        'Admin — Dashboard',
       'admin-users':  'Usuários',
       'admin-system': 'Configurações do Sistema',
+      'admin-theme':  'Tema & Identidade Visual',
       'admin-plans':  'Planos de Assinatura',
     };
     document.getElementById('pageTitle').textContent = titles[this.currentPage] || 'Dashboard';
