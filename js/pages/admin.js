@@ -1126,7 +1126,7 @@ async function _renderEvolutionSection(evoGlobalKey = '') {
       <div>
         <div style="font-weight:600;font-size:.9rem">${_escHtml(inst.name)}</div>
         <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">
-          ${inst.number ? inst.number : 'Sem número'} &nbsp;·&nbsp;
+          ${inst.number ? _escHtml(inst.number) : 'Sem número'} &nbsp;·&nbsp;
           <span style="color:${statusColor(inst.connectionStatus)};font-weight:600">
             ${statusLabel(inst.connectionStatus)}
           </span>
@@ -1138,8 +1138,14 @@ async function _renderEvolutionSection(evoGlobalKey = '') {
             style="font-size:.78rem;padding:4px 10px">
             ${icon('qr-code', 12)} QR Code
           </button>` : ''}
+        <button class="btn btn-sm" onclick="_evoUnlinkInstance('${_escHtml(inst.name)}')"
+          style="font-size:.78rem;padding:4px 10px;background:var(--bg-subtle);color:var(--text-muted);border:none"
+          title="Remove do sistema sem deletar na Evolution">
+          ${icon('unlink', 12)} Desvincular
+        </button>
         <button class="btn btn-sm" onclick="_evoDeleteInstance('${_escHtml(inst.name)}')"
-          style="font-size:.78rem;padding:4px 10px;background:var(--expense-light,#fee2e2);color:var(--expense,#dc2626);border:none">
+          style="font-size:.78rem;padding:4px 10px;background:var(--expense-light,#fee2e2);color:var(--expense,#dc2626);border:none"
+          title="Exclui a instância da Evolution e remove do sistema">
           ${icon('trash-2', 12)} Excluir
         </button>
       </div>
@@ -1147,14 +1153,19 @@ async function _renderEvolutionSection(evoGlobalKey = '') {
 
   return `
     <div class="card" style="margin-bottom:20px" id="evolution-section">
-      <div class="card-title" style="margin-bottom:16px">${icon('message-circle', 14)} WhatsApp — Instâncias Evolution</div>
+      <div class="card-title" style="margin-bottom:4px">${icon('message-circle', 14)} WhatsApp — Instâncias Evolution</div>
+      <p style="font-size:.78rem;color:var(--text-muted);margin:0 0 16px;line-height:1.5">
+        Exibe apenas instâncias cadastradas neste sistema. Para adicionar uma instância já existente, use <strong>Vincular instância</strong> abaixo.
+      </p>
       <div id="evo-instances-list">
-        ${rows || '<div style="color:var(--text-muted);font-size:.85rem">Nenhuma instância encontrada.</div>'}
+        ${rows || '<div style="color:var(--text-muted);font-size:.85rem;padding:8px 0">Nenhuma instância cadastrada neste sistema.</div>'}
       </div>
-      <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+
+      <!-- Chave global -->
+      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
         <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">Chave global (para criar/excluir instâncias)</div>
         <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px">
-          Chave <code>AUTHENTICATION_API_KEY</code> do servidor Evolution — diferente do token da instância.
+          Chave <code>AUTHENTICATION_API_KEY</code> do servidor Evolution — necessária para criar e excluir instâncias.
         </div>
         <div style="display:flex;gap:8px;margin-bottom:16px">
           <input id="evo-global-key" type="password" class="form-input"
@@ -1170,10 +1181,34 @@ async function _renderEvolutionSection(evoGlobalKey = '') {
             ${icon('save', 14)} Salvar
           </button>
         </div>
-        <div id="evo-key-feedback" style="margin-bottom:12px"></div>
+        <div id="evo-key-feedback" style="margin-bottom:4px"></div>
       </div>
-      <div style="border-top:1px solid var(--border);padding-top:16px">
-        <div style="font-weight:600;font-size:.85rem;margin-bottom:8px">Criar nova instância</div>
+
+      <!-- Vincular instância existente -->
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('link', 13)} Vincular instância existente</div>
+        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
+          Registra uma instância já existente na Evolution neste sistema. Informe o nome exato da instância e, se necessário, a chave da instância.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <input id="evo-link-name" type="text" class="form-input" placeholder="Nome da instância"
+            style="flex:2;min-width:140px;font-size:.85rem">
+          <input id="evo-link-key" type="password" class="form-input" placeholder="Chave da instância (opcional)"
+            style="flex:2;min-width:140px;font-size:.85rem;font-family:monospace">
+          <button class="btn btn-outline" onclick="_evoLinkInstance()" id="evo-link-btn"
+            style="font-size:.85rem;white-space:nowrap;flex-shrink:0">
+            ${icon('link', 14)} Vincular
+          </button>
+        </div>
+        <div id="evo-link-feedback" style="margin-bottom:4px"></div>
+      </div>
+
+      <!-- Criar nova instância -->
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('plus-circle', 13)} Criar nova instância</div>
+        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:10px">
+          Cria uma nova instância na Evolution e registra automaticamente neste sistema.
+        </div>
         <div style="display:flex;gap:8px">
           <input id="evo-new-name" type="text" class="form-input" placeholder="Nome da instância (ex: app-lumers2)"
             style="flex:1;font-size:.85rem" onkeydown="if(event.key==='Enter')_evoCreateInstance()">
@@ -1184,6 +1219,7 @@ async function _renderEvolutionSection(evoGlobalKey = '') {
         </div>
         <div id="evo-create-feedback" style="margin-top:10px"></div>
       </div>
+
       <div id="evo-qr-panel" style="display:none;margin-top:16px;text-align:center"></div>
     </div>`;
 }
@@ -1316,13 +1352,54 @@ async function _evoConnectInstance(name) {
 }
 
 async function _evoDeleteInstance(name) {
-  if (!confirm(`Excluir a instância "${name}"? Esta ação não pode ser desfeita.`)) return;
+  if (!confirm(`Excluir a instância "${name}" da Evolution e remover deste sistema? Esta ação não pode ser desfeita.`)) return;
   try {
     await _api('POST', '/admin/users', { action: 'delete-evolution-instance', instanceName: name });
     toast(`Instância ${name} excluída`, 'success');
     renderAdminSystem();
   } catch(e) {
     toast('Erro: ' + e.message, 'error');
+  }
+}
+
+async function _evoUnlinkInstance(name) {
+  if (!confirm(`Desvincular "${name}" deste sistema? A instância continuará existindo na Evolution.`)) return;
+  try {
+    await _api('POST', '/admin/users', { action: 'unlink-evolution-instance', instanceName: name });
+    toast(`Instância ${name} desvinculada`, 'success');
+    renderAdminSystem();
+  } catch(e) {
+    toast('Erro: ' + e.message, 'error');
+  }
+}
+
+async function _evoLinkInstance() {
+  const nameEl = document.getElementById('evo-link-name');
+  const keyEl  = document.getElementById('evo-link-key');
+  const btn    = document.getElementById('evo-link-btn');
+  const fb     = document.getElementById('evo-link-feedback');
+  const name   = nameEl?.value?.trim();
+  const key    = keyEl?.value?.trim();
+  if (!name) { toast('Informe o nome da instância', 'error'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = icon('loader', 14) + ' Vinculando…';
+  try {
+    await _api('POST', '/admin/users', { action: 'link-evolution-instance', instanceName: name, instanceKey: key || undefined });
+    if (fb) fb.innerHTML = `<div style="background:var(--income-light,#dcfce7);border-radius:var(--r-md);
+      padding:6px 10px;font-size:.8rem;color:var(--income-text,#16a34a)">
+      ✓ Instância <strong>${_escHtml(name)}</strong> vinculada com sucesso.
+    </div>`;
+    if (nameEl) nameEl.value = '';
+    if (keyEl)  keyEl.value  = '';
+    setTimeout(() => renderAdminSystem(), 1500);
+  } catch(e) {
+    if (fb) fb.innerHTML = `<div style="background:#fee2e2;border-radius:var(--r-md);
+      padding:6px 10px;font-size:.8rem;color:#dc2626">Erro: ${_escHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = icon('link', 14) + ' Vincular';
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
   }
 }
 

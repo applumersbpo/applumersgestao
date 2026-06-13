@@ -2,7 +2,20 @@ import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from
 import { requireAuth, cors } from '../_lib/auth.js';
 import bcrypt from 'bcryptjs';
 
-const SYSTEM_SETTING_KEYS = ['allow_registration'];
+const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key'];
+
+// Helper: extracts base URL from EVOLUTION_URL (e.g. https://host/message/sendText/inst → https://host)
+function _evoBase() {
+  const url = process.env.EVOLUTION_URL || '';
+  try { const u = new URL(url); return u.origin; } catch { return ''; }
+}
+const _evoKey     = () => process.env.EVOLUTION_APIKEY || '';
+const _evoHdrs    = () => ({ 'Content-Type': 'application/json', apikey: _evoKey() });
+// Chave global usada para gerenciar instâncias (create/delete) — lida do banco em runtime
+const _evoGlobalHdrs = async () => {
+  const key = await getSystemSetting('evolution_global_key') || _evoKey();
+  return { 'Content-Type': 'application/json', apikey: key };
+};
 
 export default async function handler(req, res) {
   cors(res);
@@ -14,6 +27,45 @@ export default async function handler(req, res) {
     if (!user.is_admin) return res.status(403).json({ error: 'Forbidden' });
 
     const db = getDb();
+
+    // ── Evolution API instance management ─────────────────────────────────────
+    // Lista APENAS as instâncias cadastradas neste sistema (tabela evolution_instances).
+    // Nunca chama fetchInstances na conta global.
+    if (req.query.resource === 'evolution-instances') {
+      const base = _evoBase();
+      const { rows } = await db.execute('SELECT id, name, api_key, created_at FROM evolution_instances ORDER BY created_at ASC');
+      const registered = rowsToObjects(rows);
+      if (!base) return res.status(200).json(registered.map(r => ({ ...r, connectionStatus: 'unknown' })));
+
+      // Para cada instância registrada, busca o status individualmente
+      const results = await Promise.all(registered.map(async inst => {
+        try {
+          const hdrs = inst.api_key
+            ? { 'Content-Type': 'application/json', apikey: inst.api_key }
+            : await _evoGlobalHdrs();
+          const r = await fetch(`${base}/instance/connectionState/${encodeURIComponent(inst.name)}`, { headers: hdrs });
+          if (!r.ok) return { name: inst.name, connectionStatus: 'disconnected', number: '' };
+          const data = await r.json().catch(() => ({}));
+          const state = data?.instance?.state || data?.state || 'disconnected';
+          const number = data?.instance?.profileName || data?.profileName || '';
+          return { name: inst.name, connectionStatus: state === 'open' ? 'open' : 'disconnected', number };
+        } catch {
+          return { name: inst.name, connectionStatus: 'disconnected', number: '' };
+        }
+      }));
+      return res.status(200).json(results);
+    }
+
+    if (req.query.resource === 'evolution-qr') {
+      const { instance } = req.query;
+      if (!instance) return res.status(400).json({ error: 'instance é obrigatório' });
+      const base = _evoBase();
+      const r = await fetch(`${base}/instance/connect/${instance}`, { headers: await _evoGlobalHdrs() });
+      const data = await r.json().catch(() => ({}));
+      // Nunca repassar 401 da Evolution ao cliente — o frontend interpretaria como logout
+      const status = r.ok ? 200 : (r.status === 401 ? 502 : r.status);
+      return res.status(status).json(data);
+    }
 
     // ── GET/PUT /api/admin/users?resource=system-settings
     if (req.query.resource === 'system-settings') {
@@ -134,6 +186,84 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const { action } = req.body || {};
 
+      // Test Evolution global key — usa endpoint de info da instância configurada no env
+      // para não listar instâncias de outras contas
+      if (action === 'test-evolution-key') {
+        const base = _evoBase();
+        if (!base) return res.status(500).json({ error: 'EVOLUTION_URL não configurada' });
+        const hdrs = await _evoGlobalHdrs();
+        // Testa com fetchInstances mas limita a verificar apenas se a chave é válida (não usamos o resultado)
+        const r = await fetch(`${base}/instance/fetchInstances?limit=1`, { headers: hdrs });
+        if (r.status === 401) return res.status(200).json({ ok: false, error: 'Chave inválida — Evolution retornou 401' });
+        if (!r.ok) return res.status(200).json({ ok: false, error: `Evolution retornou HTTP ${r.status}` });
+        return res.status(200).json({ ok: true, key_preview: hdrs.apikey.slice(0, 8) + '…' });
+      }
+
+      // Create Evolution API instance — cria na API e registra no banco local
+      if (action === 'create-evolution-instance') {
+        const { instanceName } = req.body;
+        if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
+        const base = _evoBase();
+        if (!base) return res.status(500).json({ error: 'Evolution API não configurada' });
+        const r = await fetch(`${base}/instance/create`, {
+          method: 'POST',
+          headers: await _evoGlobalHdrs(),
+          body: JSON.stringify({ instanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (r.status === 401) return res.status(400).json({ error: 'Chave global inválida ou não configurada — salve a chave correta na seção acima antes de criar.' });
+        if (!r.ok) return res.status(r.status).json(data);
+        // Registra no banco local para listagem futura
+        const newId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
+        await db.execute({ sql: 'INSERT OR IGNORE INTO evolution_instances (id, name, api_key) VALUES (?, ?, ?)', args: [newId, instanceName, ''] });
+        return res.status(200).json(data);
+      }
+
+      // Link existing Evolution instance — vincula instância já existente sem criar nova
+      if (action === 'link-evolution-instance') {
+        const { instanceName, instanceKey } = req.body;
+        if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
+        const base = _evoBase();
+        if (!base) return res.status(500).json({ error: 'Evolution API não configurada' });
+        // Verifica se a instância existe na Evolution antes de registrar
+        const hdrs = instanceKey
+          ? { 'Content-Type': 'application/json', apikey: instanceKey }
+          : await _evoGlobalHdrs();
+        const r = await fetch(`${base}/instance/connectionState/${encodeURIComponent(instanceName)}`, { headers: hdrs });
+        if (r.status === 401) return res.status(400).json({ error: 'Credenciais inválidas para esta instância.' });
+        if (r.status === 404) return res.status(404).json({ error: `Instância "${instanceName}" não encontrada na Evolution.` });
+        if (!r.ok) return res.status(400).json({ error: `Evolution retornou HTTP ${r.status}` });
+        // Registra no banco local
+        const newId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
+        await db.execute({ sql: 'INSERT OR IGNORE INTO evolution_instances (id, name, api_key) VALUES (?, ?, ?)', args: [newId, instanceName, instanceKey || ''] });
+        return res.status(200).json({ ok: true });
+      }
+
+      // Delete Evolution API instance — remove da API e do banco local
+      if (action === 'delete-evolution-instance') {
+        const { instanceName } = req.body;
+        if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
+        const base = _evoBase();
+        if (!base) return res.status(500).json({ error: 'Evolution API não configurada' });
+        const r = await fetch(`${base}/instance/delete/${instanceName}`, {
+          method: 'DELETE',
+          headers: await _evoGlobalHdrs(),
+        });
+        // Remove do banco independentemente do resultado da API
+        await db.execute({ sql: 'DELETE FROM evolution_instances WHERE name = ?', args: [instanceName] });
+        const data = await r.json().catch(() => ({}));
+        const status = r.ok ? 200 : (r.status === 401 ? 502 : r.status);
+        return res.status(status).json(data);
+      }
+
+      // Unlink instance — remove apenas do banco local (sem deletar da Evolution)
+      if (action === 'unlink-evolution-instance') {
+        const { instanceName } = req.body;
+        if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
+        await db.execute({ sql: 'DELETE FROM evolution_instances WHERE name = ?', args: [instanceName] });
+        return res.status(200).json({ ok: true });
+      }
+
       // Normalize all phone numbers to include DDI
       if (action === 'normalize-phones') {
         const { rows } = await db.execute("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone != ''");
@@ -160,7 +290,7 @@ export default async function handler(req, res) {
 
       // Send WhatsApp message (text / any media) to a list of users
       if (action === 'send-message') {
-        const { user_ids, text, image_url, media_base64, media_type, media_name } = req.body;
+        const { user_ids, text, image_url, media_base64, media_type, media_name, delay_ms } = req.body;
         if (!user_ids?.length) return res.status(400).json({ error: 'user_ids é obrigatório' });
         if (!text && !media_base64 && !image_url) return res.status(400).json({ error: 'mensagem ou mídia são obrigatórios' });
 
@@ -168,16 +298,32 @@ export default async function handler(req, res) {
         const key     = process.env.EVOLUTION_APIKEY;
         if (!baseUrl || !key) return res.status(500).json({ error: 'Evolution API não configurada' });
 
-        // Build endpoint URLs — EVOLUTION_URL must contain the sendText path
         const sendTextUrl  = baseUrl.replace(/send\w+/, 'sendText');
         const sendMediaUrl = baseUrl.replace(/send\w+/, 'sendMedia');
+        const hasMedia     = !!(media_base64 || image_url);
+        const mtype        = media_type || 'image';
+        const media        = media_base64 || image_url;
+        const evoHeaders   = { 'Content-Type': 'application/json', 'apikey': key };
+        // Cadência: delay entre mensagens (máx 60 s para não estourar timeout serverless)
+        const cadencia     = Math.min(Math.max(0, parseInt(delay_ms) || 0), 60000);
 
-        const hasMedia = !!(media_base64 || image_url);
-        const mtype    = media_type || 'image';
-        const media    = media_base64 || image_url;
-        const evoHeaders = { 'Content-Type': 'application/json', 'apikey': key };
+        // Randomiza variações {op1|op2|op3} — aplicado por mensagem (resultado diferente por usuário)
+        const applySpin = (str) => str.replace(/\{([^{}]+\|[^{}]+)\}/g, (_, opts) => {
+          const choices = opts.split('|');
+          return choices[Math.floor(Math.random() * choices.length)];
+        });
 
-        // Helper: extract the best error string from an Evolution API error response
+        // Substitui variáveis personalizadas do usuário
+        const applyVars = (str, u) => str
+          .replace(/\{nome\}/gi,     u.name      || '')
+          .replace(/\{email\}/gi,    u.email     || '')
+          .replace(/\{telefone\}/gi, u.phone     || '')
+          .replace(/\{status\}/gi,   u.plan_active == 1 ? 'Ativo' : 'Inativo')
+          .replace(/\{plano\}/gi,    u.plan_name  || 'Sem plano')
+          .replace(/\{saldo\}/gi,    u.saldo != null
+            ? 'R$ ' + Number(u.saldo).toFixed(2).replace('.', ',')
+            : '—');
+
         const evoError = (data, status) => {
           if (!data || typeof data !== 'object') return `HTTP ${status}`;
           const detail =
@@ -189,24 +335,42 @@ export default async function handler(req, res) {
         };
 
         const results = [];
-        for (const uid of user_ids) {
-          const { rows } = await db.execute({ sql: 'SELECT name, phone FROM users WHERE id=?', args: [uid] });
-          const target = rowsToObjects(rows)[0];
+        for (let i = 0; i < user_ids.length; i++) {
+          const uid = user_ids[i];
+
+          // Busca dados do usuário + plano + saldo das contas
+          const [{ rows: uRows }, { rows: acctRows }] = await Promise.all([
+            db.execute({
+              sql: `SELECT u.name, u.email, u.phone,
+                           p.active AS plan_active, p.name AS plan_name
+                    FROM users u
+                    LEFT JOIN user_plans p ON p.user_id = u.id
+                    WHERE u.id = ?`,
+              args: [uid],
+            }),
+            db.execute({
+              sql: 'SELECT COALESCE(SUM(initial_balance), 0) AS saldo FROM accounts WHERE user_id = ?',
+              args: [uid],
+            }),
+          ]);
+
+          const target = rowsToObjects(uRows)[0];
+          const acct   = rowsToObjects(acctRows)[0];
+          if (target) target.saldo = acct?.saldo ?? null;
+
           if (!target?.phone) { results.push({ id: uid, ok: false, error: 'sem telefone' }); continue; }
 
-          // Sanitise phone: digits only, must start with country code
           const phone = target.phone.replace(/\D/g, '');
           if (!phone) { results.push({ id: uid, ok: false, error: 'telefone inválido' }); continue; }
+
+          // Aplica spin + variáveis ao texto (resultado único por usuário)
+          const personalizedText = applyVars(applySpin(text || ''), target);
 
           try {
             let resp;
 
             if (hasMedia) {
-              // Strip data URL prefix if present — Evolution expects raw base64 only
-              const rawMedia = media && media.startsWith('data:')
-                ? media.split(',')[1]
-                : media;
-
+              const rawMedia = media && media.startsWith('data:') ? media.split(',')[1] : media;
               resp = await fetch(sendMediaUrl, {
                 method: 'POST',
                 headers: evoHeaders,
@@ -214,16 +378,15 @@ export default async function handler(req, res) {
                   number:    phone,
                   mediatype: mtype,
                   media:     rawMedia,
-                  caption:   text || '',
+                  caption:   personalizedText,
                   ...(media_name ? { fileName: media_name } : {}),
                 }),
               });
             } else {
-              // Evolution API sendText: flat { number, text }
               resp = await fetch(sendTextUrl, {
                 method: 'POST',
                 headers: evoHeaders,
-                body: JSON.stringify({ number: phone, text }),
+                body: JSON.stringify({ number: phone, text: personalizedText }),
               });
             }
 
@@ -231,10 +394,15 @@ export default async function handler(req, res) {
             if (!resp.ok) {
               results.push({ id: uid, ok: false, phone, error: evoError(data, resp.status) });
             } else {
-              results.push({ id: uid, ok: true, phone });
+              results.push({ id: uid, ok: true, phone, name: target.name });
             }
           } catch(e) {
             results.push({ id: uid, ok: false, error: e.message });
+          }
+
+          // Cadência: aguarda antes da próxima mensagem
+          if (cadencia > 0 && i < user_ids.length - 1) {
+            await new Promise(r => setTimeout(r, cadencia));
           }
         }
 

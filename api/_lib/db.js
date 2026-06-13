@@ -243,6 +243,12 @@ export async function initDb() {
       notes TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     )`,
+    `CREATE TABLE IF NOT EXISTS evolution_instances (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      api_key TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {
