@@ -1154,6 +1154,10 @@ async function _renderEvolutionSection(evoGlobalKey = '') {
             style="font-size:.75rem;padding:4px 10px">
             ${icon('qr-code', 12)} QR Code
           </button>` : ''}
+        <button class="btn btn-sm" onclick="_evoEditKey('${_escHtml(inst.name)}')"
+          style="font-size:.78rem" title="Atualizar a API key desta instância">
+          ${icon('key', 12)} Chave
+        </button>
         <button class="btn btn-sm" onclick="_evoUnlinkInstance('${_escHtml(inst.name)}')"
           style="font-size:.75rem;padding:4px 10px;background:var(--bg-subtle);color:var(--text-muted);border:none"
           title="Remove do sistema sem deletar na Evolution">
@@ -1560,6 +1564,20 @@ async function _evoLinkInstance() {
     btn.disabled = false;
     btn.innerHTML = icon('link', 14) + ' Vincular';
     if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
+  }
+}
+
+async function _evoEditKey(name) {
+  const key = prompt(`Nova API key para a instância "${name}":`);
+  if (!key || !key.trim()) return;
+  try {
+    await _api('POST', '/admin/users', { action: 'update-instance-key', instanceName: name, instanceKey: key.trim() });
+    toast('Chave atualizada com sucesso', 'success');
+    // Recarrega a seção para refletir a mudança
+    const section = document.getElementById('evolution-section');
+    if (section) section.innerHTML = await _renderEvolutionSection();
+  } catch(e) {
+    toast('Erro ao atualizar chave: ' + (e.message || e), 'error');
   }
 }
 
