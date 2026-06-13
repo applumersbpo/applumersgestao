@@ -300,7 +300,7 @@ function _renderAdminDashHtml(stats) {
                       <td style="padding:6px 8px;text-align:right;font-weight:700;color:${t.type === 'income' ? 'var(--income-text)' : 'var(--expense)'}">
                         ${t.type === 'income' ? '+' : '−'}${fmt(t.amount || 0)}
                       </td>
-                      <td style="padding:6px 8px;color:var(--text-muted);font-size:.75rem;white-space:nowrap">${t.created_at ? fmtDate(t.created_at) : '—'}</td>
+                      <td style="padding:6px 8px;color:var(--text-muted);font-size:.75rem;white-space:nowrap">${t.created_at ? fmtDateTime(t.created_at) : '—'}</td>
                     </tr>`).join('')}
                 </tbody>
               </table>
@@ -417,7 +417,7 @@ function _updateAdminDashValues(stats) {
                   <td style="padding:6px 8px;text-align:right;font-weight:700;color:${t.type === 'income' ? 'var(--income-text)' : 'var(--expense)'}">
                     ${t.type === 'income' ? '+' : '−'}${fmt(t.amount || 0)}
                   </td>
-                  <td style="padding:6px 8px;color:var(--text-muted);font-size:.75rem;white-space:nowrap">${t.created_at ? fmtDate(t.created_at) : '—'}</td>
+                  <td style="padding:6px 8px;color:var(--text-muted);font-size:.75rem;white-space:nowrap">${t.created_at ? fmtDateTime(t.created_at) : '—'}</td>
                 </tr>`).join('')}
             </tbody>
           </table>
