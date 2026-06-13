@@ -316,7 +316,7 @@ export default async function handler(req, res) {
       if (action === 'set-default-evolution-instance') {
         const { instanceName } = req.body;
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
-        await db.execute({ sql: 'UPDATE evolution_instances SET is_default = 0', args: [] });
+        await db.execute('UPDATE evolution_instances SET is_default = 0');
         await db.execute({ sql: 'UPDATE evolution_instances SET is_default = 1 WHERE name = ?', args: [instanceName] });
         return res.status(200).json({ ok: true });
       }
