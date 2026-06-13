@@ -215,7 +215,7 @@ function _renderAdminDashHtml(stats) {
         <div class="admin-dash-block-value" id="admin-stat-last-active-block" style="font-size:1.1rem;word-break:break-word">
           ${lastUser ? _escHtml(lastUser.name || lastUser.email || '—') : '—'}
         </div>
-        <div class="admin-dash-block-sub" id="admin-stat-last-active-time-block">${lastUser ? _timeAgo(lastUser.last_login) : '—'}</div>
+        <div class="admin-dash-block-sub" id="admin-stat-last-active-time-block">${lastUser ? _timeAgo(lastUser.last_active || lastUser.last_login) : '—'}</div>
       </div>
     </div>`;
 
@@ -365,9 +365,9 @@ function _updateAdminDashValues(stats) {
 
   const lastUser = stats.last_active_user;
   if (el('admin-stat-last-active'))           el('admin-stat-last-active').textContent           = lastUser ? ((lastUser.name || lastUser.email || '—').split(' ')[0]) : '—';
-  if (el('admin-stat-last-active-time'))      el('admin-stat-last-active-time').textContent      = lastUser ? _timeAgo(lastUser.last_login) : '—';
+  if (el('admin-stat-last-active-time'))      el('admin-stat-last-active-time').textContent      = lastUser ? _timeAgo(lastUser.last_active || lastUser.last_login) : '—';
   if (el('admin-stat-last-active-block'))     el('admin-stat-last-active-block').textContent     = lastUser ? (lastUser.name || lastUser.email || '—') : '—';
-  if (el('admin-stat-last-active-time-block'))el('admin-stat-last-active-time-block').textContent= lastUser ? _timeAgo(lastUser.last_login) : '—';
+  if (el('admin-stat-last-active-time-block'))el('admin-stat-last-active-time-block').textContent= lastUser ? _timeAgo(lastUser.last_active || lastUser.last_login) : '—';
 
   const topCats = stats.top_categories || [];
   if (el('admin-stat-cats')) {
@@ -659,9 +659,10 @@ function _adminUsersRefreshList() {
     }
     // Perfil
     if (f.role && role !== f.role) return false;
-    // Status
-    if (f.status === 'active'   && !u.last_login) return false;
-    if (f.status === 'inactive' &&  u.last_login) return false;
+    // Status — usa last_active (login ou última transação)
+    const _lastActive = u.last_active || u.last_login;
+    if (f.status === 'active'   && !_lastActive) return false;
+    if (f.status === 'inactive' &&  _lastActive) return false;
     // Saldo
     if (f.saldo === 'positive' && balance <= 0) return false;
     if (f.saldo === 'negative' && balance >= 0) return false;
@@ -677,7 +678,7 @@ function _adminUsersRefreshList() {
     }
     // Último acesso
     if (f.acesso) {
-      const login = u.last_login ? new Date(u.last_login) : null;
+      const login = (u.last_active || u.last_login) ? new Date(u.last_active || u.last_login) : null;
       if (f.acesso === 'never' && login)                  return false;
       if (f.acesso !== 'never' && !login)                 return false;
       if (f.acesso === '7d'  && login < daysAgo(7))       return false;
@@ -698,7 +699,7 @@ function _adminUsersRefreshList() {
     if (f.sort === 'recent')  return new Date(b.created_at||0) - new Date(a.created_at||0);
     if (f.sort === 'oldest')  return new Date(a.created_at||0) - new Date(b.created_at||0);
     if (f.sort === 'balance') return balB - balA;
-    if (f.sort === 'login')   return new Date(b.last_login||0) - new Date(a.last_login||0);
+    if (f.sort === 'login')   return new Date(b.last_active||b.last_login||0) - new Date(a.last_active||a.last_login||0);
     if (f.sort === 'tx')      return (b.tx_count||0) - (a.tx_count||0);
     return (a.name||a.email).localeCompare(b.name||b.email, 'pt');
   });
@@ -788,7 +789,7 @@ function _adminUserRow(u) {
           </div>
           <div style="text-align:center;padding:0 12px">
             <div style="font-size:.72rem;color:var(--text-muted)">Último acesso</div>
-            <div style="font-size:.78rem;color:var(--text-muted)">${u.last_login ? fmtDateTime(u.last_login) : '—'}</div>
+            <div style="font-size:.78rem;color:var(--text-muted)">${(u.last_active||u.last_login) ? fmtDateTime(u.last_active||u.last_login) : '—'}</div>
           </div>
         </div>
 
@@ -818,7 +819,7 @@ function _adminUserRow(u) {
         <span style="font-size:.78rem;color:${phoneOk ? 'var(--income-text)' : phone ? 'var(--warning)' : 'var(--text-muted)'}">
           ${phone ? (phoneOk ? '✓ WhatsApp' : '⚠ sem DDI') : 'Sem WhatsApp'}
         </span>
-        <span style="font-size:.78rem;color:var(--text-muted);margin-left:auto">${u.last_login ? fmtDateTime(u.last_login) : 'Nunca logou'}</span>
+        <span style="font-size:.78rem;color:var(--text-muted);margin-left:auto">${(u.last_active||u.last_login) ? fmtDateTime(u.last_active||u.last_login) : 'Nunca logou'}</span>
       </div>
     </div>`;
 }
@@ -879,7 +880,7 @@ async function renderAdminUserProfile(userId) {
                 ${icon('calendar',11)} Desde ${fmtDate((user.created_at || '').split('T')[0])}
               </span>
               <span style="font-size:.78rem;padding:3px 9px;border-radius:20px;background:var(--bg-subtle);color:var(--text-muted)">
-                ${icon('clock',11)} Acesso: ${user.last_login ? fmtDateTime(user.last_login) : 'Nunca'}
+                ${icon('clock',11)} Acesso: ${(user.last_active||user.last_login) ? fmtDateTime(user.last_active||user.last_login) : 'Nunca'}
               </span>
             </div>
           </div>
