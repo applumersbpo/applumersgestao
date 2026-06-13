@@ -56,6 +56,26 @@ export default async function handler(req, res) {
       return res.status(200).json(results);
     }
 
+    // Histórico de mensagens enviadas
+    if (req.query.resource === 'message-logs') {
+      const page  = Math.max(1, parseInt(req.query.page  || '1',  10));
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '50', 10)));
+      const offset = (page - 1) * limit;
+      const { rows: totalRows } = await db.execute({ sql: 'SELECT COUNT(*) as total FROM message_logs', args: [] });
+      const total = rowsToObjects(totalRows)[0]?.total || 0;
+      const { rows } = await db.execute({
+        sql: `SELECT id, sent_by_name, sent_by_email, instance_name,
+                     recipient_name, recipient_phone,
+                     message_text, has_media, media_type, media_name,
+                     status, error, sent_at
+              FROM message_logs
+              ORDER BY sent_at DESC
+              LIMIT ? OFFSET ?`,
+        args: [limit, offset],
+      });
+      return res.status(200).json({ logs: rowsToObjects(rows), total, page, limit });
+    }
+
     // Retorna a instância padrão do sistema
     if (req.query.resource === 'evolution-default-instance') {
       const { rows } = await db.execute("SELECT name, api_key FROM evolution_instances WHERE is_default = 1 LIMIT 1");
@@ -379,14 +399,25 @@ export default async function handler(req, res) {
           const acct   = rowsToObjects(acctRows)[0];
           if (target) target.saldo = acct?.saldo ?? null;
 
-          if (!target?.phone) { results.push({ id: uid, ok: false, error: 'sem telefone' }); continue; }
+          if (!target?.phone) {
+            results.push({ id: uid, ok: false, error: 'sem telefone' });
+            await db.execute({ sql: `INSERT INTO message_logs (id,sent_by_id,sent_by_name,sent_by_email,instance_name,recipient_id,recipient_name,recipient_phone,message_text,has_media,media_type,media_name,status,error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              args: [crypto.randomUUID(), user.id, user.name||'', user.email||'', defInst.name, uid, target?.name||'', '', text||'', hasMedia?1:0, mtype||'', media_name||'', 'failed', 'sem telefone'] });
+            continue;
+          }
 
           const phone = target.phone.replace(/\D/g, '');
-          if (!phone) { results.push({ id: uid, ok: false, error: 'telefone inválido' }); continue; }
+          if (!phone) {
+            results.push({ id: uid, ok: false, error: 'telefone inválido' });
+            await db.execute({ sql: `INSERT INTO message_logs (id,sent_by_id,sent_by_name,sent_by_email,instance_name,recipient_id,recipient_name,recipient_phone,message_text,has_media,media_type,media_name,status,error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              args: [crypto.randomUUID(), user.id, user.name||'', user.email||'', defInst.name, uid, target?.name||'', target?.phone||'', text||'', hasMedia?1:0, mtype||'', media_name||'', 'failed', 'telefone inválido'] });
+            continue;
+          }
 
           // Aplica spin + variáveis ao texto (resultado único por usuário)
           const personalizedText = applyVars(applySpin(text || ''), target);
 
+          let logStatus = 'ok', logError = '';
           try {
             let resp;
 
@@ -413,13 +444,31 @@ export default async function handler(req, res) {
 
             const data = await resp.json().catch(() => ({}));
             if (!resp.ok) {
-              results.push({ id: uid, ok: false, phone, error: evoError(data, resp.status) });
+              logStatus = 'failed';
+              logError  = evoError(data, resp.status);
+              results.push({ id: uid, ok: false, phone, error: logError });
             } else {
               results.push({ id: uid, ok: true, phone, name: target.name });
             }
           } catch(e) {
+            logStatus = 'failed';
+            logError  = e.message;
             results.push({ id: uid, ok: false, error: e.message });
           }
+
+          // Registra no log de mensagens
+          await db.execute({
+            sql: `INSERT INTO message_logs (id,sent_by_id,sent_by_name,sent_by_email,instance_name,recipient_id,recipient_name,recipient_phone,message_text,has_media,media_type,media_name,status,error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            args: [
+              crypto.randomUUID(),
+              user.id, user.name || '', user.email || '',
+              defInst.name,
+              uid, target.name || '', phone,
+              personalizedText,
+              hasMedia ? 1 : 0, mtype || '', media_name || '',
+              logStatus, logError,
+            ],
+          });
 
           // Cadência: aguarda antes da próxima mensagem
           if (cadencia > 0 && i < user_ids.length - 1) {

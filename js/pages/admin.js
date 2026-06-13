@@ -1243,7 +1243,134 @@ async function _renderEvolutionSection(evoGlobalKey = '') {
       </div>` : ''}
 
       <div id="evo-qr-panel" style="display:none;margin-top:16px;text-align:center"></div>
+
+      <!-- Histórico de mensagens -->
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-weight:600;font-size:.85rem">${icon('history', 13)} Histórico de disparos</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:2px">Registro completo de todas as mensagens enviadas pelo sistema.</div>
+        </div>
+        <button class="btn btn-outline" onclick="openMsgHistoryModal()" style="font-size:.83rem;white-space:nowrap">
+          ${icon('clock', 14)} Ver histórico
+        </button>
+      </div>
     </div>`;
+}
+
+// ── Histórico de mensagens ────────────────────────────────────────────────────
+
+async function openMsgHistoryModal(page = 1) {
+  if (page === 1) {
+    showModal(`
+      <div class="modal-backdrop">
+        <div class="modal" style="max-width:960px;width:calc(100% - 32px);max-height:92vh;display:flex;flex-direction:column">
+          <div class="modal-header" style="flex-shrink:0">
+            <div class="modal-title">${icon('history', 16)} Histórico de disparos WhatsApp</div>
+            <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
+          </div>
+          <div class="modal-body" style="overflow-y:auto;flex:1" id="msg-history-body">
+            <div style="text-align:center;padding:32px;color:var(--text-muted)">
+              <div class="spinner" style="margin:0 auto 12px"></div>
+              Carregando histórico…
+            </div>
+          </div>
+        </div>
+      </div>`);
+  }
+
+  try {
+    const data = await _api('GET', `/admin/users?resource=message-logs&page=${page}&limit=50`);
+    const logs  = data.logs  || [];
+    const total = data.total || 0;
+    const pages = Math.ceil(total / 50);
+    const bodyEl = document.getElementById('msg-history-body');
+    if (!bodyEl) return;
+
+    if (!logs.length && page === 1) {
+      bodyEl.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-muted)">
+        ${icon('inbox', 32)}<p style="margin-top:12px">Nenhuma mensagem registrada ainda.</p></div>`;
+      if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [bodyEl] });
+      return;
+    }
+
+    const fmtDate = d => {
+      if (!d) return '—';
+      const dt = new Date(d);
+      return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    };
+    const statusBadge = s => s === 'ok'
+      ? `<span style="font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:20px;background:var(--income-light,#dcfce7);color:var(--income-text,#16a34a)">OK</span>`
+      : `<span style="font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:20px;background:var(--expense-light,#fee2e2);color:var(--expense,#dc2626)">FALHA</span>`;
+
+    bodyEl.innerHTML = `
+      <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">
+        ${total} disparo${total !== 1 ? 's' : ''} registrado${total !== 1 ? 's' : ''}
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border);text-align:left">
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap">Data/Hora</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase">Enviado por</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase">Instância</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase">Destinatário</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase">Mensagem</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap">Mídia</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${logs.map((l, idx) => `
+              <tr style="border-bottom:1px solid var(--border);${idx % 2 === 1 ? 'background:var(--bg-subtle)' : ''}">
+                <td style="padding:8px 10px;white-space:nowrap;color:var(--text-muted);font-size:.78rem">${fmtDate(l.sent_at)}</td>
+                <td style="padding:8px 10px">
+                  <div style="font-weight:600;font-size:.82rem">${_escHtml(l.sent_by_name || '—')}</div>
+                  <div style="font-size:.72rem;color:var(--text-muted)">${_escHtml(l.sent_by_email || '')}</div>
+                </td>
+                <td style="padding:8px 10px">
+                  <span style="font-size:.78rem;font-family:monospace;background:var(--bg-subtle);
+                    padding:2px 6px;border-radius:4px;border:1px solid var(--border)">
+                    ${_escHtml(l.instance_name || '—')}
+                  </span>
+                </td>
+                <td style="padding:8px 10px">
+                  <div style="font-weight:600;font-size:.82rem">${_escHtml(l.recipient_name || '—')}</div>
+                  <div style="font-size:.72rem;color:var(--text-muted)">${_escHtml(l.recipient_phone || '')}</div>
+                </td>
+                <td style="padding:8px 10px;max-width:280px">
+                  <div style="font-size:.8rem;line-height:1.4;overflow:hidden;display:-webkit-box;
+                    -webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word"
+                    title="${_escHtml(l.message_text || '')}">
+                    ${_escHtml(l.message_text || '—')}
+                  </div>
+                </td>
+                <td style="padding:8px 10px;white-space:nowrap">
+                  ${l.has_media
+                    ? `<span style="font-size:.75rem;display:flex;align-items:center;gap:4px;color:var(--primary-600)">
+                        ${icon('paperclip', 12)} ${_escHtml(l.media_name || l.media_type || 'mídia')}
+                      </span>`
+                    : `<span style="color:var(--text-muted);font-size:.75rem">—</span>`}
+                </td>
+                <td style="padding:8px 10px">
+                  ${statusBadge(l.status)}
+                  ${l.error ? `<div style="font-size:.7rem;color:var(--expense);margin-top:3px;max-width:160px;word-break:break-word">${_escHtml(l.error)}</div>` : ''}
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${pages > 1 ? `
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;flex-wrap:wrap">
+        ${page > 1 ? `<button class="btn btn-sm btn-outline" onclick="openMsgHistoryModal(${page-1})">← Anterior</button>` : ''}
+        <span style="font-size:.82rem;color:var(--text-muted)">Página ${page} de ${pages}</span>
+        ${page < pages ? `<button class="btn btn-sm btn-outline" onclick="openMsgHistoryModal(${page+1})">Próxima →</button>` : ''}
+      </div>` : ''}`;
+
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [bodyEl] });
+  } catch(e) {
+    const bodyEl = document.getElementById('msg-history-body');
+    if (bodyEl) bodyEl.innerHTML = `<div style="padding:24px;color:var(--expense)">Erro: ${_escHtml(e.message)}</div>`;
+  }
 }
 
 async function _evoTestGlobalKey() {

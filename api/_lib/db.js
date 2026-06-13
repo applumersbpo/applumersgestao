@@ -249,6 +249,23 @@ export async function initDb() {
       api_key TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     )`,
+    `CREATE TABLE IF NOT EXISTS message_logs (
+      id TEXT PRIMARY KEY,
+      sent_by_id TEXT NOT NULL,
+      sent_by_name TEXT DEFAULT '',
+      sent_by_email TEXT DEFAULT '',
+      instance_name TEXT DEFAULT '',
+      recipient_id TEXT DEFAULT '',
+      recipient_name TEXT DEFAULT '',
+      recipient_phone TEXT DEFAULT '',
+      message_text TEXT DEFAULT '',
+      has_media INTEGER DEFAULT 0,
+      media_type TEXT DEFAULT '',
+      media_name TEXT DEFAULT '',
+      status TEXT DEFAULT 'ok',
+      error TEXT DEFAULT '',
+      sent_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {
