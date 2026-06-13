@@ -687,17 +687,20 @@ function _adminUsersRefreshList() {
     return true;
   });
 
-  // Ordenação
+  // Ordenação — critério primário: perfil (super_admin → admin → user), depois critério selecionado
+  const _roleOrder = r => r === 'super_admin' ? 0 : r === 'admin' ? 1 : 2;
   filtered = [...filtered].sort((a, b) => {
+    const roleDiff = _roleOrder(a.role) - _roleOrder(b.role);
+    if (roleDiff !== 0) return roleDiff;
     const balA = (a.total_income||0)-(a.total_expense||0);
     const balB = (b.total_income||0)-(b.total_expense||0);
-    if (f.sort === 'name')    return (a.name||a.email).localeCompare(b.name||b.email);
+    if (f.sort === 'name')    return (a.name||a.email).localeCompare(b.name||b.email, 'pt');
     if (f.sort === 'recent')  return new Date(b.created_at||0) - new Date(a.created_at||0);
     if (f.sort === 'oldest')  return new Date(a.created_at||0) - new Date(b.created_at||0);
     if (f.sort === 'balance') return balB - balA;
     if (f.sort === 'login')   return new Date(b.last_login||0) - new Date(a.last_login||0);
     if (f.sort === 'tx')      return (b.tx_count||0) - (a.tx_count||0);
-    return 0;
+    return (a.name||a.email).localeCompare(b.name||b.email, 'pt');
   });
 
   const users  = _adminUsersCache;
