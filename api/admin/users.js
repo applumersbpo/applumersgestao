@@ -262,7 +262,8 @@ export default async function handler(req, res) {
         if (!r.ok) return res.status(r.status).json(data);
         // Registra no banco local para listagem futura
         const newId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
-        await db.execute({ sql: 'INSERT OR IGNORE INTO evolution_instances (id, name, api_key) VALUES (?, ?, ?)', args: [newId, instanceName, ''] });
+        const createdKey = data?.hash || data?.apikey || data?.instance?.apikey || '';
+        await db.execute({ sql: 'INSERT OR IGNORE INTO evolution_instances (id, name, api_key) VALUES (?, ?, ?)', args: [newId, instanceName, createdKey] });
         return res.status(200).json(data);
       }
 
@@ -317,6 +318,15 @@ export default async function handler(req, res) {
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
         await db.execute({ sql: 'UPDATE evolution_instances SET is_default = 0', args: [] });
         await db.execute({ sql: 'UPDATE evolution_instances SET is_default = 1 WHERE name = ?', args: [instanceName] });
+        return res.status(200).json({ ok: true });
+      }
+
+      // Atualiza a api_key de uma instância já cadastrada
+      if (action === 'update-instance-key') {
+        const { instanceName, instanceKey } = req.body;
+        if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
+        if (!instanceKey) return res.status(400).json({ error: 'instanceKey é obrigatório' });
+        await db.execute({ sql: 'UPDATE evolution_instances SET api_key = ? WHERE name = ?', args: [instanceKey, instanceName] });
         return res.status(200).json({ ok: true });
       }
 
