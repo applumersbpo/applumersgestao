@@ -1573,9 +1573,7 @@ async function _evoEditKey(name) {
   try {
     await _api('POST', '/admin/users', { action: 'update-instance-key', instanceName: name, instanceKey: key.trim() });
     toast('Chave atualizada com sucesso', 'success');
-    // Recarrega a seção para refletir a mudança
-    const section = document.getElementById('evolution-section');
-    if (section) section.innerHTML = await _renderEvolutionSection();
+    await renderAdminSystem();
   } catch(e) {
     toast('Erro ao atualizar chave: ' + (e.message || e), 'error');
   }
