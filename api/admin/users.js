@@ -137,13 +137,18 @@ export default async function handler(req, res) {
           INNER JOIN users u ON u.id = t.user_id
           WHERE u.is_admin = 0`),
         // Lista de todos os usuários com seus dados financeiros
-        // last_active = MAX(last_login, última transação criada) — reflete atividade real
+        // last_active = maior entre last_login e última transação criada
         db.execute(`SELECT u.id, u.name, u.email, u.phone, u.role, u.is_admin, u.last_login, u.created_at,
           COUNT(t.id) as tx_count,
           COALESCE(SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE 0 END),0) as total_income,
           COALESCE(SUM(CASE WHEN t.transaction_type IN ('expense','general','daily','installment') THEN t.amount ELSE 0 END),0) as total_expense,
           MAX(t.created_at) as last_tx_at,
-          MAX(COALESCE(NULLIF(u.last_login,''), '1970-01-01'), COALESCE(MAX(t.created_at), '1970-01-01')) as last_active
+          CASE
+            WHEN NULLIF(u.last_login,'') IS NULL THEN MAX(t.created_at)
+            WHEN MAX(t.created_at) IS NULL THEN NULLIF(u.last_login,'')
+            WHEN u.last_login > MAX(t.created_at) THEN u.last_login
+            ELSE MAX(t.created_at)
+          END as last_active
           FROM users u
           LEFT JOIN transactions t ON t.user_id=u.id
           GROUP BY u.id
@@ -160,12 +165,17 @@ export default async function handler(req, res) {
           LIMIT 10`),
         // Último usuário comum ativo — considera login OU última transação
         db.execute(`SELECT u.id, u.name, u.email, u.last_login, MAX(t.created_at) as last_tx_at,
-          MAX(COALESCE(NULLIF(u.last_login,''), '1970-01-01'), COALESCE(MAX(t.created_at), '1970-01-01')) as last_active
+          CASE
+            WHEN NULLIF(u.last_login,'') IS NULL THEN MAX(t.created_at)
+            WHEN MAX(t.created_at) IS NULL THEN NULLIF(u.last_login,'')
+            WHEN u.last_login > MAX(t.created_at) THEN u.last_login
+            ELSE MAX(t.created_at)
+          END as last_active
           FROM users u
           LEFT JOIN transactions t ON t.user_id = u.id
           WHERE u.is_admin = 0
           GROUP BY u.id
-          HAVING last_active > '1970-01-01'
+          HAVING last_active IS NOT NULL
           ORDER BY last_active DESC LIMIT 1`),
         // Categorias mais usadas por usuários comuns
         db.execute(`SELECT c.name, COUNT(t.id) as count
