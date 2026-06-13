@@ -255,6 +255,12 @@ export async function initDb() {
     await db.execute(sql);
   }
 
+  // evolution_instances — add is_default column if missing
+  const { rows: eiCols } = await db.execute("PRAGMA table_info('evolution_instances')");
+  if ((eiCols || []).length > 0 && !(eiCols || []).find(r => r.name === 'is_default')) {
+    await db.execute("ALTER TABLE evolution_instances ADD COLUMN is_default INTEGER DEFAULT 0");
+  }
+
   // Column migrations — safe PRAGMA checks
   const { rows: tcols } = await db.execute("PRAGMA table_info('transactions')");
   const existingCols = (tcols || []).map(r => r.name);

@@ -1118,13 +1118,19 @@ async function renderAdminTheme() {
 async function _renderEvolutionSection(evoGlobalKey = '') {
   let instances = [];
   try { instances = await _api('GET', '/admin/users?resource=evolution-instances'); } catch {}
-  const statusColor = s => s === 'open' ? 'var(--income-text,#16a34a)' : 'var(--expense,#dc2626)';
-  const statusLabel = s => s === 'open' ? 'Conectada' : 'Desconectada';
+  const statusColor  = s => s === 'open' ? 'var(--income-text,#16a34a)' : 'var(--expense,#dc2626)';
+  const statusLabel  = s => s === 'open' ? 'Conectada' : 'Desconectada';
+  const hasDefault   = instances.some(i => i.is_default);
   const rows = instances.map(inst => `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;
       padding:10px 0;border-bottom:1px solid var(--border)">
-      <div>
-        <div style="font-weight:600;font-size:.9rem">${_escHtml(inst.name)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-weight:600;font-size:.9rem">${_escHtml(inst.name)}</span>
+          ${inst.is_default ? `<span style="font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:20px;
+            background:var(--income-light,#dcfce7);color:var(--income-text,#16a34a);letter-spacing:.02em">
+            PADRÃO</span>` : ''}
+        </div>
         <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">
           ${inst.number ? _escHtml(inst.number) : 'Sem número'} &nbsp;·&nbsp;
           <span style="color:${statusColor(inst.connectionStatus)};font-weight:600">
@@ -1132,19 +1138,25 @@ async function _renderEvolutionSection(evoGlobalKey = '') {
           </span>
         </div>
       </div>
-      <div style="display:flex;gap:8px;flex-shrink:0">
+      <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+        ${!inst.is_default ? `
+          <button class="btn btn-sm" onclick="_evoSetDefault('${_escHtml(inst.name)}')"
+            style="font-size:.75rem;padding:4px 10px;background:var(--primary-light,#DDE7D8);color:var(--primary-600);border:none"
+            title="Usar esta instância como padrão para envio de mensagens">
+            ${icon('star', 12)} Padrão
+          </button>` : ''}
         ${inst.connectionStatus !== 'open' ? `
           <button class="btn btn-sm" onclick="_evoConnectInstance('${_escHtml(inst.name)}')"
-            style="font-size:.78rem;padding:4px 10px">
+            style="font-size:.75rem;padding:4px 10px">
             ${icon('qr-code', 12)} QR Code
           </button>` : ''}
         <button class="btn btn-sm" onclick="_evoUnlinkInstance('${_escHtml(inst.name)}')"
-          style="font-size:.78rem;padding:4px 10px;background:var(--bg-subtle);color:var(--text-muted);border:none"
+          style="font-size:.75rem;padding:4px 10px;background:var(--bg-subtle);color:var(--text-muted);border:none"
           title="Remove do sistema sem deletar na Evolution">
           ${icon('unlink', 12)} Desvincular
         </button>
         <button class="btn btn-sm" onclick="_evoDeleteInstance('${_escHtml(inst.name)}')"
-          style="font-size:.78rem;padding:4px 10px;background:var(--expense-light,#fee2e2);color:var(--expense,#dc2626);border:none"
+          style="font-size:.75rem;padding:4px 10px;background:var(--expense-light,#fee2e2);color:var(--expense,#dc2626);border:none"
           title="Exclui a instância da Evolution e remove do sistema">
           ${icon('trash-2', 12)} Excluir
         </button>
@@ -1219,6 +1231,13 @@ async function _renderEvolutionSection(evoGlobalKey = '') {
         </div>
         <div id="evo-create-feedback" style="margin-top:10px"></div>
       </div>
+
+      ${!hasDefault && instances.length > 0 ? `
+      <div style="margin-top:16px;background:#fef9c3;border:1px solid #fde047;border-radius:var(--r-md);padding:10px 14px;
+        display:flex;align-items:center;gap:10px;font-size:.82rem;color:#713f12">
+        ${icon('alert-triangle', 14)}
+        <span>Nenhuma instância padrão definida. Clique em <strong>Padrão</strong> em uma das instâncias acima para habilitar o envio de mensagens.</span>
+      </div>` : ''}
 
       <div id="evo-qr-panel" style="display:none;margin-top:16px;text-align:center"></div>
     </div>`;
@@ -1356,6 +1375,16 @@ async function _evoDeleteInstance(name) {
   try {
     await _api('POST', '/admin/users', { action: 'delete-evolution-instance', instanceName: name });
     toast(`Instância ${name} excluída`, 'success');
+    renderAdminSystem();
+  } catch(e) {
+    toast('Erro: ' + e.message, 'error');
+  }
+}
+
+async function _evoSetDefault(name) {
+  try {
+    await _api('POST', '/admin/users', { action: 'set-default-evolution-instance', instanceName: name });
+    toast(`Instância "${name}" definida como padrão`, 'success');
     renderAdminSystem();
   } catch(e) {
     toast('Erro: ' + e.message, 'error');
@@ -1920,7 +1949,7 @@ const _ADMIN_MSG_TEMPLATES = [
 ];
 
 // Open modal pre-selecting specific user IDs (pass [] for mass / no pre-selection)
-function openAdminMessageModal(preSelectedIds = []) {
+async function openAdminMessageModal(preSelectedIds = []) {
   const usersWithPhone = (_adminUsersCache || []).filter(u => u.phone);
 
   // Pre-select only users that have phone
@@ -1928,127 +1957,155 @@ function openAdminMessageModal(preSelectedIds = []) {
     preSelectedIds.filter(id => usersWithPhone.some(u => u.id === id))
   );
 
+  // Verifica instância padrão
+  let defaultInst = null;
+  try { defaultInst = await _api('GET', '/admin/users?resource=evolution-default-instance'); } catch {}
+  const noDefault = !defaultInst?.found;
+
   const tplButtons = _ADMIN_MSG_TEMPLATES.map((t, i) => `
     <button class="btn btn-sm btn-outline" style="font-size:.78rem" onclick="_adminMsgTemplate(${i})">
       ${icon(t.icon, 12)} ${t.label}
     </button>`).join('');
 
+  const isDesktop = window.innerWidth >= 768;
+
   showModal(`
     <div class="modal-backdrop">
-      <div class="modal" style="max-width:540px;width:calc(100% - 32px);max-height:92vh;display:flex;flex-direction:column">
+      <div class="modal" style="max-width:${isDesktop ? '900px' : '540px'};width:calc(100% - 32px);max-height:92vh;display:flex;flex-direction:column">
         <div class="modal-header" style="flex-shrink:0">
-          <div class="modal-title">${icon('send', 16)} Enviar mensagem via WhatsApp</div>
+          <div class="modal-title">${icon('send', 16)} Enviar mensagem via WhatsApp
+            ${defaultInst?.name ? `<span style="font-size:.72rem;font-weight:400;color:var(--text-muted);margin-left:8px">via <strong>${_escHtml(defaultInst.name)}</strong></span>` : ''}
+          </div>
           <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
         </div>
-        <div class="modal-body" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:14px;padding-bottom:4px">
 
-          <!-- Destinatários -->
-          <div>
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-              <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase">
-                Destinatários &mdash; <span id="msg-sel-count">0</span> selecionado(s)
+        ${noDefault ? `
+        <div style="flex-shrink:0;padding:10px 20px;background:#fef9c3;border-bottom:1px solid #fde047;
+          display:flex;align-items:center;gap:10px;font-size:.82rem;color:#713f12">
+          ${icon('alert-triangle', 14)}
+          <span>Nenhuma instância WhatsApp padrão definida.
+            <a href="#" onclick="closeModal();location.hash='/admin-system';return false"
+              style="color:#713f12;font-weight:700;text-decoration:underline">
+              Acesse Sistema → WhatsApp
+            </a>
+            e defina uma instância como padrão antes de enviar.
+          </span>
+        </div>` : ''}
+
+        <div class="modal-body" style="overflow-y:auto;flex:1;padding-bottom:4px">
+          <div style="${isDesktop ? 'display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start' : 'display:flex;flex-direction:column;gap:14px'}">
+
+            <!-- COLUNA ESQUERDA: Destinatários -->
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                  <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase">
+                    Destinatários &mdash; <span id="msg-sel-count">0</span> selecionado(s)
+                  </div>
+                  <div style="display:flex;gap:6px">
+                    <button class="btn btn-sm btn-outline" style="padding:3px 10px;font-size:.75rem" onclick="_msgSelectAll()">Todos</button>
+                    <button class="btn btn-sm btn-ghost"   style="padding:3px 10px;font-size:.75rem" onclick="_msgClearAll()">Limpar</button>
+                  </div>
+                </div>
+                <div style="position:relative;margin-bottom:8px">
+                  <div style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text-muted);display:flex">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                  </div>
+                  <input id="msg-recipients-search" class="form-control" type="search"
+                    placeholder="Buscar por nome, e-mail ou telefone…"
+                    oninput="_renderMsgRecipients(this.value)"
+                    style="padding-left:32px">
+                </div>
+                <div id="msg-recipients-list"
+                  style="max-height:${isDesktop ? '380px' : '190px'};overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface)">
+                </div>
               </div>
-              <div style="display:flex;gap:6px">
-                <button class="btn btn-sm btn-outline" style="padding:3px 10px;font-size:.75rem" onclick="_msgSelectAll()">Todos</button>
-                <button class="btn btn-sm btn-ghost"   style="padding:3px 10px;font-size:.75rem" onclick="_msgClearAll()">Limpar</button>
+
+              <!-- Templates (desktop: na coluna esquerda abaixo dos destinatários) -->
+              <div>
+                <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">Mensagens prontas</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px">${tplButtons}</div>
               </div>
             </div>
-            <!-- Search -->
-            <div style="position:relative;margin-bottom:8px">
-              <div style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text-muted);display:flex">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+
+            <!-- COLUNA DIREITA: Mensagem + opções -->
+            <div style="display:flex;flex-direction:column;gap:14px">
+
+              <!-- Texto -->
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Mensagem</label>
+                <textarea id="msg-text" class="form-control" rows="${isDesktop ? 7 : 4}"
+                  placeholder="Digite a mensagem aqui…" style="resize:vertical"></textarea>
+                <div style="font-size:.72rem;color:var(--text-muted);margin-top:3px">
+                  Formatação WhatsApp: *negrito*, _itálico_, ~tachado~
+                </div>
               </div>
-              <input id="msg-recipients-search" class="form-control" type="search"
-                placeholder="Buscar por nome, e-mail ou telefone…"
-                oninput="_renderMsgRecipients(this.value)"
-                style="padding-left:32px">
-            </div>
-            <!-- List -->
-            <div id="msg-recipients-list"
-              style="max-height:190px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface)">
-            </div>
-          </div>
 
-          <!-- Templates -->
-          <div>
-            <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">Mensagens prontas</div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px">${tplButtons}</div>
-          </div>
+              <!-- Variáveis personalizadas -->
+              <div>
+                <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px">
+                  Variáveis — clique para inserir
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:5px">
+                  ${['{nome}','{email}','{telefone}','{status}','{plano}','{saldo}'].map(v => `
+                    <button class="btn btn-sm" onclick="_msgInsertVar('${v}')"
+                      style="font-size:.75rem;padding:3px 9px;font-family:monospace;background:var(--surface-alt,#f1f5f9);border:1px solid var(--border)">
+                      ${v}
+                    </button>`).join('')}
+                </div>
+              </div>
 
-          <!-- Texto -->
-          <div class="form-group" style="margin:0">
-            <label class="form-label">Mensagem</label>
-            <textarea id="msg-text" class="form-control" rows="4"
-              placeholder="Digite a mensagem aqui…" style="resize:vertical"></textarea>
-            <div style="font-size:.72rem;color:var(--text-muted);margin-top:3px">
-              Formatação WhatsApp: *negrito*, _itálico_, ~tachado~
-            </div>
-          </div>
+              <!-- Variações / Spin Syntax -->
+              <div style="background:var(--surface-alt,#f8fafc);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px">
+                <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px">
+                  ${icon('shuffle', 11)} Variações de texto (spin)
+                </div>
+                <div style="font-size:.78rem;color:var(--text-muted);line-height:1.5">
+                  Use <code style="background:var(--border);padding:1px 5px;border-radius:3px">{opção1|opção2|opção3}</code>
+                  — cada destinatário recebe uma variação aleatória diferente.
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">
+                  ${['{Oi|Olá|Ei}','{Tudo bem?|Como vai?|Tudo certo?}','{Aproveite|Não perca|Confira}'].map(v => `
+                    <button class="btn btn-sm" onclick="_msgInsertVar('${v}')"
+                      style="font-size:.73rem;padding:2px 8px;font-family:monospace;background:var(--surface);border:1px dashed var(--border)">
+                      ${v}
+                    </button>`).join('')}
+                </div>
+              </div>
 
-          <!-- Variáveis personalizadas -->
-          <div>
-            <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px">
-              Variáveis — clique para inserir
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:5px">
-              ${['{nome}','{email}','{telefone}','{status}','{plano}','{saldo}'].map(v => `
-                <button class="btn btn-sm" onclick="_msgInsertVar('${v}')"
-                  style="font-size:.75rem;padding:3px 9px;font-family:monospace;background:var(--surface-alt,#f1f5f9);border:1px solid var(--border)">
-                  ${v}
-                </button>`).join('')}
-            </div>
-          </div>
+              <!-- Cadência -->
+              <div class="form-group" style="margin:0">
+                <label class="form-label" style="display:flex;align-items:center;gap:6px">
+                  ${icon('timer', 13)} Cadência (delay entre mensagens)
+                </label>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <input id="msg-delay-range" type="range" min="0" max="30" step="1" value="2"
+                    style="flex:1;accent-color:var(--primary)"
+                    oninput="document.getElementById('msg-delay-val').textContent=this.value">
+                  <span style="font-size:.85rem;font-weight:600;min-width:52px;text-align:right">
+                    <span id="msg-delay-val">2</span> s
+                  </span>
+                </div>
+                <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">
+                  0 = sem delay · recomendado 2–5 s para evitar bloqueios do WhatsApp
+                </div>
+              </div>
 
-          <!-- Variações / Spin Syntax -->
-          <div style="background:var(--surface-alt,#f8fafc);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px">
-            <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px">
-              ${icon('shuffle', 11)} Variações de texto (spin)
-            </div>
-            <div style="font-size:.78rem;color:var(--text-muted);line-height:1.5">
-              Use <code style="background:var(--border);padding:1px 5px;border-radius:3px">{opção1|opção2|opção3}</code>
-              — cada destinatário recebe uma variação aleatória diferente.<br>
-              <span style="color:var(--text-muted);font-size:.73rem">
-                Ex: <em>{Oi|Olá|Ei}, {nome}! Tudo bem?</em>
-              </span>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">
-              ${['{Oi|Olá|Ei}','{Tudo bem?|Como vai?|Tudo certo?}','{Aproveite|Não perca|Confira}'].map(v => `
-                <button class="btn btn-sm" onclick="_msgInsertVar('${v}')"
-                  style="font-size:.73rem;padding:2px 8px;font-family:monospace;background:var(--surface);border:1px dashed var(--border)">
-                  ${v}
-                </button>`).join('')}
-            </div>
-          </div>
+              <!-- Mídia -->
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Mídia (opcional)</label>
+                <div id="msg-media-section"></div>
+              </div>
 
-          <!-- Cadência -->
-          <div class="form-group" style="margin:0">
-            <label class="form-label" style="display:flex;align-items:center;gap:6px">
-              ${icon('timer', 13)} Cadência (delay entre mensagens)
-            </label>
-            <div style="display:flex;align-items:center;gap:10px">
-              <input id="msg-delay-range" type="range" min="0" max="30" step="1" value="2"
-                style="flex:1;accent-color:var(--primary)"
-                oninput="document.getElementById('msg-delay-val').textContent=this.value">
-              <span style="font-size:.85rem;font-weight:600;min-width:52px;text-align:right">
-                <span id="msg-delay-val">2</span> s
-              </span>
+              <div id="msg-result"></div>
             </div>
-            <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">
-              0 = sem delay · recomendado 2–5 s para evitar bloqueios do WhatsApp
-            </div>
-          </div>
 
-          <!-- Mídia -->
-          <div class="form-group" style="margin:0">
-            <label class="form-label">Mídia (opcional)</label>
-            <div id="msg-media-section"></div>
           </div>
-
-          <div id="msg-result"></div>
         </div>
         <div class="modal-footer" style="flex-shrink:0">
           <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-          <button class="btn btn-primary" id="msg-send-btn" onclick="_sendAdminMessage()" disabled>
+          <button class="btn btn-primary" id="msg-send-btn" onclick="_sendAdminMessage()"
+            ${noDefault ? 'disabled title="Defina uma instância padrão antes de enviar"' : 'disabled'}>
             ${icon('send', 14)} Enviar para 0
           </button>
         </div>

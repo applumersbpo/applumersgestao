@@ -33,9 +33,9 @@ export default async function handler(req, res) {
     // Nunca chama fetchInstances na conta global.
     if (req.query.resource === 'evolution-instances') {
       const base = _evoBase();
-      const { rows } = await db.execute('SELECT id, name, api_key, created_at FROM evolution_instances ORDER BY created_at ASC');
+      const { rows } = await db.execute('SELECT id, name, api_key, is_default, created_at FROM evolution_instances ORDER BY is_default DESC, created_at ASC');
       const registered = rowsToObjects(rows);
-      if (!base) return res.status(200).json(registered.map(r => ({ ...r, connectionStatus: 'unknown' })));
+      if (!base) return res.status(200).json(registered.map(r => ({ ...r, is_default: r.is_default === 1 || r.is_default === '1', connectionStatus: 'unknown' })));
 
       // Para cada instância registrada, busca o status individualmente
       const results = await Promise.all(registered.map(async inst => {
@@ -48,12 +48,19 @@ export default async function handler(req, res) {
           const data = await r.json().catch(() => ({}));
           const state = data?.instance?.state || data?.state || 'disconnected';
           const number = data?.instance?.profileName || data?.profileName || '';
-          return { name: inst.name, connectionStatus: state === 'open' ? 'open' : 'disconnected', number };
+          return { name: inst.name, is_default: inst.is_default === 1 || inst.is_default === '1', connectionStatus: state === 'open' ? 'open' : 'disconnected', number };
         } catch {
-          return { name: inst.name, connectionStatus: 'disconnected', number: '' };
+          return { name: inst.name, is_default: inst.is_default === 1 || inst.is_default === '1', connectionStatus: 'disconnected', number: '' };
         }
       }));
       return res.status(200).json(results);
+    }
+
+    // Retorna a instância padrão do sistema
+    if (req.query.resource === 'evolution-default-instance') {
+      const { rows } = await db.execute("SELECT name, api_key FROM evolution_instances WHERE is_default = 1 LIMIT 1");
+      const inst = rowsToObjects(rows)[0] || null;
+      return res.status(200).json(inst ? { found: true, name: inst.name, hasKey: !!inst.api_key } : { found: false });
     }
 
     if (req.query.resource === 'evolution-qr') {
@@ -264,6 +271,15 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
+      // Define instância padrão — desmarca todas e marca a escolhida
+      if (action === 'set-default-evolution-instance') {
+        const { instanceName } = req.body;
+        if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
+        await db.execute({ sql: 'UPDATE evolution_instances SET is_default = 0', args: [] });
+        await db.execute({ sql: 'UPDATE evolution_instances SET is_default = 1 WHERE name = ?', args: [instanceName] });
+        return res.status(200).json({ ok: true });
+      }
+
       // Normalize all phone numbers to include DDI
       if (action === 'normalize-phones') {
         const { rows } = await db.execute("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone != ''");
@@ -294,16 +310,21 @@ export default async function handler(req, res) {
         if (!user_ids?.length) return res.status(400).json({ error: 'user_ids é obrigatório' });
         if (!text && !media_base64 && !image_url) return res.status(400).json({ error: 'mensagem ou mídia são obrigatórios' });
 
-        const baseUrl = process.env.EVOLUTION_URL;
-        const key     = process.env.EVOLUTION_APIKEY;
-        if (!baseUrl || !key) return res.status(500).json({ error: 'Evolution API não configurada' });
+        // Usa a instância padrão cadastrada neste sistema
+        const { rows: defRows } = await db.execute("SELECT name, api_key FROM evolution_instances WHERE is_default = 1 LIMIT 1");
+        const defInst = rowsToObjects(defRows)[0] || null;
+        if (!defInst) return res.status(400).json({ error: 'Nenhuma instância padrão definida. Acesse Sistema → WhatsApp e defina uma instância como padrão.' });
 
-        const sendTextUrl  = baseUrl.replace(/send\w+/, 'sendText');
-        const sendMediaUrl = baseUrl.replace(/send\w+/, 'sendMedia');
+        const base = _evoBase();
+        if (!base) return res.status(500).json({ error: 'Evolution API não configurada (EVOLUTION_URL ausente)' });
+
+        const instKey      = defInst.api_key || _evoKey();
+        const sendTextUrl  = `${base}/message/sendText/${encodeURIComponent(defInst.name)}`;
+        const sendMediaUrl = `${base}/message/sendMedia/${encodeURIComponent(defInst.name)}`;
         const hasMedia     = !!(media_base64 || image_url);
         const mtype        = media_type || 'image';
         const media        = media_base64 || image_url;
-        const evoHeaders   = { 'Content-Type': 'application/json', 'apikey': key };
+        const evoHeaders   = { 'Content-Type': 'application/json', 'apikey': instKey };
         // Cadência: delay entre mensagens (máx 60 s para não estourar timeout serverless)
         const cadencia     = Math.min(Math.max(0, parseInt(delay_ms) || 0), 60000);
 
