@@ -52,3 +52,24 @@ git add <arquivos> → git commit → git push → aguardar integração → ver
 - ❌ Commitar `.env.production`, `.claude/`, `exemplo.jpg` ou arquivos de credencial
 - ❌ `git add -A` ou `git add .` sem revisar o que está sendo incluído
 - ❌ Deploy sem antes verificar `git status` e `git diff HEAD`
+
+## Regra de Versionamento (obrigatória a cada deploy)
+
+Antes de commitar e fazer deploy:
+
+1. **Incrementar a versão** em `index.html` no elemento `.sidebar-version`
+   - Patch (correções/ajustes): `v1.0.0` → `v1.0.1`
+   - Minor (novas funcionalidades): `v1.0.0` → `v1.1.0`
+   - Major (mudanças estruturais): `v1.0.0` → `v2.0.0`
+
+2. **Registrar no CHANGELOG.md** com data e categorias:
+   - `Adicionado` — novas funcionalidades
+   - `Melhorado` — melhorias em funcionalidades existentes
+   - `Corrigido` — correções de bugs
+   - `Removido` — funcionalidades removidas
+
+3. **Se mudou arquivos JS/CSS**, bump o nome do cache em `sw.js` (`lumers-v24` → `lumers-v25`, etc.)
+
+### Nunca fazer
+- ❌ Deploy sem atualizar versão e CHANGELOG
+- ❌ Manter a mesma versão em dois deploys consecutivos
