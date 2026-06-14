@@ -1,5 +1,6 @@
-const CACHE = 'lumers-v23';
-const ASSETS = [
+const CACHE_STATIC = 'lumers-v24';
+
+const SHELL_ASSETS = [
   './',
   './index.html',
   './css/app.css',
@@ -79,22 +80,62 @@ const ASSETS = [
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE_STATIC).then(c => c.addAll(SHELL_ASSETS)).then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k !== CACHE_STATIC).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', e => {
-  if (e.request.url.includes('/api/')) return;
+  const { request } = e;
+  const url = new URL(request.url);
+
+  // API: nunca cacheia
+  if (url.pathname.includes('/api/')) return;
+
+  // HTML: Network First → fallback cache (sempre recebe versão mais nova quando online)
+  if (request.destination === 'document' || url.pathname === '/' || url.pathname.endsWith('.html')) {
+    e.respondWith(
+      fetch(request)
+        .then(res => {
+          const clone = res.clone();
+          caches.open(CACHE_STATIC).then(c => c.put(request, clone));
+          return res;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Imagens e ícones: Cache First (raramente mudam)
+  if (request.destination === 'image' || /\.(png|svg|ico|webp|jpg|jpeg)$/.test(url.pathname)) {
+    e.respondWith(
+      caches.match(request).then(cached => cached || fetch(request).then(res => {
+        const clone = res.clone();
+        caches.open(CACHE_STATIC).then(c => c.put(request, clone));
+        return res;
+      }))
+    );
+    return;
+  }
+
+  // JS e CSS: Stale-While-Revalidate (serve cache, atualiza em background)
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    caches.open(CACHE_STATIC).then(cache =>
+      cache.match(request).then(cached => {
+        const networkFetch = fetch(request).then(res => {
+          cache.put(request, res.clone());
+          return res;
+        });
+        return cached || networkFetch;
+      })
+    )
   );
 });
 
