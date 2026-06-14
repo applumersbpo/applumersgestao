@@ -1,5 +1,5 @@
 function initFAB() {
-  document.getElementById('fab').addEventListener('click', openQuickAdd);
+  document.getElementById('fab').addEventListener('click', () => openQuickAdd());
 }
 
 async function openQuickAdd(type = 'expense') {
@@ -59,7 +59,7 @@ async function openQuickAdd(type = 'expense') {
               <input id="fab-competence" class="form-control" type="date" value="${today}">
             </div>
             <div class="form-group" style="flex:1">
-              <label class="form-label">Data de caixa <span class="field-info" title="Data de caixa: data em que o dinheiro entrou/saiu">ℹ️</span></label>
+              <label class="form-label">Data de vencimento <span class="field-info" title="Data de vencimento: data em que o valor deve ser pago ou recebido">ℹ️</span></label>
               <input id="fab-cash" class="form-control" type="date" value="">
             </div>
           </div>
