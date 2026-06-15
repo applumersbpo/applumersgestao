@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.0.1] — 2026-06-15
+
+### Corrigido
+- Label "Data de caixa" renomeado para "Data de vencimento" nos modais de Nova Receita e Nova Despesa
+
+### Melhorado
+- Cache bumped de `lumers-v24` para `lumers-v25`
+
+---
+
 ## [v1.0.0] — 2026-06-14
 
 ### Adicionado

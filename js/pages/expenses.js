@@ -237,7 +237,7 @@ async function openExpenseModal(month, year, data = null) {
               <input id="exp-competence" type="date" class="form-control" value="${data?.competence_date || data?.due_date || today()}">
             </div>
             <div class="form-group" style="flex:1">
-              <label class="form-label">Data de caixa (saída) <span class="field-info" title="Data de caixa: data em que o dinheiro efetivamente entrou/foi debitado da conta">ℹ️</span></label>
+              <label class="form-label">Data de vencimento <span class="field-info" title="Data de vencimento: data prevista para o pagamento">ℹ️</span></label>
               <input id="exp-cash" type="date" class="form-control" value="${data?.cash_date || data?.paid_date || today()}">
             </div>
           </div>
