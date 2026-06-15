@@ -1493,6 +1493,18 @@ input, select, textarea { font: inherit; }
 }
 .sidebar-credits a:hover { opacity: 0.75; }
 
+.sidebar-version {
+  text-align: center;
+  font-size: .62rem;
+  color: var(--sidebar-text);
+  opacity: .4;
+  margin-top: 8px;
+  letter-spacing: .03em;
+  user-select: none;
+}
+.sidebar-version.clickable { cursor: pointer; transition: opacity .2s, color .2s; }
+.sidebar-version.clickable:hover { opacity: .85; color: var(--sidebar-active); text-decoration: underline; }
+
 /* ── Sidebar Profile ── */
 .sidebar-profile {
   display: flex; align-items: center; gap: 10px;

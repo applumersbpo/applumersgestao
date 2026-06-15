@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.0.2] — 2026-06-15
+
+### Adicionado
+- Histórico de versões (changelog) acessível ao clicar na versão da barra lateral — visível apenas para admin e super admin
+
+### Melhorado
+- Estilo da versão na barra lateral: menor, centralizada e com menor destaque visual
+- Cache bumped de `lumers-v25` para `lumers-v26`
+
+---
+
 ## [v1.0.1] — 2026-06-15
 
 ### Corrigido

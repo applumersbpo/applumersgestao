@@ -99,6 +99,116 @@ function escHandler(e) {
   if (e.key === 'Escape') closeModal();
 }
 
+/** Escapa caracteres HTML para evitar injeção. */
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Faz parse do CHANGELOG.md em uma lista de versões com suas categorias/itens. */
+function parseChangelog(text) {
+  const lines = text.split(/\r?\n/);
+  const versions = [];
+  let curVersion = null;
+  let curCategory = null;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    // Para ao atingir a seção de regras (não renderizar daqui em diante)
+    if (/^##\s+Regra de Versionamento/i.test(line)) break;
+
+    const verMatch = line.match(/^##\s+\[([^\]]+)\]\s*[—–-]\s*(.+)$/);
+    if (verMatch) {
+      curVersion = { version: verMatch[1].trim(), date: verMatch[2].trim(), categories: [] };
+      versions.push(curVersion);
+      curCategory = null;
+      continue;
+    }
+    if (!curVersion) continue;
+
+    const catMatch = line.match(/^###\s+(.+)$/);
+    if (catMatch) {
+      curCategory = { name: catMatch[1].trim(), items: [] };
+      curVersion.categories.push(curCategory);
+      continue;
+    }
+
+    const itemMatch = line.match(/^-\s+(.+)$/);
+    if (itemMatch && curCategory) {
+      curCategory.items.push(itemMatch[1].trim());
+    }
+  }
+  return versions;
+}
+
+/** Abre um modal com o histórico de versões lido de /CHANGELOG.md. */
+function openChangelogModal() {
+  const bodyId = 'changelog-modal-body';
+  showModal(`
+    <div class="modal-backdrop"><div class="modal" style="max-width:560px">
+      <div class="modal-header">
+        <div class="modal-title">Histórico de versões</div>
+        <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
+      </div>
+      <div class="modal-body" id="${bodyId}" style="max-height:80vh;overflow-y:auto">
+        <p style="text-align:center;color:var(--text-muted);padding:20px 0">Carregando...</p>
+      </div>
+    </div></div>
+  `);
+
+  const colors = {
+    'Adicionado': { bg: 'var(--income-light)',  fg: 'var(--income-text)' },
+    'Melhorado':  { bg: 'var(--info-light)',    fg: 'var(--info-text)' },
+    'Corrigido':  { bg: 'var(--warning-light)', fg: 'var(--warning-text)' },
+    'Removido':   { bg: 'var(--expense-light)', fg: 'var(--expense-text)' },
+  };
+
+  fetch('/CHANGELOG.md')
+    .then(res => {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.text();
+    })
+    .then(text => {
+      const body = document.getElementById(bodyId);
+      if (!body) return;
+      const versions = parseChangelog(text);
+      if (!versions.length) {
+        body.innerHTML = `<p style="text-align:center;color:var(--text-muted);padding:20px 0">Nenhuma versão registrada.</p>`;
+        return;
+      }
+      const html = versions.map(v => {
+        const cats = v.categories.map(c => {
+          const col = colors[c.name] || { bg: 'var(--surface-2,#f0f0f0)', fg: 'var(--text)' };
+          const items = c.items.map(it => `<li style="margin:2px 0;line-height:1.45">${escapeHtml(it)}</li>`).join('');
+          return `
+            <div style="margin-top:10px">
+              <span style="display:inline-block;font-size:.68rem;font-weight:600;padding:2px 8px;border-radius:999px;background:${col.bg};color:${col.fg}">${escapeHtml(c.name)}</span>
+              <ul style="margin:6px 0 0;padding-left:20px;font-size:.85rem;color:var(--text)">${items}</ul>
+            </div>`;
+        }).join('');
+        return `
+          <div style="border:1px solid var(--border,#e5e5e5);border-radius:var(--r-md,8px);padding:14px 16px;margin-bottom:14px;background:var(--surface,#fff)">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+              <strong style="font-size:1rem;color:var(--primary,#3A5A40)">${escapeHtml(v.version)}</strong>
+              <span style="font-size:.78rem;color:var(--text-muted)">${escapeHtml(v.date)}</span>
+            </div>
+            ${cats}
+          </div>`;
+      }).join('');
+      body.innerHTML = html;
+    })
+    .catch(() => {
+      const body = document.getElementById(bodyId);
+      if (body) {
+        body.innerHTML = `<p style="text-align:center;color:var(--text-muted);padding:20px 0">Não foi possível carregar o histórico de versões.</p>`;
+      }
+    });
+}
+
 let _catsCache = null;
 async function getCategoriesMap() {
   if (_catsCache) return _catsCache;

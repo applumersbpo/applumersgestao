@@ -129,6 +129,19 @@ const app = {
         profileAvatar.textContent = (user?.name || user?.email || 'U').charAt(0).toUpperCase();
       }
     }
+
+    const versionEl = document.querySelector('.sidebar-version');
+    if (versionEl) {
+      if (isAdmin) {
+        versionEl.classList.add('clickable');
+        versionEl.title = 'Ver histórico de versões';
+        versionEl.onclick = () => openChangelogModal();
+      } else {
+        versionEl.classList.remove('clickable');
+        versionEl.onclick = null;
+        versionEl.removeAttribute('title');
+      }
+    }
   },
 
   async route() {
