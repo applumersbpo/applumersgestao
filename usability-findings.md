@@ -37,11 +37,12 @@ Escopo desta rodada: integração Evolution API.
 - Observado: Em versões da Evolution v2 o campo `hash` do retorno de create pode ser um OBJETO (`{ apikey: "..." }`) em vez de string. Nesse caso `data?.hash` é um objeto e é passado como arg do INSERT (libsql) — armazenando algo inválido/`[object Object]` ou lançando erro. A `api_key` resultante não autentica → `send-message` (e listagem de status) falham com 401. Contribui para o PROBLEMA 3 em instâncias criadas pelo app. (Dependente da versão da Evolution — verificar o formato real do retorno em `wpp.razzodigital.com.br`.)
 - (resolvedor) Correção: api/admin/users.js (`create-evolution-instance`) — adicionado helper `pickKey(v)` que retorna `v` se string, `v.apikey` se objeto `{ apikey }`, senão `''`. `createdKey` agora é `pickKey(data.hash) || pickKey(data.apikey) || pickKey(data.instance?.apikey) || pickKey(data.instance?.hash) || ''`, garantindo string (nunca `[object Object]`) no INSERT. Validado com `node --check api/admin/users.js`.
 
-## F-205 | categoria: funcional | severidade: baixa | status: aberto
+## F-205 | categoria: funcional | severidade: baixa | status: corrigido
 - Tela: api/admin/users.js:469
 - Passos: 1) Dispara `send-message` com mídia base64. 2) Backend POST `/message/sendMedia/{inst}` com body `{ number, mediatype, media, caption, fileName? }` (linhas 469-475).
 - Esperado: Para mídia em base64, a Evolution v2 normalmente exige/recomenda `mimetype` (e `fileName` para documentos) no payload do `sendMedia`.
 - Observado: O payload não envia `mimetype`. Dependendo da versão/tipo de mídia, o envio de mídia pode falhar mesmo quando o texto funciona. Não afeta envio de texto puro (PROBLEMA 3 reportado pode incluir só texto), por isso severidade baixa — verificar contra a doc da instância em uso.
+- (resolvedor) Correção: api/admin/users.js (`send-message`/sendMedia) — infere `mimetype` a partir do prefixo `data:<mime>;base64,` da mídia original e, na ausência, pela extensão de `media_name` (mapa de extensões comuns img/vídeo/áudio/doc). O campo `mimetype` só é incluído no body quando inferido (nunca vazio). Texto puro inalterado. Validado com `node --check api/admin/users.js`.
 
 ## F-206 | categoria: decisão | severidade: média | status: precisa-decisão
 - Tela: api/admin/users.js (`create-evolution-instance`)

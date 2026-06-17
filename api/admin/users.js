@@ -505,6 +505,24 @@ export default async function handler(req, res) {
 
             if (hasMedia) {
               const rawMedia = media && media.startsWith('data:') ? media.split(',')[1] : media;
+              // Infere o mimetype: 1) prefixo data:<mime>;base64 da mídia original; 2) extensão do nome
+              let mimetype = '';
+              const dataMatch = typeof media === 'string' ? media.match(/^data:([^;,]+)[;,]/) : null;
+              if (dataMatch) {
+                mimetype = dataMatch[1];
+              } else if (media_name && media_name.includes('.')) {
+                const ext = media_name.split('.').pop().toLowerCase();
+                const extMap = {
+                  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
+                  mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
+                  mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav', m4a: 'audio/mp4',
+                  pdf: 'application/pdf', doc: 'application/msword',
+                  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                  xls: 'application/vnd.ms-excel',
+                  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                };
+                mimetype = extMap[ext] || '';
+              }
               resp = await fetch(sendMediaUrl, {
                 method: 'POST',
                 headers: evoHeaders,
@@ -513,6 +531,7 @@ export default async function handler(req, res) {
                   mediatype: mtype,
                   media:     rawMedia,
                   caption:   personalizedText,
+                  ...(mimetype ? { mimetype } : {}),
                   ...(media_name ? { fileName: media_name } : {}),
                 }),
               });
