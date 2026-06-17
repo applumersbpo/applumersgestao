@@ -5,6 +5,21 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.2.0] — 2026-06-17
+
+### Adicionado
+- **Checkbox "Pago" / "Recebido"** nas modais de despesa e receita: ao marcar, abre um bloco com **data do pagamento/recebimento** (default = data de acionamento, hoje) e **valor pago/recebido** (default = valor digitado no campo de valor); em edição de registro já realizado, recupera a data de caixa e o `paid_amount` existentes
+- Novo campo **`paid_amount`** em transações = valor efetivamente pago/recebido (default = `amount`); regime de caixa passa a considerar o valor realizado
+- **Modal de confirmação de data e valor** ao marcar pago/recebido pela lista (botão de check): permite escolher a data efetiva e o valor antes de gravar, em vez de assumir a data de hoje automaticamente
+- Aba **Competência × Caixa** no relatório, com exportação por filtro (o caixa passa a contar apenas valores realizados, `status = 'paid'`)
+
+### Melhorado
+- **Bloqueio de data futura**: a data de pagamento/recebimento nunca pode ser superior à data de hoje, tanto nas modais quanto na confirmação pela lista (validação + `max` no campo de data); ao violar, exibe o toast "Não é possível registrar um pagamento/recebimento com data superior à data de hoje."
+- Desfazer pago/recebido (botões individuais e em massa) agora também limpa `cash_date`/`paid_date` e zera `paid_amount`
+- Cache bumped de `lumers-v29` para `lumers-v30`
+
+---
+
 ## [v1.1.5] — 2026-06-17
 
 ### Corrigido
