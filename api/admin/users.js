@@ -252,46 +252,76 @@ export default async function handler(req, res) {
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
         const base = _evoBase();
         if (!base) return res.status(500).json({ error: 'Evolution API não configurada' });
+
+        // Settings da instância — aplicados de forma ATÔMICA no body do create (Evolution v2),
+        // eliminando a janela de timing onde /settings/set respondia 404 (instância ainda não pronta)
+        // e o erro era engolido (F-207).
+        const instanceSettings = {
+          rejectCall: true,
+          msgCall: '',
+          groupsIgnore: true,
+          alwaysOnline: true,
+          readMessages: false,
+          readStatus: false,
+          syncFullHistory: false,
+        };
+        // Webhook: só configura se houver URL definida em env (ver F-206). Sem hardcode.
+        const webhookUrl = process.env.EVOLUTION_WEBHOOK_URL || '';
+        const webhookCfg = webhookUrl
+          ? { url: webhookUrl, byEvents: false, base64: false, events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'] }
+          : null;
+
+        const createBody = {
+          instanceName,
+          qrcode: true,
+          integration: 'WHATSAPP-BAILEYS',
+          ...instanceSettings,
+          ...(webhookCfg ? { webhook: webhookCfg } : {}),
+        };
         const r = await fetch(`${base}/instance/create`, {
           method: 'POST',
           headers: await _evoGlobalHdrs(),
-          body: JSON.stringify({ instanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' }),
+          body: JSON.stringify(createBody),
         });
         const data = await r.json().catch(() => ({}));
         if (r.status === 401) return res.status(400).json({ error: 'Chave global inválida ou não configurada — salve a chave correta na seção acima antes de criar.' });
         if (!r.ok) return res.status(r.status).json(data);
 
-        // Aplica as configurações da instância (best-effort: NÃO pode quebrar a criação)
+        // Diagnóstico de configuração — NÃO engole mais erros (F-207).
+        // fetch NÃO lança em 4xx/5xx, então é obrigatório checar r.ok e ler o corpo.
+        const _config = { settings: null, webhook: null };
+
+        // Reforço pós-create: reaplica settings e CAPTURA status+corpo se falhar.
         try {
-          await fetch(`${base}/settings/set/${encodeURIComponent(instanceName)}`, {
+          const sr = await fetch(`${base}/settings/set/${encodeURIComponent(instanceName)}`, {
             method: 'POST',
             headers: await _evoGlobalHdrs(),
-            body: JSON.stringify({
-              rejectCall: true,
-              msgCall: '',
-              groupsIgnore: true,
-              alwaysOnline: true,
-              readMessages: false,
-              readStatus: false,
-              syncFullHistory: false,
-            }),
+            body: JSON.stringify(instanceSettings),
           });
-        } catch {
-          // a instância já foi criada — ignora falha de settings e segue
+          const sbody = await sr.json().catch(() => ({}));
+          _config.settings = { ok: sr.ok, status: sr.status, error: sr.ok ? null : sbody };
+          if (!sr.ok) console.error('[create-evolution-instance] settings/set falhou', instanceName, sr.status, JSON.stringify(sbody));
+        } catch (e) {
+          _config.settings = { ok: false, status: 0, error: String(e && e.message || e) };
+          console.error('[create-evolution-instance] settings/set erro de rede', instanceName, e && e.message);
         }
 
-        // Webhook: só configura se houver URL definida em env (ver F-206). Sem hardcode.
-        const webhookUrl = process.env.EVOLUTION_WEBHOOK_URL || '';
-        if (webhookUrl) {
+        if (webhookCfg) {
           try {
-            await fetch(`${base}/webhook/set/${encodeURIComponent(instanceName)}`, {
+            const wr = await fetch(`${base}/webhook/set/${encodeURIComponent(instanceName)}`, {
               method: 'POST',
               headers: await _evoGlobalHdrs(),
-              body: JSON.stringify({ webhook: { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'] } }),
+              body: JSON.stringify({ webhook: { enabled: true, ...webhookCfg } }),
             });
-          } catch {
-            // webhook é best-effort — segue mesmo se falhar
+            const wbody = await wr.json().catch(() => ({}));
+            _config.webhook = { ok: wr.ok, status: wr.status, error: wr.ok ? null : wbody };
+            if (!wr.ok) console.error('[create-evolution-instance] webhook/set falhou', instanceName, wr.status, JSON.stringify(wbody));
+          } catch (e) {
+            _config.webhook = { ok: false, status: 0, error: String(e && e.message || e) };
+            console.error('[create-evolution-instance] webhook/set erro de rede', instanceName, e && e.message);
           }
+        } else {
+          _config.webhook = { skipped: true };
         }
 
         // Registra no banco local para listagem futura
@@ -304,7 +334,7 @@ export default async function handler(req, res) {
         };
         const createdKey = pickKey(data?.hash) || pickKey(data?.apikey) || pickKey(data?.instance?.apikey) || pickKey(data?.instance?.hash) || '';
         await db.execute({ sql: 'INSERT OR IGNORE INTO evolution_instances (id, name, api_key) VALUES (?, ?, ?)', args: [newId, instanceName, createdKey] });
-        return res.status(200).json(data);
+        return res.status(200).json({ ...data, _config });
       }
 
       // Link existing Evolution instance — vincula instância já existente sem criar nova
