@@ -5,6 +5,27 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.2.2] — 2026-06-17
+
+### Corrigido
+- **Fuso horário em `today()`**: a função usava `new Date().toISOString()` (UTC), retornando o dia seguinte à noite no fuso BRT (UTC-3) — o que alocava lançamentos de caixa no mês errado e fazia a validação/`max` de data aceitar "amanhã". Agora deriva a data LOCAL no formato `YYYY-MM-DD`
+- **Cards de resumo desatualizados ao pagar/desfazer pela lista**: ao marcar Pago/Recebido (modal de confirmação) ou Desfazer pela lista, só a lista era re-renderizada e os cards do topo (Total/Pago/A Pagar e Receita/Recebido/A Receber) ficavam errados; agora a página inteira é re-renderizada, recomputando os totais
+- Alinhado o default do campo "Data de vencimento" da receita ao da despesa (default = hoje), por consistência
+- Cache bumped de `lumers-v31` para `lumers-v32`
+
+---
+
+## [v1.2.1] — 2026-06-17
+
+### Corrigido
+- **Status de instância Evolution sempre exibido como "Desconectada"**: a API normaliza `open` → `connected`, mas o frontend comparava com `'open'` — corrigido para reconhecer `'connected'` (e `'open'` por robustez) como verde/Conectada, `'connecting'` como âmbar/Conectando…
+- **Webhook registrado com URL de deployment instável**: `deriveWebhookUrl` priorizava `VERCEL_URL` (URL por-deployment, instável) sobre o domínio de produção; reordenado para `APP_BASE_URL` → `VERCEL_PROJECT_PRODUCTION_URL` → host da requisição → `VERCEL_URL` como último recurso
+
+### Adicionado
+- **Botão "Testar" por instância Evolution**: verifica o status ao vivo na Evolution, persiste no banco e reaplica o webhook com a URL de produção correta; re-renderiza a lista após o teste
+
+---
+
 ## [v1.2.0] — 2026-06-17
 
 ### Adicionado
