@@ -130,15 +130,16 @@ function bindIncomeActions() {
     const action = btn.dataset.action;
 
     if (action === 'receive') {
-      await db.transactions.update(id, { status: 'paid', paid_date: today() });
-      _incCache.txs = _incCache.txs.map(t => t.id === id ? { ...t, status: 'paid', paid_date: today() } : t);
-      clearUpcomingCache();
-      toast('Receita marcada como recebida!', 'success');
-      _incFilterRender();
+      const tx = _incCache.txs.find(t => t.id === id) || await db.transactions.get(id);
+      openPayDateModal(tx, 'income', upd => {
+        _incCache.txs = _incCache.txs.map(t => t.id === id ? { ...t, ...upd } : t);
+        toast('Receita marcada como recebida!', 'success');
+        _incFilterRender();
+      });
     }
     if (action === 'unreceive') {
-      await db.transactions.update(id, { status: 'pending', paid_date: null });
-      _incCache.txs = _incCache.txs.map(t => t.id === id ? { ...t, status: 'pending', paid_date: null } : t);
+      await db.transactions.update(id, { status: 'pending', paid_date: null, cash_date: null, paid_amount: 0 });
+      _incCache.txs = _incCache.txs.map(t => t.id === id ? { ...t, status: 'pending', paid_date: null, cash_date: null, paid_amount: 0 } : t);
       clearUpcomingCache();
       toast('Alteração desfeita');
       _incFilterRender();
@@ -163,6 +164,19 @@ function bindIncomeActions() {
     const t = await db.transactions.get(id);
     if (t) openIncomeModal(t.month, t.year, t);
   });
+}
+
+function _incTogglePaid() {
+  const cb = document.getElementById('inc-paid-cb');
+  const block = document.getElementById('inc-paid-block');
+  if (!cb || !block) return;
+  block.style.display = cb.checked ? 'block' : 'none';
+  if (cb.checked) {
+    const amtField = document.getElementById('inc-paid-amount');
+    if (amtField && !amtField.value) amtField.value = document.getElementById('inc-amount')?.value || '';
+    const dateField = document.getElementById('inc-paid-date');
+    if (dateField && !dateField.value) dateField.value = today();
+  }
 }
 
 async function openIncomeModal(month, year, data = null) {
@@ -230,6 +244,25 @@ async function openIncomeModal(month, year, data = null) {
             <label class="form-label">Observações</label>
             <textarea id="inc-notes" class="form-control" rows="2" placeholder="Opcional">${data?.notes || ''}</textarea>
           </div>
+
+          <div class="form-group">
+            <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="inc-paid-cb" onchange="_incTogglePaid()" ${data?.status === 'paid' ? 'checked' : ''}>
+              Recebido
+            </label>
+          </div>
+          <div id="inc-paid-block" style="display:${data?.status === 'paid' ? 'block' : 'none'}">
+            <div class="form-row">
+              <div class="form-group" style="flex:1">
+                <label class="form-label">Data do recebimento</label>
+                <input id="inc-paid-date" type="date" class="form-control" max="${today()}" value="${data?.status === 'paid' ? (data?.cash_date || data?.paid_date || today()) : today()}">
+              </div>
+              <div class="form-group" style="flex:1">
+                <label class="form-label">Valor recebido (R$)</label>
+                <input id="inc-paid-amount" class="form-control" type="text" inputmode="decimal" placeholder="0,00" value="${data?.paid_amount != null ? data.paid_amount : ''}">
+              </div>
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
@@ -256,7 +289,10 @@ function toggleIncomeBulk(month, year) {
 async function bulkIncomeReceive() {
   const ids = [..._Bulk.ids];
   if (!ids.length) { toast('Nenhum item selecionado','error'); return; }
-  for (const id of ids) await db.transactions.update(id, { status:'paid', paid_date: today() });
+  for (const id of ids) {
+    const t = _incCache.txs.find(x => x.id === id);
+    await db.transactions.update(id, { status:'paid', paid_date: today(), cash_date: today(), paid_amount: t?.amount || 0 });
+  }
   clearUpcomingCache();
   destroyBulkMode();
   toast(`${ids.length} receita(s) marcada(s) como recebida(s)`,'success');
@@ -282,6 +318,9 @@ async function saveIncome(id, month, year) {
   const competence_date = document.getElementById('inc-competence') ? document.getElementById('inc-competence').value : '';
   const cash_date = document.getElementById('inc-cash') ? document.getElementById('inc-cash').value : '';
   const notes  = document.getElementById('inc-notes').value.trim();
+  const isReceived = document.getElementById('inc-paid-cb') ? document.getElementById('inc-paid-cb').checked : false;
+  const paidDateVal = document.getElementById('inc-paid-date') ? document.getElementById('inc-paid-date').value : '';
+  const paidAmountVal = parseBRNumber(document.getElementById('inc-paid-amount') ? document.getElementById('inc-paid-amount').value : '');
 
   if (!name) { toast('Informe a descrição', 'error'); return; }
   // amount and category are mandatory
@@ -290,26 +329,42 @@ async function saveIncome(id, month, year) {
   // if date not provided, use today (registration date)
   const regDate = date || today();
 
-
-  const [yearParsed, monthParsed] = (competence_date || regDate).split('-').map(Number);
+  // "Data de vencimento" (inc-cash) alimenta due_date, espelhando despesa.
+  const due = cash_date || regDate;
+  const [yearParsed, monthParsed] = (competence_date || due).split('-').map(Number);
   const record = {
     name, amount,
-    due_date: regDate,
+    due_date: due,
     category_id: cat, kind, notes,
     transaction_type: 'income',
     account_id: account_id || '',
-    competence_date: competence_date || regDate,
-    cash_date: cash_date || null,
+    competence_date: competence_date || due,
     month: monthParsed || month,
     year: yearParsed || year
   };
+
+  // Regime de caixa: checkbox "Recebido" define status e movimento de caixa.
+  if (isReceived) {
+    if (paidDateVal && paidDateVal > today()) {
+      toast('Não é possível registrar um pagamento/recebimento com data superior à data de hoje.', 'error');
+      return;
+    }
+    const pd = paidDateVal || today();
+    record.status = 'paid';
+    record.cash_date = pd;
+    record.paid_date = pd;
+    record.paid_amount = paidAmountVal > 0 ? paidAmountVal : amount;
+  } else {
+    record.status = 'pending';
+    record.cash_date = null;
+    record.paid_date = null;
+    record.paid_amount = 0;
+  }
 
   if (id && id !== '') {
     await db.transactions.update(id, record);
     toast('Receita atualizada!', 'success');
   } else {
-    record.status = 'pending';
-    record.paid_date = cash_date || null;
     record.template_id = null;
     await db.transactions.add(record);
     toast('Receita adicionada!', 'success');

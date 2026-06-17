@@ -134,14 +134,15 @@ function bindExpenseActions(month, year) {
       const id     = btn.dataset.id;
       const action = btn.dataset.action;
       if (action === 'pay') {
-        await db.transactions.update(id, { status: 'paid', paid_date: today(), cash_date: today() });
-        _expCache.txs = _expCache.txs.map(t => t.id === id ? { ...t, status: 'paid', paid_date: today(), cash_date: today() } : t);
-        clearUpcomingCache();
-        toast('Marcado como pago!', 'success');
-        _expFilterRender();
+        const tx = _expCache.txs.find(t => t.id === id) || await db.transactions.get(id);
+        openPayDateModal(tx, 'expense', upd => {
+          _expCache.txs = _expCache.txs.map(t => t.id === id ? { ...t, ...upd } : t);
+          toast('Marcado como pago!', 'success');
+          _expFilterRender();
+        });
       } else if (action === 'unpay') {
-        await db.transactions.update(id, { status: 'pending', paid_date: null, cash_date: null });
-        _expCache.txs = _expCache.txs.map(t => t.id === id ? { ...t, status: 'pending', paid_date: null, cash_date: null } : t);
+        await db.transactions.update(id, { status: 'pending', paid_date: null, cash_date: null, paid_amount: 0 });
+        _expCache.txs = _expCache.txs.map(t => t.id === id ? { ...t, status: 'pending', paid_date: null, cash_date: null, paid_amount: 0 } : t);
         clearUpcomingCache();
         toast('Alteração desfeita');
         _expFilterRender();
@@ -176,8 +177,11 @@ function toggleExpenseBulk(month, year) {
 async function bulkExpensePay() {
   const ids = [..._Bulk.ids];
   if (!ids.length) { toast('Nenhum item selecionado','error'); return; }
-  for (const id of ids) await db.transactions.update(id, { status:'paid', paid_date: today(), cash_date: today() });
-  _expCache.txs = _expCache.txs.map(t => ids.includes(t.id) ? { ...t, status: 'paid', paid_date: today(), cash_date: today() } : t);
+  for (const id of ids) {
+    const t = _expCache.txs.find(x => x.id === id);
+    await db.transactions.update(id, { status:'paid', paid_date: today(), cash_date: today(), paid_amount: t?.amount || 0 });
+  }
+  _expCache.txs = _expCache.txs.map(t => ids.includes(t.id) ? { ...t, status: 'paid', paid_date: today(), cash_date: today(), paid_amount: t.amount || 0 } : t);
   clearUpcomingCache();
   destroyBulkMode();
   toast(`${ids.length} gasto(s) marcado(s) como pago(s)`,'success');
@@ -191,6 +195,61 @@ async function bulkExpenseDelete(month, year) {
   destroyBulkMode();
   toast(`${ids.length} gasto(s) excluído(s)`,'success');
   app.render();
+}
+
+function _expTogglePaid() {
+  const cb = document.getElementById('exp-paid-cb');
+  const block = document.getElementById('exp-paid-block');
+  if (!cb || !block) return;
+  block.style.display = cb.checked ? 'block' : 'none';
+  if (cb.checked) {
+    const amtField = document.getElementById('exp-paid-amount');
+    if (amtField && !amtField.value) amtField.value = document.getElementById('exp-amount')?.value || '';
+    const dateField = document.getElementById('exp-paid-date');
+    if (dateField && !dateField.value) dateField.value = today();
+  }
+}
+
+// Modal compartilhado (despesa e receita) para confirmar data e valor ao marcar pago/recebido.
+function openPayDateModal(tx, type, onDone) {
+  const isExpense = type === 'expense';
+  const t = today();
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:380px">
+        <div class="modal-header">
+          <div class="modal-title">${isExpense ? 'Confirmar pagamento' : 'Confirmar recebimento'}</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">${isExpense ? 'Data do pagamento' : 'Data do recebimento'}</label>
+            <input id="paydate-date" type="date" class="form-control" max="${t}" value="${t}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">${isExpense ? 'Valor pago' : 'Valor recebido'} (R$)</label>
+            <input id="paydate-amount" class="form-control" type="text" inputmode="decimal" placeholder="0,00" value="${tx?.amount != null ? tx.amount : ''}">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-primary" id="paydate-confirm">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  `);
+  document.getElementById('paydate-confirm').addEventListener('click', async () => {
+    const dateVal = document.getElementById('paydate-date').value;
+    const amountVal = parseBRNumber(document.getElementById('paydate-amount').value);
+    if (!dateVal) { toast('Informe a data', 'error'); return; }
+    if (dateVal > today()) { toast('Não é possível registrar um pagamento/recebimento com data superior à data de hoje.', 'error'); return; }
+    const paid_amount = amountVal > 0 ? amountVal : (tx?.amount || 0);
+    const upd = { status: 'paid', cash_date: dateVal, paid_date: dateVal, paid_amount };
+    await db.transactions.update(tx.id, upd);
+    clearUpcomingCache();
+    closeModal();
+    if (onDone) onDone(upd);
+  });
 }
 
 async function openExpenseModal(month, year, data = null) {
@@ -247,6 +306,25 @@ async function openExpenseModal(month, year, data = null) {
             <label class="form-label">Observação</label>
             <input id="exp-notes" class="form-control" placeholder="Opcional" value="${data?.notes || ''}">
           </div>
+
+          <div class="form-group">
+            <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="exp-paid-cb" onchange="_expTogglePaid()" ${data?.status === 'paid' ? 'checked' : ''}>
+              Pago
+            </label>
+          </div>
+          <div id="exp-paid-block" style="display:${data?.status === 'paid' ? 'block' : 'none'}">
+            <div class="form-row">
+              <div class="form-group" style="flex:1">
+                <label class="form-label">Data do pagamento</label>
+                <input id="exp-paid-date" type="date" class="form-control" max="${today()}" value="${data?.status === 'paid' ? (data?.cash_date || data?.paid_date || today()) : today()}">
+              </div>
+              <div class="form-group" style="flex:1">
+                <label class="form-label">Valor pago (R$)</label>
+                <input id="exp-paid-amount" class="form-control" type="text" inputmode="decimal" placeholder="0,00" value="${data?.paid_amount != null ? data.paid_amount : ''}">
+              </div>
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
@@ -268,6 +346,9 @@ async function saveExpense(id, month, year) {
   const competence_date = document.getElementById('exp-competence') ? document.getElementById('exp-competence').value : '';
   const cash_date = document.getElementById('exp-cash') ? document.getElementById('exp-cash').value : '';
   const notes  = document.getElementById('exp-notes').value.trim();
+  const isPaid = document.getElementById('exp-paid-cb') ? document.getElementById('exp-paid-cb').checked : false;
+  const paidDateVal = document.getElementById('exp-paid-date') ? document.getElementById('exp-paid-date').value : '';
+  const paidAmountVal = parseBRNumber(document.getElementById('exp-paid-amount') ? document.getElementById('exp-paid-amount').value : '');
 
   if (!name)   { toast('Informe a descrição', 'error'); return; }
   if (!amount || amount <= 0) { toast('Informe um valor válido', 'error'); return; }
@@ -290,15 +371,28 @@ async function saveExpense(id, month, year) {
     kind:             'variable',
   };
 
-  if (id && id !== '') {
-    // edição: preserva status/paid_date/cash_date atuais (update parcial não toca cash_date)
-    await db.transactions.update(id, record);
-    toast('Gasto atualizado!', 'success');
+  // Regime de caixa: checkbox "Pago" define status e movimento de caixa.
+  if (isPaid) {
+    if (paidDateVal && paidDateVal > today()) {
+      toast('Não é possível registrar um pagamento/recebimento com data superior à data de hoje.', 'error');
+      return;
+    }
+    const pd = paidDateVal || today();
+    record.status = 'paid';
+    record.cash_date = pd;
+    record.paid_date = pd;
+    record.paid_amount = paidAmountVal > 0 ? paidAmountVal : amount;
   } else {
-    // despesa nova nasce pendente, sem data de pagamento nem movimento de caixa
     record.status = 'pending';
     record.paid_date = null;
     record.cash_date = null;
+    record.paid_amount = 0;
+  }
+
+  if (id && id !== '') {
+    await db.transactions.update(id, record);
+    toast('Gasto atualizado!', 'success');
+  } else {
     record.template_id = null;
     await db.transactions.add(record);
     toast('Gasto registrado!', 'success');
