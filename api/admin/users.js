@@ -487,6 +487,11 @@ export default async function handler(req, res) {
           return detail || `HTTP ${status}`;
         };
 
+        const { rows: senderRows } = await db.execute({ sql: 'SELECT name FROM users WHERE id = ?', args: [user.sub] });
+        const senderName  = (rowsToObjects(senderRows)[0]?.name) || user.email || '';
+        const senderId    = user.sub;
+        const senderEmail = user.email || '';
+
         const results = [];
         for (let i = 0; i < user_ids.length; i++) {
           const uid = user_ids[i];
@@ -514,7 +519,7 @@ export default async function handler(req, res) {
           if (!target?.phone) {
             results.push({ id: uid, ok: false, error: 'sem telefone' });
             await db.execute({ sql: `INSERT INTO message_logs (id,sent_by_id,sent_by_name,sent_by_email,instance_name,recipient_id,recipient_name,recipient_phone,message_text,has_media,media_type,media_name,status,error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-              args: [crypto.randomUUID(), user.id, user.name||'', user.email||'', defInst.name, uid, target?.name||'', '', text||'', hasMedia?1:0, mtype||'', media_name||'', 'failed', 'sem telefone'] });
+              args: [crypto.randomUUID(), senderId, senderName, senderEmail, defInst.name, uid, target?.name||'', '', text||'', hasMedia?1:0, mtype||'', media_name||'', 'failed', 'sem telefone'] });
             continue;
           }
 
@@ -522,7 +527,7 @@ export default async function handler(req, res) {
           if (!phone) {
             results.push({ id: uid, ok: false, error: 'telefone inválido' });
             await db.execute({ sql: `INSERT INTO message_logs (id,sent_by_id,sent_by_name,sent_by_email,instance_name,recipient_id,recipient_name,recipient_phone,message_text,has_media,media_type,media_name,status,error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-              args: [crypto.randomUUID(), user.id, user.name||'', user.email||'', defInst.name, uid, target?.name||'', target?.phone||'', text||'', hasMedia?1:0, mtype||'', media_name||'', 'failed', 'telefone inválido'] });
+              args: [crypto.randomUUID(), senderId, senderName, senderEmail, defInst.name, uid, target?.name||'', target?.phone||'', text||'', hasMedia?1:0, mtype||'', media_name||'', 'failed', 'telefone inválido'] });
             continue;
           }
 
@@ -592,7 +597,7 @@ export default async function handler(req, res) {
             sql: `INSERT INTO message_logs (id,sent_by_id,sent_by_name,sent_by_email,instance_name,recipient_id,recipient_name,recipient_phone,message_text,has_media,media_type,media_name,status,error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             args: [
               crypto.randomUUID(),
-              user.id, user.name || '', user.email || '',
+              senderId, senderName, senderEmail,
               defInst.name,
               uid, target.name || '', phone,
               personalizedText,
