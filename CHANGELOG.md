@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.1.4] — 2026-06-17
+
+### Melhorado
+- Release de consolidação da refatoração de mensageria Evolution: fila de disparos (`message_dispatch`), processador assíncrono com claim atômico, receptor de webhook, cron externo configurável e barra de progresso em tempo real — todas as funcionalidades entregues em v1.1.0–v1.1.3 agora estabilizadas em produção
+
+---
+
 ## [v1.1.3] — 2026-06-17
 
 ### Corrigido
