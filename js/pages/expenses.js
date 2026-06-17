@@ -176,7 +176,8 @@ function toggleExpenseBulk(month, year) {
 async function bulkExpensePay() {
   const ids = [..._Bulk.ids];
   if (!ids.length) { toast('Nenhum item selecionado','error'); return; }
-  for (const id of ids) await db.transactions.update(id, { status:'paid', paid_date: today() });
+  for (const id of ids) await db.transactions.update(id, { status:'paid', paid_date: today(), cash_date: today() });
+  _expCache.txs = _expCache.txs.map(t => ids.includes(t.id) ? { ...t, status: 'paid', paid_date: today(), cash_date: today() } : t);
   clearUpcomingCache();
   destroyBulkMode();
   toast(`${ids.length} gasto(s) marcado(s) como pago(s)`,'success');
