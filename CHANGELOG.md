@@ -5,6 +5,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.1.1] — 2026-06-17
+
+### Melhorado
+- Categorias agora listadas em **ordem alfabética** nos selects das modals de despesa, receita, gasto do dia e quick-add
+- Cache bumped de `lumers-v28` para `lumers-v29`
+
+---
+
 ## [v1.1.0] — 2026-06-17
 
 ### Adicionado
