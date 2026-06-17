@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.1.2] — 2026-06-17
+
+### Corrigido
+- Removido o cron por minuto (`* * * * *` em `vercel.json`) que era **incompatível com o plano Hobby** e estava travando os deploys de produção; o dispatcher de WhatsApp passa a ser acionado por **trigger externo** (a rota `/api/cron/dispatcher` continua funcional)
+
+---
+
 ## [v1.1.1] — 2026-06-17
 
 ### Melhorado
