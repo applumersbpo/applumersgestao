@@ -296,7 +296,13 @@ export default async function handler(req, res) {
 
         // Registra no banco local para listagem futura
         const newId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
-        const createdKey = data?.hash || data?.apikey || data?.instance?.apikey || '';
+        // Em Evolution v2 `data.hash` pode ser string OU objeto `{ apikey }`. Garante string sempre.
+        const pickKey = (v) => {
+          if (typeof v === 'string') return v;
+          if (v && typeof v === 'object' && typeof v.apikey === 'string') return v.apikey;
+          return '';
+        };
+        const createdKey = pickKey(data?.hash) || pickKey(data?.apikey) || pickKey(data?.instance?.apikey) || pickKey(data?.instance?.hash) || '';
         await db.execute({ sql: 'INSERT OR IGNORE INTO evolution_instances (id, name, api_key) VALUES (?, ?, ?)', args: [newId, instanceName, createdKey] });
         return res.status(200).json(data);
       }

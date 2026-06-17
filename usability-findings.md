@@ -29,11 +29,12 @@ Escopo desta rodada: integração Evolution API.
 - Esperado: O status HTTP / payload deveria refletir falha total (ex.: HTTP != 200 ou `ok:false`) para o frontend sinalizar erro claramente ao usuário.
 - Observado: O handler sempre retorna HTTP 200 com `ok:true` mesmo quando `sent === 0`. O erro real da Evolution fica engolido dentro de `results[].error` (e em `message_logs`), mas a resposta de topo indica sucesso. Isso mascara o PROBLEMA 3 — o admin pode achar que "enviou" sem perceber a falha sem abrir o histórico.
 
-## F-204 | categoria: funcional | severidade: média | status: aberto
+## F-204 | categoria: funcional | severidade: média | status: corrigido
 - Tela: api/admin/users.js:265
 - Passos: 1) Cria instância via `create-evolution-instance`. 2) Backend extrai `createdKey = data?.hash || data?.apikey || data?.instance?.apikey || ''` (linha 265). 3) Insere em `evolution_instances.api_key`. 4) Depois usa essa key no `send-message`.
 - Esperado: `api_key` deve armazenar a string da apikey da instância retornada pelo `/instance/create`.
 - Observado: Em versões da Evolution v2 o campo `hash` do retorno de create pode ser um OBJETO (`{ apikey: "..." }`) em vez de string. Nesse caso `data?.hash` é um objeto e é passado como arg do INSERT (libsql) — armazenando algo inválido/`[object Object]` ou lançando erro. A `api_key` resultante não autentica → `send-message` (e listagem de status) falham com 401. Contribui para o PROBLEMA 3 em instâncias criadas pelo app. (Dependente da versão da Evolution — verificar o formato real do retorno em `wpp.razzodigital.com.br`.)
+- (resolvedor) Correção: api/admin/users.js (`create-evolution-instance`) — adicionado helper `pickKey(v)` que retorna `v` se string, `v.apikey` se objeto `{ apikey }`, senão `''`. `createdKey` agora é `pickKey(data.hash) || pickKey(data.apikey) || pickKey(data.instance?.apikey) || pickKey(data.instance?.hash) || ''`, garantindo string (nunca `[object Object]`) no INSERT. Validado com `node --check api/admin/users.js`.
 
 ## F-205 | categoria: funcional | severidade: baixa | status: aberto
 - Tela: api/admin/users.js:469
