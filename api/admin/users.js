@@ -260,6 +260,40 @@ export default async function handler(req, res) {
         const data = await r.json().catch(() => ({}));
         if (r.status === 401) return res.status(400).json({ error: 'Chave global inválida ou não configurada — salve a chave correta na seção acima antes de criar.' });
         if (!r.ok) return res.status(r.status).json(data);
+
+        // Aplica as configurações da instância (best-effort: NÃO pode quebrar a criação)
+        try {
+          await fetch(`${base}/settings/set/${encodeURIComponent(instanceName)}`, {
+            method: 'POST',
+            headers: await _evoGlobalHdrs(),
+            body: JSON.stringify({
+              rejectCall: true,
+              msgCall: '',
+              groupsIgnore: true,
+              alwaysOnline: true,
+              readMessages: false,
+              readStatus: false,
+              syncFullHistory: false,
+            }),
+          });
+        } catch {
+          // a instância já foi criada — ignora falha de settings e segue
+        }
+
+        // Webhook: só configura se houver URL definida em env (ver F-206). Sem hardcode.
+        const webhookUrl = process.env.EVOLUTION_WEBHOOK_URL || '';
+        if (webhookUrl) {
+          try {
+            await fetch(`${base}/webhook/set/${encodeURIComponent(instanceName)}`, {
+              method: 'POST',
+              headers: await _evoGlobalHdrs(),
+              body: JSON.stringify({ webhook: { enabled: true, url: webhookUrl } }),
+            });
+          } catch {
+            // webhook é best-effort — segue mesmo se falhar
+          }
+        }
+
         // Registra no banco local para listagem futura
         const newId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
         const createdKey = data?.hash || data?.apikey || data?.instance?.apikey || '';

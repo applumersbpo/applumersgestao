@@ -9,11 +9,12 @@ Escopo desta rodada: integração Evolution API.
 
 ---
 
-## F-201 | categoria: funcional | severidade: alta | status: aberto
+## F-201 | categoria: funcional | severidade: alta | status: corrigido
 - Tela: api/admin/users.js:255
 - Passos: 1) Admin → Sistema → WhatsApp → "Criar nova instância". 2) Frontend chama `_evoCreateInstance` → action `create-evolution-instance`. 3) Backend faz POST `/instance/create` com body `{ instanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' }` (linha 258). 4) Nenhuma chamada subsequente é feita.
 - Esperado: As configurações da Evolution deveriam ser aplicadas na criação — seja no body do `/instance/create` (campos como `rejectCall`/`msgCall`, `groupsIgnore`, `alwaysOnline`, `readMessages`, `readStatus`, `syncFullHistory`) e/ou via chamadas subsequentes a `/settings/set/{instance}` e `/webhook/set/{instance}` para webhook.
 - Observado: O body só envia `{ instanceName, qrcode, integration }`. Não há nenhum campo de settings nem chamada a `/settings/set/{instance}` ou `/webhook/set/{instance}` em todo o repositório (grep por `settings/set|webhook/set|rejectCall|groupsIgnore|alwaysOnline|readMessages|syncFullHistory` = 0 resultados). A instância nasce com defaults da Evolution; nenhuma configuração do sistema é aplicada. Causa raiz direta do PROBLEMA 1.
+- (resolvedor) Correção: api/admin/users.js (`create-evolution-instance`) — após `/instance/create` retornar OK, faz POST `/settings/set/{instance}` com header global e defaults `{ rejectCall:true, msgCall:'', groupsIgnore:true, alwaysOnline:true, readMessages:false, readStatus:false, syncFullHistory:false }`, envolto em try/catch (não quebra a criação). Webhook é configurado via `/webhook/set/{instance}` SOMENTE se `process.env.EVOLUTION_WEBHOOK_URL` existir — sem hardcode. Falta a URL de webhook: ver F-206 (precisa-decisão). Validado com `node --check api/admin/users.js`.
 
 ## F-202 | categoria: funcional | severidade: alta | status: corrigido
 - Tela: api/admin/users.js:381
@@ -39,3 +40,8 @@ Escopo desta rodada: integração Evolution API.
 - Passos: 1) Dispara `send-message` com mídia base64. 2) Backend POST `/message/sendMedia/{inst}` com body `{ number, mediatype, media, caption, fileName? }` (linhas 469-475).
 - Esperado: Para mídia em base64, a Evolution v2 normalmente exige/recomenda `mimetype` (e `fileName` para documentos) no payload do `sendMedia`.
 - Observado: O payload não envia `mimetype`. Dependendo da versão/tipo de mídia, o envio de mídia pode falhar mesmo quando o texto funciona. Não afeta envio de texto puro (PROBLEMA 3 reportado pode incluir só texto), por isso severidade baixa — verificar contra a doc da instância em uso.
+
+## F-206 | categoria: decisão | severidade: média | status: precisa-decisão
+- Tela: api/admin/users.js (`create-evolution-instance`)
+- Contexto: Ao corrigir F-201, o código aplica `/settings/set/{instance}` automaticamente, mas o webhook (`/webhook/set/{instance}`) só é configurado SE existir `process.env.EVOLUTION_WEBHOOK_URL`. Hoje essa env não existe e não há URL de webhook definida em lugar nenhum do repositório. Para não fazer hardcode de URL, o webhook foi deixado opcional/condicional.
+- Pergunta ao usuário: Qual URL de webhook a Evolution deve chamar para esta aplicação (ou o webhook não é necessário)? Se for necessário, definir o valor em `process.env.EVOLUTION_WEBHOOK_URL` (e quais eventos assinar). Se NÃO for necessário, este finding pode ser descartado.
