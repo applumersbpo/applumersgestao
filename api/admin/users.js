@@ -7,7 +7,7 @@ import {
 } from '../_lib/evolution.js';
 import bcrypt from 'bcryptjs';
 
-const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key'];
+const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret'];
 
 // Global-key headers (create/delete/QR require admin key, not per-instance key)
 const _evoGlobalHdrs = async () => {
@@ -539,6 +539,14 @@ export default async function handler(req, res) {
           args: [crypto.randomUUID(), id, email.toLowerCase().trim(), name],
         });
         return res.status(201).json({ ok: true, id });
+      }
+
+      // Generate a strong random secret and store as cron_secret
+      if (action === 'generate-cron-secret') {
+        const bytes = crypto.getRandomValues(new Uint8Array(24));
+        const secret = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        await setSystemSetting('cron_secret', secret);
+        return res.status(200).json({ ok: true, secret });
       }
 
       return res.status(400).json({ error: 'Ação inválida' });

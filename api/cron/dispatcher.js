@@ -1,19 +1,27 @@
-import { getDb, initDb, rowsToObjects } from '../_lib/db.js';
+import { getDb, initDb, rowsToObjects, getSystemSetting } from '../_lib/db.js';
 import * as evo from '../_lib/evolution.js';
 
 export default async function handler(req, res) {
-  // Auth: Vercel cron header OR CRON_SECRET via query/header
   const isCron = req.headers['x-vercel-cron'] === '1';
   const secret = req.query.secret
+    || req.headers['x-cron-secret']
     || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   const cronSecret = process.env.CRON_SECRET;
 
-  if (!isCron && (!cronSecret || secret !== cronSecret)) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
   try {
     await initDb();
+
+    // Auth: Vercel cron header, env secret, or DB-stored secret
+    if (!isCron) {
+      const envMatch = cronSecret && secret === cronSecret;
+      if (!envMatch) {
+        const dbSecret = await getSystemSetting('cron_secret');
+        if (!dbSecret || secret !== dbSecret) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+      }
+    }
+
     const db = getDb();
     const now = new Date().toISOString();
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();

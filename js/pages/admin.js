@@ -1041,8 +1041,9 @@ async function renderAdminSystem() {
   try {
     const sysCfg = await _api('GET', '/admin/users?resource=system-settings').catch(() => ({}));
 
-    const allowReg   = sysCfg.allow_registration === '1';
+    const allowReg     = sysCfg.allow_registration === '1';
     const evoGlobalKey = sysCfg.evolution_global_key || '';
+    const cronSecret   = sysCfg.cron_secret || '';
 
     content.innerHTML = `
       ${_adminNavBar('system')}
@@ -1071,7 +1072,7 @@ async function renderAdminSystem() {
         </div>
         <div id="toggle-reg-feedback" style="font-size:.8rem;margin-top:10px;display:none"></div>
       </div>
-      ${await _renderEvolutionSection(evoGlobalKey)}`;
+      ${await _renderEvolutionSection(evoGlobalKey, cronSecret)}`;
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
   } catch(e) {
@@ -1119,7 +1120,7 @@ async function renderAdminTheme() {
 
 // ── Evolution API Instance Management ────────────────────────────────────────
 
-async function _renderEvolutionSection(evoGlobalKey = '') {
+async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '') {
   let instances = [];
   try { instances = await _api('GET', '/admin/users?resource=evolution-instances'); } catch {}
   const statusColor  = s => s === 'open' ? 'var(--income-text,#16a34a)' : 'var(--expense,#dc2626)';
@@ -1249,6 +1250,30 @@ async function _renderEvolutionSection(evoGlobalKey = '') {
 
       <div id="evo-qr-panel" style="display:none;margin-top:16px;text-align:center"></div>
 
+      <!-- Disparo automático (cron externo) -->
+      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('clock', 13)} Disparo automático (cron externo)</div>
+        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
+          Cole esta URL no <strong>cron-job.org</strong> (ou similar) com intervalo de <strong>1 minuto</strong> para processar a fila de mensagens.
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input id="cron-url-input" type="text" class="form-input" readonly
+            value="${cronSecret ? `${location.origin}/api/cron/dispatcher?secret=${cronSecret}` : ''}"
+            placeholder="${cronSecret ? '' : 'Gere um secret primeiro…'}"
+            style="flex:1;font-size:.8rem;font-family:monospace;background:var(--bg-subtle);color:var(--text-primary)">
+          <button class="btn btn-outline" id="cron-copy-btn" onclick="_cronCopyUrl()"
+            ${cronSecret ? '' : 'disabled'}
+            style="font-size:.83rem;white-space:nowrap;flex-shrink:0">
+            ${icon('copy', 14)} Copiar URL
+          </button>
+        </div>
+        <button class="btn btn-outline" onclick="_cronGenerateSecret()"
+          style="font-size:.82rem;white-space:nowrap">
+          ${icon('refresh-cw', 13)} Gerar/Regenerar secret
+        </button>
+        <div id="cron-secret-feedback" style="font-size:.78rem;margin-top:8px;display:none"></div>
+      </div>
+
       <!-- Histórico de mensagens -->
       <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <div>
@@ -1260,6 +1285,46 @@ async function _renderEvolutionSection(evoGlobalKey = '') {
         </button>
       </div>
     </div>`;
+}
+
+// ── Cron externo — copiar URL / gerar secret ─────────────────────────────────
+
+async function _cronCopyUrl() {
+  const input = document.getElementById('cron-url-input');
+  const url = input?.value;
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('URL copiada!', 'success');
+  } catch {
+    input.select();
+    document.execCommand('copy');
+    toast('URL copiada!', 'success');
+  }
+}
+
+async function _cronGenerateSecret() {
+  const fb = document.getElementById('cron-secret-feedback');
+  fb.style.display = 'none';
+  try {
+    const data = await _api('POST', '/admin/users', { action: 'generate-cron-secret' });
+    if (!data.ok) throw new Error(data.error || 'Erro ao gerar secret');
+    const input = document.getElementById('cron-url-input');
+    const copyBtn = document.getElementById('cron-copy-btn');
+    if (input) {
+      input.value = `${location.origin}/api/cron/dispatcher?secret=${data.secret}`;
+      input.removeAttribute('placeholder');
+    }
+    if (copyBtn) copyBtn.removeAttribute('disabled');
+    fb.style.display = 'block';
+    fb.style.color = 'var(--expense,#dc2626)';
+    fb.textContent = 'Secret regenerado. Atualize a URL no cron-job.org — a URL anterior não funciona mais.';
+    toast('Secret gerado com sucesso', 'success');
+  } catch (e) {
+    fb.style.display = 'block';
+    fb.style.color = 'var(--expense,#dc2626)';
+    fb.textContent = e.message;
+  }
 }
 
 // ── Histórico de mensagens ────────────────────────────────────────────────────
