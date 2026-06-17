@@ -5,6 +5,20 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.0.3] — 2026-06-16
+
+### Corrigido
+- Chave de envio do broadcast agora usa a chave global do servidor (corrige falha 401 no envio pela instância padrão — F-202)
+- Resposta de envio reflete a falha real em vez de sempre retornar sucesso (F-203)
+- `api_key` da instância criada tratada como string mesmo quando a Evolution retorna objeto `{ apikey }` (F-204)
+- `mimetype` incluído no envio de mídia base64 (F-205)
+
+### Adicionado
+- Aplicação automática das configurações da instância (`rejectCall`, `groupsIgnore`, `alwaysOnline` etc.) ao criar uma nova instância Evolution (F-201)
+- Configuração automática do webhook (eventos `MESSAGES_UPSERT`/`CONNECTION_UPDATE` → n8n) na criação da instância, com URL vinda de `EVOLUTION_WEBHOOK_URL` (F-206)
+
+---
+
 ## [v1.0.2] — 2026-06-15
 
 ### Adicionado
