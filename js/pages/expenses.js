@@ -272,28 +272,32 @@ async function saveExpense(id, month, year) {
   if (!cat) { toast('Informe a categoria', 'error'); return; }
   if (!date)   { toast('Informe a data', 'error'); return; }
 
-  const [yearParsed, monthParsed] = (competence_date || date).split('-').map(Number);
+  // "Data de vencimento" (campo exp-cash) é o que alimenta due_date (cálculo de "Vencido").
+  const due = cash_date || date;
+  const [yearParsed, monthParsed] = (competence_date || due).split('-').map(Number);
   const record = {
     name, amount,
-    due_date:         date,
-    paid_date:        cash_date || null,
+    due_date:         due,
     category_id:      cat,
     notes,
     transaction_type: 'expense',
     account_id:       account_id || '',
-    competence_date:  competence_date || date,
-    cash_date:        cash_date || date,
-    status:           'paid',
+    competence_date:  competence_date || due,
+    cash_date:        cash_date || due,
     month:            monthParsed || month,
     year:             yearParsed || year,
     kind:             'variable',
-    template_id:      null,
   };
 
   if (id && id !== '') {
+    // edição: preserva status/paid_date atuais (não reabre/quita à força)
     await db.transactions.update(id, record);
     toast('Gasto atualizado!', 'success');
   } else {
+    // despesa nova nasce pendente, sem data de pagamento
+    record.status = 'pending';
+    record.paid_date = null;
+    record.template_id = null;
     await db.transactions.add(record);
     toast('Gasto registrado!', 'success');
   }
