@@ -1155,7 +1155,7 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '') {
             style="font-size:.75rem;padding:4px 10px">
             ${icon('qr-code', 12)} QR Code
           </button>` : ''}
-        <button class="btn btn-sm" onclick="_evoTestConnection('${_escHtml(inst.name)}')"
+        <button class="btn btn-sm" onclick="_evoTestConnection('${_escHtml(inst.name)}', this)"
           style="font-size:.75rem;padding:4px 10px"
           title="Verifica o status ao vivo na Evolution e reaplica o webhook">
           ${icon('activity', 12)} Testar
@@ -1596,8 +1596,9 @@ async function _evoSetDefault(name) {
   }
 }
 
-async function _evoTestConnection(name) {
-  const btn = event.currentTarget;
+async function _evoTestConnection(name, btn) {
+  if (!btn) btn = (typeof event !== 'undefined' && event) ? event.currentTarget : null;
+  if (!btn) return;
   const origHtml = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = icon('loader', 12) + ' …';

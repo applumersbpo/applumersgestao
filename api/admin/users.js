@@ -411,11 +411,28 @@ export default async function handler(req, res) {
       if (action === 'test-evolution-connection') {
         const { instanceName } = req.body;
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
-        const { rows: instRows } = await db.execute({ sql: 'SELECT name, api_key FROM evolution_instances WHERE name=?', args: [instanceName] });
+        const { rows: instRows } = await db.execute({ sql: 'SELECT name, api_key, connection_status FROM evolution_instances WHERE name=?', args: [instanceName] });
         const inst = rowsToObjects(instRows)[0] || null;
         if (!inst) return res.status(404).json({ error: `Instância "${instanceName}" não encontrada` });
 
-        const { data } = await connectionState({ name: inst.name, key: inst.api_key || null });
+        const dbStatus = inst.connection_status || 'unknown';
+        const { ok, data } = await connectionState({ name: inst.name, key: inst.api_key || null });
+
+        // Só atualiza/grava o status quando a chamada ao connectionState foi bem-sucedida.
+        // Em falha transitória/HTTP não-2xx, preserva o status atual do DB para não
+        // sobrescrever um status bom com 'disconnected' por um blip de rede (F-2).
+        if (!ok) {
+          const webhookUrl = deriveWebhookUrl(req);
+          return res.status(200).json({
+            ok: true,
+            connectionStatus: dbStatus,
+            number: '',
+            webhookUrl,
+            webhookError: null,
+            testFailed: true,
+          });
+        }
+
         const rawState = data?.instance?.state || data?.state || 'disconnected';
         const normalized = normalizeStatus(rawState);
         const number = data?.instance?.profileName || data?.profileName || '';
