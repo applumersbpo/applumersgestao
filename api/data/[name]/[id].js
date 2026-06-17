@@ -6,7 +6,7 @@ const ALLOWED = ['categories', 'templates', 'transactions', 'settings', 'install
 const FIELDS = {
   categories:   ['name', 'type', 'color', 'icon'],
   templates:    ['name', 'category_id', 'transaction_type', 'kind', 'amount', 'due_day', 'active'],
-  transactions: ['template_id', 'name', 'category_id', 'account_id', 'transaction_type', 'kind', 'amount', 'due_date', 'paid_date', 'cash_date', 'competence_date', 'status', 'month', 'year', 'notes'],
+  transactions: ['template_id', 'name', 'category_id', 'account_id', 'transaction_type', 'kind', 'amount', 'paid_amount', 'due_date', 'paid_date', 'cash_date', 'competence_date', 'status', 'month', 'year', 'notes'],
   settings:     ['key', 'value'],
   installments: ['name', 'category_id', 'total_amount', 'installments', 'paid_installments', 'due_day', 'notes'],
   goals:        ['name', 'target_amount', 'current_amount', 'deadline', 'color', 'icon'],

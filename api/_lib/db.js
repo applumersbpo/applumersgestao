@@ -323,6 +323,9 @@ export async function initDb() {
   if (!existingCols.includes('competence_date')) {
     await db.execute("ALTER TABLE transactions ADD COLUMN competence_date TEXT DEFAULT ''");
   }
+  if (!existingCols.includes('paid_amount')) {
+    await db.execute("ALTER TABLE transactions ADD COLUMN paid_amount REAL DEFAULT 0");
+  }
 
   // Migrations — users table
   const { rows: ucols } = await db.execute("PRAGMA table_info('users')");
