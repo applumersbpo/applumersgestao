@@ -134,14 +134,14 @@ function bindExpenseActions(month, year) {
       const id     = btn.dataset.id;
       const action = btn.dataset.action;
       if (action === 'pay') {
-        await db.transactions.update(id, { status: 'paid', paid_date: today() });
-        _expCache.txs = _expCache.txs.map(t => t.id === id ? { ...t, status: 'paid', paid_date: today() } : t);
+        await db.transactions.update(id, { status: 'paid', paid_date: today(), cash_date: today() });
+        _expCache.txs = _expCache.txs.map(t => t.id === id ? { ...t, status: 'paid', paid_date: today(), cash_date: today() } : t);
         clearUpcomingCache();
         toast('Marcado como pago!', 'success');
         _expFilterRender();
       } else if (action === 'unpay') {
-        await db.transactions.update(id, { status: 'pending', paid_date: null });
-        _expCache.txs = _expCache.txs.map(t => t.id === id ? { ...t, status: 'pending', paid_date: null } : t);
+        await db.transactions.update(id, { status: 'pending', paid_date: null, cash_date: null });
+        _expCache.txs = _expCache.txs.map(t => t.id === id ? { ...t, status: 'pending', paid_date: null, cash_date: null } : t);
         clearUpcomingCache();
         toast('Alteração desfeita');
         _expFilterRender();
@@ -283,20 +283,20 @@ async function saveExpense(id, month, year) {
     transaction_type: 'expense',
     account_id:       account_id || '',
     competence_date:  competence_date || due,
-    cash_date:        cash_date || due,
     month:            monthParsed || month,
     year:             yearParsed || year,
     kind:             'variable',
   };
 
   if (id && id !== '') {
-    // edição: preserva status/paid_date atuais (não reabre/quita à força)
+    // edição: preserva status/paid_date/cash_date atuais (update parcial não toca cash_date)
     await db.transactions.update(id, record);
     toast('Gasto atualizado!', 'success');
   } else {
-    // despesa nova nasce pendente, sem data de pagamento
+    // despesa nova nasce pendente, sem data de pagamento nem movimento de caixa
     record.status = 'pending';
     record.paid_date = null;
+    record.cash_date = null;
     record.template_id = null;
     await db.transactions.add(record);
     toast('Gasto registrado!', 'success');
