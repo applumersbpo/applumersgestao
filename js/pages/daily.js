@@ -123,7 +123,8 @@ function bindDailyActions() {
 
 async function openDailyModal(data = null) {
   const catsMap = await getCategoriesMap();
-  const cats = Object.values(catsMap).filter(c => c.type === 'expense');
+  const cats = Object.values(catsMap).filter(c => c.type === 'expense')
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
   const isEdit = !!data;
 
   showModal(`

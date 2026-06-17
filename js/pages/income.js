@@ -167,7 +167,8 @@ function bindIncomeActions() {
 
 async function openIncomeModal(month, year, data = null) {
   const catsMap = await getCategoriesMap();
-  const cats = Object.values(catsMap).filter(c => c.type === 'income');
+  const cats = Object.values(catsMap).filter(c => c.type === 'income')
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
   const accounts = await db.accounts.toArray();
   const isEdit = !!data;
 

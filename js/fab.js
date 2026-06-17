@@ -9,6 +9,7 @@ async function openQuickAdd(type = 'expense') {
 
   const catOptions = (t) => cats
     .filter(c => c.type === t)
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }))
     .map(c => `<option value="${c.id}">${c.icon || ''} ${c.name}</option>`)
     .join('');
 
@@ -78,7 +79,8 @@ async function openQuickAdd(type = 'expense') {
 
 async function fabSetType(type) {
   const catsMap = await getCategoriesMap();
-  const cats = Object.values(catsMap).filter(c => c.type === type);
+  const cats = Object.values(catsMap).filter(c => c.type === type)
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
 
   document.getElementById('fab-type').value = type;
 

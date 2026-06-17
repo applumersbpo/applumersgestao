@@ -195,7 +195,8 @@ async function bulkExpenseDelete(month, year) {
 
 async function openExpenseModal(month, year, data = null) {
   const catsMap = await getCategoriesMap();
-  const cats    = Object.values(catsMap).filter(c => c.type === 'expense');
+  const cats    = Object.values(catsMap).filter(c => c.type === 'expense')
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
   const accounts = await db.accounts.toArray();
   const isEdit  = !!data;
 
