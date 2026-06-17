@@ -58,3 +58,53 @@ Escopo desta rodada: integração Evolution API.
 - Observado: As chamadas de configuração rodavam DEPOIS do create e (a) o try/catch só captura erro de REDE — `fetch` NÃO lança em HTTP 4xx/5xx — e (b) o código nunca lia/logava `r.ok` nem o corpo. Resultado: se a Evolution rejeitava o settings (timing: instância recém-criada ainda não pronta), o 4xx era engolido silenciosamente → instância nascia sem configuração, sem mensagem de erro.
 - (sondagem ao vivo — Evolution v2.3.7 em wpp.razzodigital.com.br): `POST /settings/set/{instance}` responde **HTTP 404** com corpo `{"status":404,"error":"Not Found","response":{"message":["The \"X\" instance does not exist"]}}` quando a instância não está pronta/reconhecida — exatamente a janela de timing pós-create. Mesmo shape em `webhook/find`, `settings/find`, `connectionState`. (`GET /instance/fetchInstances` → HTTP 401 com a chave fallback `EVOLUTION_APIKEY`; a global válida vive em `system_settings.evolution_global_key` no DB / Vercel Encrypted, não baixável localmente, então a sondagem autenticada do create+settings não foi possível — mas o shape do erro 404 que é engolido foi confirmado e é independente de credencial.)
 - (resolvedor) Correção: api/admin/users.js (`create-evolution-instance`) — settings + webhook agora são aplicados de forma ATÔMICA no body do `/instance/create` (Evolution v2 aceita os campos de settings achatados e `webhook` como objeto inline), eliminando a janela de timing. Mantida uma chamada de reforço pós-create a `/settings/set` e `/webhook/set`, mas agora CORRIGIDA: lê `r.ok` + corpo, e em falha acumula `{ ok, status, error }` num objeto `_config` (settings + webhook) e loga via `console.error` em vez de engolir. A resposta final do handler agora retorna `{ ...data, _config }`, expondo o erro real no Network/painel. Validado com `node --check api/admin/users.js`.
+
+---
+
+Escopo: revisão estática da feature "regime de caixa / pago-recebido" (commits f423d96, 374a6f8, c1f1f42, 0fed961).
+
+## F-208 | categoria: funcional | severidade: média | status: corrigido
+- Tela: js/pages/expenses.js:138-148 ; js/pages/income.js:132-146
+- Bug: ao marcar Pago/Recebido pelo modal `openPayDateModal` (ou ao "Desfazer"), o callback atualiza só o cache (`_expCache.txs`/`_incCache.txs`) e chama `_expFilterRender()`/`_incFilterRender()`, que re-renderizam APENAS a `<div id="expenses-list">`/`#income-list`. Os cards de resumo no topo (Total/Pago/A Pagar e Receita/Recebido/A Receber) são calculados só em `renderExpenses`/`renderIncome` e NÃO são recomputados.
+- Observado: após pagar/receber ou desfazer um item, os totais "Pago"/"A Pagar" e "Recebido"/"A Receber" ficam desatualizados (errados) até o usuário trocar de mês ou recarregar. As ações em massa (`bulkExpensePay`/`bulkIncomeReceive`) chamam `app.render()` (re-render completo) e não têm o problema — inconsistência entre os dois caminhos.
+- Esperado: após a ação individual, os cards de resumo refletirem os novos totais (ex.: re-render completo da página, como nas ações em massa).
+- (resolvedor) Correção: o callback `onDone` do `openPayDateModal` (pay/receive) e os handlers `unpay`/`unreceive` agora chamam `renderExpenses(_expCache.month,_expCache.year)` / `renderIncome(_incCache.month,_incCache.year)` em vez de atualizar só o cache + `_expFilterRender()`/`_incFilterRender()`, recomputando os cards de resumo. Toast mantido. Arquivos: js/pages/expenses.js, js/pages/income.js (commit local desta rodada). Validado com `node --check`.
+
+## F-209 | categoria: funcional | severidade: média | status: corrigido
+- Tela: js/utils.js:43-45 (usada em expenses.js:245,376 ; income.js:348)
+- Bug: `today()` retorna `new Date().toISOString().split('T')[0]`, que é a data em UTC. No fuso BRT (UTC-3), das 21:00 às 23:59 locais, `today()` já retorna o DIA SEGUINTE.
+- Observado: a validação "data não pode ser > hoje" (`dateVal > today()`) e os atributos `max`/`value` dos inputs de data passam a aceitar/sugerir a data de "amanhã" local nessa janela. Pior: o default de `cash_date`/`paid_date` (= `today()`) pode cair no 1º dia do mês seguinte quando a ação ocorre na noite do último dia do mês → o lançamento é alocado no mês errado no regime de CAIXA (reports.js `cashMonth`/`cashYear`), justamente o que a feature pretende medir.
+- Esperado: usar data local (ex.: derivar Y-M-D do horário local, não UTC) para `today()`, validação e defaults.
+- Nota: a comparação string ISO `data > today()` em si está correta lexicograficamente; o problema é o valor de `today()`, não o operador.
+- (resolvedor) Correção: `today()` em js/utils.js reescrita para retornar a DATA LOCAL — `const d=new Date(); const off=d.getTimezoneOffset()*60000; return new Date(d.getTime()-off).toISOString().split('T')[0];` — mantendo a assinatura ('YYYY-MM-DD'). Melhoria global correta: validação de data futura, defaults de `cash_date`/`paid_date` e alocação de mês no regime de caixa passam a usar o dia local. Arquivo: js/utils.js (commit local desta rodada). Validado com `node --check`.
+
+## F-210 | categoria: funcional | severidade: baixa | status: aberto
+- Tela: js/pages/expenses.js:384 ; js/pages/income.js:356 ; js/pages/reports.js:29
+- Bug: ao salvar com "Pago/Recebido" marcado, `paid_amount = paidAmountVal > 0 ? paidAmountVal : amount`; e no relatório `cashValue = (t.paid_amount || t.amount || 0)`. Ambos tratam 0 como falsy.
+- Observado: o fallback `paid_amount=0 → amount` é correto e intencional para registros legados (migração default 0). Porém um pagamento/recebimento legítimo de R$ 0,00 é impossível de representar: sempre vira o valor cheio. Edge raro neste domínio → baixa.
+
+## F-211 | categoria: robustez | severidade: baixa | status: aberto
+- Tela: index.html:321,325 ; js/pages/expenses.js:214 ; js/pages/income.js:134
+- Bug: `openPayDateModal` é DEFINIDA em expenses.js (carregado na linha 325) e USADA em income.js (carregado ANTES, linha 321). `clearUpcomingCache` (notifications.js, linha 328) idem.
+- Observado: em runtime NÃO há ReferenceError, pois `openPayDateModal` só é invocada dentro do handler de clique (`bindIncomeActions`), executado bem depois de todos os `<script>` carregarem — ambas as funções já estão no escopo global. Não é bug funcional na execução normal. Risco residual: se expenses.js falhar ao carregar (rede), "Receber" na tela de Receitas lança ReferenceError. Acoplamento frágil — função compartilhada deveria viver em utils.js. Severidade baixa.
+
+## F-212 | categoria: consistência | severidade: baixa | status: corrigido
+- Tela: js/pages/income.js:239 vs js/pages/expenses.js:302
+- Bug: o input "Data de vencimento" tem default vazio em receita (`inc-cash` value `data?.cash_date || data?.paid_date || ''`) e default `today()` em despesa (`exp-cash` ... `|| today()`).
+- Observado: sem quebra funcional — em `saveIncome` o `due = cash_date || regDate` cai para `regDate` (= `inc-date` oculto = hoje) e `month/year` vêm de `competence_date` (default hoje). Apenas inconsistência de UX/dados entre os dois fluxos. Baixa.
+- (resolvedor) Correção: default do campo `inc-cash` alinhado ao de despesa — `value="${data?.cash_date || data?.paid_date || today()}"`. Só o default mudou; a regra de month/year (via `competence_date`) permanece intacta. Arquivo: js/pages/income.js (commit local desta rodada). Validado com `node --check`.
+
+## F-213 | categoria: funcional | severidade: baixa | status: aberto
+- Tela: js/pages/reports.js:65,71 (e export 583-586)
+- Bug: no regime de CAIXA, `cashYMD = parseYMD(t.cash_date || t.paid_date)`; se um lançamento `status==='paid'` tiver cash_date E paid_date vazios, `cashYMD→null` → `cashYear/cashMonth→null` → excluído do Fluxo de Caixa.
+- Observado: o guard `isPaid(t)` protege contra NaN/crash (ponto verificado: não quebra). Porém registros legados marcados como pagos antes da migração, sem nenhuma data de pagamento, somem silenciosamente do regime de caixa (subnotificação). Baixa.
+
+### Pontos auditados e APROVADOS (sem bug)
+- Validação de mensagem de toast: o texto "Não é possível registrar um pagamento/recebimento com data superior à data de hoje." é IDÊNTICO nos 3 pontos (expenses.js:377, income.js:349, modal expenses.js:245). OK.
+- `saveIncome` due_date via `inc-cash`: NÃO regrediu month/year (continua de `competence_date || due`) nem o badge "Vencido" (`statusBadge`/`isOverdue` usam due_date, espelhando despesa). OK.
+- Limpeza ao desmarcar pago: `status:'pending', paid_date:null, cash_date:null, paid_amount:0` aplicada em add E update, nas duas páginas (expenses.js:144,385-389 ; income.js:141,357-361). `db.update` envia os nulls (PUT inclui campos !== undefined). OK.
+- `switchReportTab` seta display das 4 abas incluindo `#tab-compcaixa` (reports.js:429-432) — sem aba fantasma. OK.
+- `compCaixaChart` destrói antes de recriar (reports.js:483) e não toca reportChart/catChart/cashChart — sem vazamento. OK.
+- 3 botões de export apontam para a função certa: Visão Geral→`exportReportExcel()`, Caixa→`exportReportExcel('caixa')`, Comp×Caixa→`exportCompCaixa()`→`exportReportExcel(_compCaixaRegime)`; `typeof XLSX` é checado (reports.js:561). OK.
+- Backend: `ALTER TABLE transactions ADD COLUMN paid_amount` sob guard `PRAGMA table_info` correto, dentro de `initDb`, executado antes de qualquer uso (db.js:326-328). Allowlist `'paid_amount'` presente em FIELDS.transactions nos DOIS handlers (api/data/[name].js:11 e api/data/[name]/[id].js:9). OK.
+- Versão `.sidebar-version` v1.2.1 (index.html:258) e cache `lumers-v31` (sw.js:1) com expenses.js/income.js/reports.js no SHELL_ASSETS. OK.

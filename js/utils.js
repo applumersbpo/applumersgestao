@@ -41,7 +41,9 @@ function monthLabel(month, year) {
 }
 
 function today() {
-  return new Date().toISOString().split('T')[0];
+  const d = new Date();
+  const off = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - off).toISOString().split('T')[0];
 }
 
 function isOverdue(due_date, status) {

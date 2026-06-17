@@ -136,16 +136,14 @@ function bindExpenseActions(month, year) {
       if (action === 'pay') {
         const tx = _expCache.txs.find(t => t.id === id) || await db.transactions.get(id);
         openPayDateModal(tx, 'expense', upd => {
-          _expCache.txs = _expCache.txs.map(t => t.id === id ? { ...t, ...upd } : t);
           toast('Marcado como pago!', 'success');
-          _expFilterRender();
+          renderExpenses(_expCache.month, _expCache.year);
         });
       } else if (action === 'unpay') {
         await db.transactions.update(id, { status: 'pending', paid_date: null, cash_date: null, paid_amount: 0 });
-        _expCache.txs = _expCache.txs.map(t => t.id === id ? { ...t, status: 'pending', paid_date: null, cash_date: null, paid_amount: 0 } : t);
         clearUpcomingCache();
         toast('Alteração desfeita');
-        _expFilterRender();
+        renderExpenses(_expCache.month, _expCache.year);
       } else if (action === 'edit') {
         const t = await db.transactions.get(id);
         if (t) openExpenseModal(t.month, t.year, t);

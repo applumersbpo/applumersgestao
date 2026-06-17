@@ -132,17 +132,15 @@ function bindIncomeActions() {
     if (action === 'receive') {
       const tx = _incCache.txs.find(t => t.id === id) || await db.transactions.get(id);
       openPayDateModal(tx, 'income', upd => {
-        _incCache.txs = _incCache.txs.map(t => t.id === id ? { ...t, ...upd } : t);
         toast('Receita marcada como recebida!', 'success');
-        _incFilterRender();
+        renderIncome(_incCache.month, _incCache.year);
       });
     }
     if (action === 'unreceive') {
       await db.transactions.update(id, { status: 'pending', paid_date: null, cash_date: null, paid_amount: 0 });
-      _incCache.txs = _incCache.txs.map(t => t.id === id ? { ...t, status: 'pending', paid_date: null, cash_date: null, paid_amount: 0 } : t);
       clearUpcomingCache();
       toast('Alteração desfeita');
-      _incFilterRender();
+      renderIncome(_incCache.month, _incCache.year);
     }
     if (action === 'edit') {
       const t = await db.transactions.get(id);
@@ -236,7 +234,7 @@ async function openIncomeModal(month, year, data = null) {
             </div>
             <div class="form-group" style="flex:1">
               <label class="form-label">Data de vencimento <span class="field-info" title="Data de vencimento: data prevista para o recebimento">ℹ️</span></label>
-              <input id="inc-cash" type="date" class="form-control" value="${data?.cash_date || data?.paid_date || ''}">
+              <input id="inc-cash" type="date" class="form-control" value="${data?.cash_date || data?.paid_date || today()}">
             </div>
           </div>
 
