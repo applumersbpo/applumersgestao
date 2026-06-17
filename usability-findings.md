@@ -1,0 +1,41 @@
+# Usability / QA Findings — applumersgestao
+
+Contrato de findings do QA Vision Lab. Cada finding usa ID único (faixa F-2XX = reviewer estático).
+Ciclo de status: aberto → em_progresso → resolvido / descartado.
+
+Escopo desta rodada: integração Evolution API.
+- PROBLEMA 1 — "As configurações não são aplicadas na Evolution ao criar a instância."
+- PROBLEMA 3 — "O envio de mensagens pela instância padrão falha."
+
+---
+
+## F-201 | categoria: funcional | severidade: alta | status: aberto
+- Tela: api/admin/users.js:255
+- Passos: 1) Admin → Sistema → WhatsApp → "Criar nova instância". 2) Frontend chama `_evoCreateInstance` → action `create-evolution-instance`. 3) Backend faz POST `/instance/create` com body `{ instanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' }` (linha 258). 4) Nenhuma chamada subsequente é feita.
+- Esperado: As configurações da Evolution deveriam ser aplicadas na criação — seja no body do `/instance/create` (campos como `rejectCall`/`msgCall`, `groupsIgnore`, `alwaysOnline`, `readMessages`, `readStatus`, `syncFullHistory`) e/ou via chamadas subsequentes a `/settings/set/{instance}` e `/webhook/set/{instance}` para webhook.
+- Observado: O body só envia `{ instanceName, qrcode, integration }`. Não há nenhum campo de settings nem chamada a `/settings/set/{instance}` ou `/webhook/set/{instance}` em todo o repositório (grep por `settings/set|webhook/set|rejectCall|groupsIgnore|alwaysOnline|readMessages|syncFullHistory` = 0 resultados). A instância nasce com defaults da Evolution; nenhuma configuração do sistema é aplicada. Causa raiz direta do PROBLEMA 1.
+
+## F-202 | categoria: funcional | severidade: alta | status: corrigido
+- Tela: api/admin/users.js:381
+- Passos: 1) Admin salva a chave global pela UI → gravada em `system_settings.evolution_global_key` (DB). 2) Cria/vincula instância como padrão. 3) Dispara mensagem (action `send-message`). 4) `instKey = defInst.api_key || _evoKey()` (linha 381).
+- Esperado: Quando a instância padrão não tem `api_key` própria salva, o fallback deveria usar a MESMA chave usada para gerenciar instâncias — `getSystemSetting('evolution_global_key')` (via `_evoGlobalHdrs`), como em create/QR/delete.
+- Observado: O fallback usa `_evoKey()` = `process.env.EVOLUTION_APIKEY`, que é uma chave DIFERENTE da global do DB. No `.env.production` o `EVOLUTION_APIKEY` é a chave da instância `app-lumers` (`BC1D…`), não a `AUTHENTICATION_API_KEY` global. Para qualquer instância padrão que não seja a `app-lumers` (ou cujo `api_key` esteja vazio), o header `apikey` enviado não autentica → Evolution responde 401 → envio falha. Mismatch entre a chave aceita pela Evolution e a chave usada no send. Causa raiz provável do PROBLEMA 3.
+- (resolvedor) Correção: api/admin/users.js (`send-message`) — fallback de chave agora é `defInst.api_key || globalKey || _evoKey()`, onde `globalKey = await getSystemSetting('evolution_global_key')` (mesma chave global usada em create/QR/delete). `_evoKey()` mantido como último fallback. Validado com `node --check api/admin/users.js`.
+
+## F-203 | categoria: funcional | severidade: média | status: aberto
+- Tela: api/admin/users.js:519
+- Passos: 1) Dispara `send-message` para N usuários. 2) Todos os envios falham (ex.: 401 da Evolution). 3) Backend monta `results` com `ok:false` por item, mas retorna `res.status(200).json({ ok: true, sent, total, results })`.
+- Esperado: O status HTTP / payload deveria refletir falha total (ex.: HTTP != 200 ou `ok:false`) para o frontend sinalizar erro claramente ao usuário.
+- Observado: O handler sempre retorna HTTP 200 com `ok:true` mesmo quando `sent === 0`. O erro real da Evolution fica engolido dentro de `results[].error` (e em `message_logs`), mas a resposta de topo indica sucesso. Isso mascara o PROBLEMA 3 — o admin pode achar que "enviou" sem perceber a falha sem abrir o histórico.
+
+## F-204 | categoria: funcional | severidade: média | status: aberto
+- Tela: api/admin/users.js:265
+- Passos: 1) Cria instância via `create-evolution-instance`. 2) Backend extrai `createdKey = data?.hash || data?.apikey || data?.instance?.apikey || ''` (linha 265). 3) Insere em `evolution_instances.api_key`. 4) Depois usa essa key no `send-message`.
+- Esperado: `api_key` deve armazenar a string da apikey da instância retornada pelo `/instance/create`.
+- Observado: Em versões da Evolution v2 o campo `hash` do retorno de create pode ser um OBJETO (`{ apikey: "..." }`) em vez de string. Nesse caso `data?.hash` é um objeto e é passado como arg do INSERT (libsql) — armazenando algo inválido/`[object Object]` ou lançando erro. A `api_key` resultante não autentica → `send-message` (e listagem de status) falham com 401. Contribui para o PROBLEMA 3 em instâncias criadas pelo app. (Dependente da versão da Evolution — verificar o formato real do retorno em `wpp.razzodigital.com.br`.)
+
+## F-205 | categoria: funcional | severidade: baixa | status: aberto
+- Tela: api/admin/users.js:469
+- Passos: 1) Dispara `send-message` com mídia base64. 2) Backend POST `/message/sendMedia/{inst}` com body `{ number, mediatype, media, caption, fileName? }` (linhas 469-475).
+- Esperado: Para mídia em base64, a Evolution v2 normalmente exige/recomenda `mimetype` (e `fileName` para documentos) no payload do `sendMedia`.
+- Observado: O payload não envia `mimetype`. Dependendo da versão/tipo de mídia, o envio de mídia pode falhar mesmo quando o texto funciona. Não afeta envio de texto puro (PROBLEMA 3 reportado pode incluir só texto), por isso severidade baixa — verificar contra a doc da instância em uso.

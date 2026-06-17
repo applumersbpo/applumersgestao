@@ -378,7 +378,9 @@ export default async function handler(req, res) {
         const base = _evoBase();
         if (!base) return res.status(500).json({ error: 'Evolution API não configurada (EVOLUTION_URL ausente)' });
 
-        const instKey      = defInst.api_key || _evoKey();
+        // Fallback de chave: instância → chave global do DB (mesma usada em create/QR/delete) → env
+        const globalKey    = await getSystemSetting('evolution_global_key');
+        const instKey      = defInst.api_key || globalKey || _evoKey();
         const sendTextUrl  = `${base}/message/sendText/${encodeURIComponent(defInst.name)}`;
         const sendMediaUrl = `${base}/message/sendMedia/${encodeURIComponent(defInst.name)}`;
         const hasMedia     = !!(media_base64 || image_url);
