@@ -23,11 +23,12 @@ Escopo desta rodada: integração Evolution API.
 - Observado: O fallback usa `_evoKey()` = `process.env.EVOLUTION_APIKEY`, que é uma chave DIFERENTE da global do DB. No `.env.production` o `EVOLUTION_APIKEY` é a chave da instância `app-lumers` (`BC1D…`), não a `AUTHENTICATION_API_KEY` global. Para qualquer instância padrão que não seja a `app-lumers` (ou cujo `api_key` esteja vazio), o header `apikey` enviado não autentica → Evolution responde 401 → envio falha. Mismatch entre a chave aceita pela Evolution e a chave usada no send. Causa raiz provável do PROBLEMA 3.
 - (resolvedor) Correção: api/admin/users.js (`send-message`) — fallback de chave agora é `defInst.api_key || globalKey || _evoKey()`, onde `globalKey = await getSystemSetting('evolution_global_key')` (mesma chave global usada em create/QR/delete). `_evoKey()` mantido como último fallback. Validado com `node --check api/admin/users.js`.
 
-## F-203 | categoria: funcional | severidade: média | status: aberto
+## F-203 | categoria: funcional | severidade: média | status: corrigido
 - Tela: api/admin/users.js:519
 - Passos: 1) Dispara `send-message` para N usuários. 2) Todos os envios falham (ex.: 401 da Evolution). 3) Backend monta `results` com `ok:false` por item, mas retorna `res.status(200).json({ ok: true, sent, total, results })`.
 - Esperado: O status HTTP / payload deveria refletir falha total (ex.: HTTP != 200 ou `ok:false`) para o frontend sinalizar erro claramente ao usuário.
 - Observado: O handler sempre retorna HTTP 200 com `ok:true` mesmo quando `sent === 0`. O erro real da Evolution fica engolido dentro de `results[].error` (e em `message_logs`), mas a resposta de topo indica sucesso. Isso mascara o PROBLEMA 3 — o admin pode achar que "enviou" sem perceber a falha sem abrir o histórico.
+- (resolvedor) Correção: api/admin/users.js (`send-message`) — se `sent === 0 && total > 0`, retorna HTTP 502 com `{ ok:false, error:<primeiro results[].error>, sent, total, results }`. Se `sent > 0 && sent < total`, retorna HTTP 200 com `{ ok:true, partial:true, sent, total, results }`. Sucesso total mantém o contrato original. Campos `sent`/`total`/`results` preservados. Validado com `node --check api/admin/users.js`.
 
 ## F-204 | categoria: funcional | severidade: média | status: corrigido
 - Tela: api/admin/users.js:265

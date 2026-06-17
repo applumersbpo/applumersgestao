@@ -559,7 +559,15 @@ export default async function handler(req, res) {
         }
 
         const sent = results.filter(r => r.ok).length;
-        return res.status(200).json({ ok: true, sent, total: user_ids.length, results });
+        const total = user_ids.length;
+        // Falha total: reflete erro no status/payload em vez de mascarar como sucesso
+        if (sent === 0 && total > 0) {
+          const firstErr = results.find(r => !r.ok && r.error)?.error || 'Falha ao enviar as mensagens';
+          return res.status(502).json({ ok: false, error: firstErr, sent, total, results });
+        }
+        // Falha parcial: sucesso, mas sinaliza que nem todos foram enviados
+        const partial = sent > 0 && sent < total;
+        return res.status(200).json({ ok: true, ...(partial ? { partial: true } : {}), sent, total, results });
       }
 
       // Create user (admin bypass — ignores allow_registration)
