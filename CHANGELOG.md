@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.1.3] — 2026-06-17
+
+### Corrigido
+- Consolidadas as rotas `/api/auth/login` e `/api/auth/register` dentro de `/api/auth/[action].js` para ficar dentro do limite de **12 funções serverless** do plano Hobby; URLs e comportamento de login/cadastro permanecem inalterados
+
+---
+
 ## [v1.1.2] — 2026-06-17
 
 ### Corrigido
