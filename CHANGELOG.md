@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.1.5] — 2026-06-17
+
+### Corrigido
+- Alerta/card de "Contas a vencer" agora filtra por vencimento (`due_date`) dentro do mês vigente e mostra os dias restantes ("vence hoje/amanhã/em N dias"); corrigido o drift de fuso horário e o filtro de data que era engolido
+
+---
+
 ## [v1.1.4] — 2026-06-17
 
 ### Melhorado
