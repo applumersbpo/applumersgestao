@@ -287,7 +287,7 @@ export default async function handler(req, res) {
             await fetch(`${base}/webhook/set/${encodeURIComponent(instanceName)}`, {
               method: 'POST',
               headers: await _evoGlobalHdrs(),
-              body: JSON.stringify({ webhook: { enabled: true, url: webhookUrl } }),
+              body: JSON.stringify({ webhook: { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'] } }),
             });
           } catch {
             // webhook é best-effort — segue mesmo se falhar
