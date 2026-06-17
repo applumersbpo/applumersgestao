@@ -1123,8 +1123,8 @@ async function renderAdminTheme() {
 async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '') {
   let instances = [];
   try { instances = await _api('GET', '/admin/users?resource=evolution-instances'); } catch {}
-  const statusColor  = s => s === 'open' ? 'var(--income-text,#16a34a)' : 'var(--expense,#dc2626)';
-  const statusLabel  = s => s === 'open' ? 'Conectada' : 'Desconectada';
+  const statusColor  = s => (s === 'connected' || s === 'open') ? 'var(--income-text,#16a34a)' : s === 'connecting' ? 'var(--warning,#d97706)' : 'var(--expense,#dc2626)';
+  const statusLabel  = s => (s === 'connected' || s === 'open') ? 'Conectada' : s === 'connecting' ? 'Conectando…' : 'Desconectada';
   const hasDefault   = instances.some(i => i.is_default);
   const rows = instances.map(inst => `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;
@@ -1150,11 +1150,16 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '') {
             title="Usar esta instância como padrão para envio de mensagens">
             ${icon('star', 12)} Padrão
           </button>` : ''}
-        ${inst.connectionStatus !== 'open' ? `
+        ${(inst.connectionStatus !== 'connected' && inst.connectionStatus !== 'open') ? `
           <button class="btn btn-sm" onclick="_evoConnectInstance('${_escHtml(inst.name)}')"
             style="font-size:.75rem;padding:4px 10px">
             ${icon('qr-code', 12)} QR Code
           </button>` : ''}
+        <button class="btn btn-sm" onclick="_evoTestConnection('${_escHtml(inst.name)}')"
+          style="font-size:.75rem;padding:4px 10px"
+          title="Verifica o status ao vivo na Evolution e reaplica o webhook">
+          ${icon('activity', 12)} Testar
+        </button>
         <button class="btn btn-sm" onclick="_evoEditKey('${_escHtml(inst.name)}')"
           style="font-size:.78rem" title="Atualizar a API key desta instância">
           ${icon('key', 12)} Chave
@@ -1588,6 +1593,29 @@ async function _evoSetDefault(name) {
     renderAdminSystem();
   } catch(e) {
     toast('Erro: ' + e.message, 'error');
+  }
+}
+
+async function _evoTestConnection(name) {
+  const btn = event.currentTarget;
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = icon('loader', 12) + ' …';
+  if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
+  try {
+    const res = await _api('POST', '/admin/users', { action: 'test-evolution-connection', instanceName: name });
+    const label = (res.connectionStatus === 'connected' || res.connectionStatus === 'open')
+      ? 'Conectada'
+      : res.connectionStatus === 'connecting'
+        ? 'Conectando…'
+        : 'Desconectada';
+    toast(`${name}: ${label}`, 'success');
+    renderAdminSystem();
+  } catch (e) {
+    toast('Erro: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
   }
 }
 

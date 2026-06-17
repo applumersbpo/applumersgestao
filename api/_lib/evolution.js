@@ -96,14 +96,17 @@ export function inferMimetype(media, mediaName) {
   return '';
 }
 
-// Deriva a URL base do webhook — sem dependência obrigatória de env
+// Deriva a URL base do webhook — prioriza domínios estáveis de produção.
+// VERCEL_URL fica por último: é a URL por-deployment (instável e protegida por
+// Vercel Authentication), podendo registrar um endpoint inacessível na Evolution.
 export function deriveWebhookUrl(req) {
   if (process.env.APP_BASE_URL) return `${process.env.APP_BASE_URL}/api/webhooks/evolution`;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}/api/webhooks/evolution`;
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/api/webhooks/evolution`;
   if (req && req.headers && req.headers.host) {
     const proto = (req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
     return `${proto}://${req.headers.host}/api/webhooks/evolution`;
   }
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}/api/webhooks/evolution`;
   return '';
 }
 

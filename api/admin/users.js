@@ -407,6 +407,45 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
+      // Verifica status ao vivo na Evolution e reaplica o webhook
+      if (action === 'test-evolution-connection') {
+        const { instanceName } = req.body;
+        if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
+        const { rows: instRows } = await db.execute({ sql: 'SELECT name, api_key FROM evolution_instances WHERE name=?', args: [instanceName] });
+        const inst = rowsToObjects(instRows)[0] || null;
+        if (!inst) return res.status(404).json({ error: `Instância "${instanceName}" não encontrada` });
+
+        const { data } = await connectionState({ name: inst.name, key: inst.api_key || null });
+        const rawState = data?.instance?.state || data?.state || 'disconnected';
+        const normalized = normalizeStatus(rawState);
+        const number = data?.instance?.profileName || data?.profileName || '';
+
+        await db.execute({
+          sql: "UPDATE evolution_instances SET connection_status=?, last_status_at=datetime('now') WHERE name=?",
+          args: [normalized, inst.name],
+        });
+
+        const webhookUrl = deriveWebhookUrl(req);
+        const webhookCfg = {
+          url: webhookUrl,
+          byEvents: true,
+          base64: true,
+          events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+        };
+
+        let webhookError = null;
+        if (webhookUrl) {
+          try {
+            const wr = await setWebhook(inst.name, inst.api_key || null, webhookCfg);
+            if (!wr.ok) webhookError = wr.data;
+          } catch (e) {
+            webhookError = e?.message || String(e);
+          }
+        }
+
+        return res.status(200).json({ ok: true, connectionStatus: normalized, number, webhookUrl, webhookError: webhookError || null });
+      }
+
       // Normalize phone numbers
       if (action === 'normalize-phones') {
         const { rows } = await db.execute("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone != ''");
