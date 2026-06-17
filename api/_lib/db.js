@@ -266,6 +266,39 @@ export async function initDb() {
       error TEXT DEFAULT '',
       sent_at TEXT DEFAULT (datetime('now'))
     )`,
+    `CREATE TABLE IF NOT EXISTS message_campaigns (
+      id TEXT PRIMARY KEY,
+      created_by_id TEXT NOT NULL,
+      created_by_name TEXT DEFAULT '',
+      created_by_email TEXT DEFAULT '',
+      instance_name TEXT DEFAULT '',
+      text TEXT DEFAULT '',
+      has_media INTEGER DEFAULT 0,
+      media_type TEXT DEFAULT '',
+      media_name TEXT DEFAULT '',
+      media_b64 TEXT DEFAULT '',
+      cadence_ms INTEGER DEFAULT 0,
+      total INTEGER DEFAULT 0,
+      sent INTEGER DEFAULT 0,
+      failed INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'running',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS message_dispatch (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      recipient_name TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      attempts INTEGER DEFAULT 0,
+      scheduled_for TEXT DEFAULT '',
+      message_id TEXT DEFAULT '',
+      error TEXT DEFAULT '',
+      processing_at TEXT DEFAULT '',
+      sent_at TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {
@@ -327,6 +360,32 @@ export async function initDb() {
   if (!aColNames.includes('logo_url')) {
     await db.execute("ALTER TABLE accounts ADD COLUMN logo_url TEXT DEFAULT ''");
   }
+
+  // evolution_instances — new status/qr columns
+  const { rows: eiCols2 } = await db.execute("PRAGMA table_info('evolution_instances')");
+  const eiColNames = (eiCols2 || []).map(r => r.name);
+  if (!eiColNames.includes('connection_status')) {
+    await db.execute("ALTER TABLE evolution_instances ADD COLUMN connection_status TEXT DEFAULT 'unknown'");
+  }
+  if (!eiColNames.includes('qr')) {
+    await db.execute("ALTER TABLE evolution_instances ADD COLUMN qr TEXT DEFAULT ''");
+  }
+  if (!eiColNames.includes('last_status_at')) {
+    await db.execute("ALTER TABLE evolution_instances ADD COLUMN last_status_at TEXT DEFAULT ''");
+  }
+
+  // message_logs — delivery tracking columns
+  const { rows: mlCols } = await db.execute("PRAGMA table_info('message_logs')");
+  const mlColNames = (mlCols || []).map(r => r.name);
+  if (!mlColNames.includes('message_id')) {
+    await db.execute("ALTER TABLE message_logs ADD COLUMN message_id TEXT DEFAULT ''");
+  }
+  if (!mlColNames.includes('delivery_status')) {
+    await db.execute("ALTER TABLE message_logs ADD COLUMN delivery_status TEXT DEFAULT ''");
+  }
+
+  // message_dispatch index for queue processing
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_message_dispatch_status_scheduled ON message_dispatch(status, scheduled_for)");
 
   // Seed default system settings (INSERT OR IGNORE keeps existing values)
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('allow_registration', '0')", args: [] });

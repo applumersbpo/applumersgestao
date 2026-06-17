@@ -1,20 +1,18 @@
 import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from '../_lib/db.js';
 import { requireAuth, cors } from '../_lib/auth.js';
+import {
+  evoBase, resolveKey, headers as evoHdrs, normalizeStatus, parseEvoError,
+  connectionState, connectQr, deleteInstance, setSettings, setWebhook,
+  createInstance, deriveWebhookUrl,
+} from '../_lib/evolution.js';
 import bcrypt from 'bcryptjs';
 
 const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key'];
 
-// Helper: extracts base URL from EVOLUTION_URL (e.g. https://host/message/sendText/inst → https://host)
-function _evoBase() {
-  const url = process.env.EVOLUTION_URL || '';
-  try { const u = new URL(url); return u.origin; } catch { return ''; }
-}
-const _evoKey     = () => process.env.EVOLUTION_APIKEY || '';
-const _evoHdrs    = () => ({ 'Content-Type': 'application/json', apikey: _evoKey() });
-// Chave global usada para gerenciar instâncias (create/delete) — lida do banco em runtime
+// Global-key headers (create/delete/QR require admin key, not per-instance key)
 const _evoGlobalHdrs = async () => {
-  const key = await getSystemSetting('evolution_global_key') || _evoKey();
-  return { 'Content-Type': 'application/json', apikey: key };
+  const key = await resolveKey(null);
+  return evoHdrs(key);
 };
 
 export default async function handler(req, res) {
@@ -29,30 +27,40 @@ export default async function handler(req, res) {
     const db = getDb();
 
     // ── Evolution API instance management ─────────────────────────────────────
-    // Lista APENAS as instâncias cadastradas neste sistema (tabela evolution_instances).
-    // Nunca chama fetchInstances na conta global.
     if (req.query.resource === 'evolution-instances') {
-      const base = _evoBase();
-      const { rows } = await db.execute('SELECT id, name, api_key, is_default, created_at FROM evolution_instances ORDER BY is_default DESC, created_at ASC');
+      const { rows } = await db.execute(
+        'SELECT id, name, api_key, is_default, connection_status, created_at FROM evolution_instances ORDER BY is_default DESC, created_at ASC'
+      );
       const registered = rowsToObjects(rows);
-      if (!base) return res.status(200).json(registered.map(r => ({ ...r, is_default: r.is_default === 1 || r.is_default === '1', connectionStatus: 'unknown' })));
+      const base = evoBase();
 
-      // Para cada instância registrada, busca o status individualmente
       const results = await Promise.all(registered.map(async inst => {
+        const isDefault = inst.is_default === 1 || inst.is_default === '1';
+        const dbStatus = inst.connection_status || 'unknown';
+
+        if (!base) {
+          return { name: inst.name, is_default: isDefault, connectionStatus: dbStatus, number: '' };
+        }
+
         try {
-          const hdrs = inst.api_key
-            ? { 'Content-Type': 'application/json', apikey: inst.api_key }
-            : await _evoGlobalHdrs();
-          const r = await fetch(`${base}/instance/connectionState/${encodeURIComponent(inst.name)}`, { headers: hdrs });
-          if (!r.ok) return { name: inst.name, connectionStatus: 'disconnected', number: '' };
-          const data = await r.json().catch(() => ({}));
-          const state = data?.instance?.state || data?.state || 'disconnected';
+          const { ok, data } = await connectionState({ name: inst.name, key: inst.api_key || null });
+          if (!ok) {
+            return { name: inst.name, is_default: isDefault, connectionStatus: dbStatus, number: '' };
+          }
+          const rawState = data?.instance?.state || data?.state || 'disconnected';
+          const normalized = normalizeStatus(rawState);
           const number = data?.instance?.profileName || data?.profileName || '';
-          return { name: inst.name, is_default: inst.is_default === 1 || inst.is_default === '1', connectionStatus: state === 'open' ? 'open' : 'disconnected', number };
+          // Persist refreshed status to DB
+          await db.execute({
+            sql: "UPDATE evolution_instances SET connection_status=?, last_status_at=datetime('now') WHERE name=?",
+            args: [normalized, inst.name],
+          });
+          return { name: inst.name, is_default: isDefault, connectionStatus: normalized, number };
         } catch {
-          return { name: inst.name, is_default: inst.is_default === 1 || inst.is_default === '1', connectionStatus: 'disconnected', number: '' };
+          return { name: inst.name, is_default: isDefault, connectionStatus: dbStatus, number: '' };
         }
       }));
+
       return res.status(200).json(results);
     }
 
@@ -86,12 +94,40 @@ export default async function handler(req, res) {
     if (req.query.resource === 'evolution-qr') {
       const { instance } = req.query;
       if (!instance) return res.status(400).json({ error: 'instance é obrigatório' });
-      const base = _evoBase();
-      const r = await fetch(`${base}/instance/connect/${instance}`, { headers: await _evoGlobalHdrs() });
-      const data = await r.json().catch(() => ({}));
-      // Nunca repassar 401 da Evolution ao cliente — o frontend interpretaria como logout
-      const status = r.ok ? 200 : (r.status === 401 ? 502 : r.status);
+      const { rows: instRows } = await db.execute({ sql: 'SELECT api_key FROM evolution_instances WHERE name=?', args: [instance] });
+      const instKey = rowsToObjects(instRows)[0]?.api_key || null;
+      const { ok, status: evoStatus, data } = await connectQr(instance, instKey);
+      const status = ok ? 200 : (evoStatus === 401 ? 502 : evoStatus);
       return res.status(status).json(data);
+    }
+
+    // Status de campanha de disparo (polling do frontend)
+    if (req.query.resource === 'campaign-status') {
+      const campaignId = req.query.id || '';
+      if (!campaignId) return res.status(400).json({ error: 'id é obrigatório' });
+      const { rows } = await db.execute({
+        sql: `SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN status='sent'       THEN 1 ELSE 0 END) as sent,
+                SUM(CASE WHEN status='failed'     THEN 1 ELSE 0 END) as failed,
+                SUM(CASE WHEN status='pending'    THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN status='processing' THEN 1 ELSE 0 END) as processing,
+                SUM(CASE WHEN status='skipped'    THEN 1 ELSE 0 END) as skipped
+              FROM message_dispatch WHERE campaign_id=?`,
+        args: [campaignId],
+      });
+      const s = rowsToObjects(rows)[0] || {};
+      const pending    = Number(s.pending    || 0);
+      const processing = Number(s.processing || 0);
+      return res.status(200).json({
+        total:      Number(s.total   || 0),
+        sent:       Number(s.sent    || 0),
+        failed:     Number(s.failed  || 0),
+        pending,
+        processing,
+        skipped:    Number(s.skipped || 0),
+        done:       pending + processing === 0,
+      });
     }
 
     // ── GET/PUT /api/admin/users?resource=system-settings
@@ -125,19 +161,14 @@ export default async function handler(req, res) {
         { rows: topBankRows },
         { rows: recentTxRows },
       ] = await Promise.all([
-        // Total de usuários comuns (não admins)
         db.execute('SELECT COUNT(*) as total FROM users WHERE is_admin = 0'),
-        // MRR apenas de usuários comuns
         db.execute("SELECT COALESCE(SUM(up.monthly_fee),0) as mrr FROM user_plans up INNER JOIN users u ON u.id=up.user_id WHERE up.active=1 AND u.is_admin=0"),
-        // Receitas e despesas apenas de usuários comuns
         db.execute(`SELECT
           SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE 0 END) as total_income,
           SUM(CASE WHEN t.transaction_type IN ('expense','general','daily','installment') THEN t.amount ELSE 0 END) as total_expense
           FROM transactions t
           INNER JOIN users u ON u.id = t.user_id
           WHERE u.is_admin = 0`),
-        // Lista de todos os usuários com seus dados financeiros
-        // last_active = maior entre last_login e última transação criada
         db.execute(`SELECT u.id, u.name, u.email, u.phone, u.role, u.is_admin, u.last_login, u.created_at,
           COUNT(t.id) as tx_count,
           COALESCE(SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE 0 END),0) as total_income,
@@ -153,7 +184,6 @@ export default async function handler(req, res) {
           LEFT JOIN transactions t ON t.user_id=u.id
           GROUP BY u.id
           ORDER BY u.is_admin ASC, tx_count DESC`),
-        // Bancos usados por usuários comuns
         db.execute(`SELECT a.bank_name, COUNT(DISTINCT a.user_id) as user_count,
           COUNT(*) as account_count,
           COALESCE(SUM(a.initial_balance),0) as total_balance
@@ -163,7 +193,6 @@ export default async function handler(req, res) {
           GROUP BY a.bank_name
           ORDER BY account_count DESC
           LIMIT 10`),
-        // Último usuário comum ativo — considera login OU última transação
         db.execute(`SELECT u.id, u.name, u.email, u.last_login, MAX(t.created_at) as last_tx_at,
           CASE
             WHEN NULLIF(u.last_login,'') IS NULL THEN MAX(t.created_at)
@@ -177,7 +206,6 @@ export default async function handler(req, res) {
           GROUP BY u.id
           HAVING last_active IS NOT NULL
           ORDER BY last_active DESC LIMIT 1`),
-        // Categorias mais usadas por usuários comuns
         db.execute(`SELECT c.name, COUNT(t.id) as count
           FROM transactions t
           INNER JOIN users u ON u.id = t.user_id
@@ -186,7 +214,6 @@ export default async function handler(req, res) {
           GROUP BY c.id, c.name
           ORDER BY count DESC
           LIMIT 5`),
-        // Bancos mais usados por usuários comuns
         db.execute(`SELECT a.bank_name as name, COUNT(*) as count
           FROM accounts a
           INNER JOIN users u ON u.id = a.user_id
@@ -194,7 +221,6 @@ export default async function handler(req, res) {
           GROUP BY a.bank_name
           ORDER BY count DESC
           LIMIT 5`),
-        // Movimentações recentes de usuários comuns
         db.execute(`SELECT t.id, t.amount, t.transaction_type as type, t.name as description, t.created_at,
           u.name as user_name, u.email as user_email
           FROM transactions t
@@ -204,9 +230,9 @@ export default async function handler(req, res) {
           LIMIT 10`),
       ]);
 
-      const totals     = rowsToObjects(totalRows)[0]     || {};
-      const mrrData    = rowsToObjects(mrrRows)[0]       || {};
-      const txSums     = rowsToObjects(txSumRows)[0]     || {};
+      const totals     = rowsToObjects(totalRows)[0]      || {};
+      const mrrData    = rowsToObjects(mrrRows)[0]        || {};
+      const txSums     = rowsToObjects(txSumRows)[0]      || {};
       const lastActive = rowsToObjects(lastActiveRows)[0] || null;
 
       return res.status(200).json({
@@ -233,13 +259,10 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const { action } = req.body || {};
 
-      // Test Evolution global key — usa endpoint de info da instância configurada no env
-      // para não listar instâncias de outras contas
       if (action === 'test-evolution-key') {
-        const base = _evoBase();
+        const base = evoBase();
         if (!base) return res.status(500).json({ error: 'EVOLUTION_URL não configurada' });
         const hdrs = await _evoGlobalHdrs();
-        // Testa com fetchInstances mas limita a verificar apenas se a chave é válida (não usamos o resultado)
         const r = await fetch(`${base}/instance/fetchInstances?limit=1`, { headers: hdrs });
         if (r.status === 401) return res.status(200).json({ ok: false, error: 'Chave inválida — Evolution retornou 401' });
         if (!r.ok) return res.status(200).json({ ok: false, error: `Evolution retornou HTTP ${r.status}` });
@@ -250,12 +273,9 @@ export default async function handler(req, res) {
       if (action === 'create-evolution-instance') {
         const { instanceName } = req.body;
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
-        const base = _evoBase();
+        const base = evoBase();
         if (!base) return res.status(500).json({ error: 'Evolution API não configurada' });
 
-        // Settings da instância — aplicados de forma ATÔMICA no body do create (Evolution v2),
-        // eliminando a janela de timing onde /settings/set respondia 404 (instância ainda não pronta)
-        // e o erro era engolido (F-207).
         const instanceSettings = {
           rejectCall: true,
           msgCall: '',
@@ -265,68 +285,56 @@ export default async function handler(req, res) {
           readStatus: false,
           syncFullHistory: false,
         };
-        // Webhook: só configura se houver URL definida em env (ver F-206). Sem hardcode.
-        const webhookUrl = process.env.EVOLUTION_WEBHOOK_URL || '';
-        const webhookCfg = webhookUrl
-          ? { url: webhookUrl, byEvents: false, base64: false, events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'] }
-          : null;
+
+        // Webhook sempre configurado — URL derivada automaticamente (não depende de env obrigatória)
+        const webhookUrl = deriveWebhookUrl(req);
+        const webhookCfg = {
+          url: webhookUrl,
+          byEvents: true,
+          base64: true,
+          events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+        };
 
         const createBody = {
           instanceName,
           qrcode: true,
           integration: 'WHATSAPP-BAILEYS',
           ...instanceSettings,
-          ...(webhookCfg ? { webhook: webhookCfg } : {}),
+          ...(webhookUrl ? { webhook: webhookCfg } : {}),
         };
-        const r = await fetch(`${base}/instance/create`, {
-          method: 'POST',
-          headers: await _evoGlobalHdrs(),
-          body: JSON.stringify(createBody),
-        });
-        const data = await r.json().catch(() => ({}));
-        if (r.status === 401) return res.status(400).json({ error: 'Chave global inválida ou não configurada — salve a chave correta na seção acima antes de criar.' });
-        if (!r.ok) return res.status(r.status).json(data);
 
-        // Diagnóstico de configuração — NÃO engole mais erros (F-207).
-        // fetch NÃO lança em 4xx/5xx, então é obrigatório checar r.ok e ler o corpo.
+        const { ok: createOk, status: createStatus, data } = await createInstance(createBody, null);
+        if (createStatus === 401) return res.status(400).json({ error: 'Chave global inválida ou não configurada — salve a chave correta na seção acima antes de criar.' });
+        if (!createOk) return res.status(createStatus).json(data);
+
         const _config = { settings: null, webhook: null };
 
-        // Reforço pós-create: reaplica settings e CAPTURA status+corpo se falhar.
+        // Reforço pós-create: reaplica settings (F-207 — captura falhas em vez de engolir)
         try {
-          const sr = await fetch(`${base}/settings/set/${encodeURIComponent(instanceName)}`, {
-            method: 'POST',
-            headers: await _evoGlobalHdrs(),
-            body: JSON.stringify(instanceSettings),
-          });
-          const sbody = await sr.json().catch(() => ({}));
-          _config.settings = { ok: sr.ok, status: sr.status, error: sr.ok ? null : sbody };
-          if (!sr.ok) console.error('[create-evolution-instance] settings/set falhou', instanceName, sr.status, JSON.stringify(sbody));
+          const sr = await setSettings(instanceName, null, instanceSettings);
+          _config.settings = { ok: sr.ok, status: sr.status, error: sr.ok ? null : sr.data };
+          if (!sr.ok) console.error('[create-evolution-instance] settings/set falhou', instanceName, sr.status, JSON.stringify(sr.data));
         } catch (e) {
-          _config.settings = { ok: false, status: 0, error: String(e && e.message || e) };
-          console.error('[create-evolution-instance] settings/set erro de rede', instanceName, e && e.message);
+          _config.settings = { ok: false, status: 0, error: String(e?.message || e) };
+          console.error('[create-evolution-instance] settings/set erro de rede', instanceName, e?.message);
         }
 
-        if (webhookCfg) {
+        // Webhook com tolerância v1/v2
+        if (webhookUrl) {
           try {
-            const wr = await fetch(`${base}/webhook/set/${encodeURIComponent(instanceName)}`, {
-              method: 'POST',
-              headers: await _evoGlobalHdrs(),
-              body: JSON.stringify({ webhook: { enabled: true, ...webhookCfg } }),
-            });
-            const wbody = await wr.json().catch(() => ({}));
-            _config.webhook = { ok: wr.ok, status: wr.status, error: wr.ok ? null : wbody };
-            if (!wr.ok) console.error('[create-evolution-instance] webhook/set falhou', instanceName, wr.status, JSON.stringify(wbody));
+            const wr = await setWebhook(instanceName, null, webhookCfg);
+            _config.webhook = { ok: wr.ok, status: wr.status, form: wr.form, error: wr.ok ? null : wr.data };
+            if (!wr.ok) console.error('[create-evolution-instance] webhook/set falhou', instanceName, wr.status, JSON.stringify(wr.data));
           } catch (e) {
-            _config.webhook = { ok: false, status: 0, error: String(e && e.message || e) };
-            console.error('[create-evolution-instance] webhook/set erro de rede', instanceName, e && e.message);
+            _config.webhook = { ok: false, status: 0, error: String(e?.message || e) };
+            console.error('[create-evolution-instance] webhook/set erro de rede', instanceName, e?.message);
           }
         } else {
-          _config.webhook = { skipped: true };
+          _config.webhook = { skipped: true, reason: 'could not derive webhook URL' };
+          console.warn('[create-evolution-instance] não foi possível derivar webhook URL para', instanceName);
         }
 
-        // Registra no banco local para listagem futura
-        const newId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
-        // Em Evolution v2 `data.hash` pode ser string OU objeto `{ apikey }`. Garante string sempre.
+        const newId = crypto.randomUUID();
         const pickKey = (v) => {
           if (typeof v === 'string') return v;
           if (v && typeof v === 'object' && typeof v.apikey === 'string') return v.apikey;
@@ -337,44 +345,33 @@ export default async function handler(req, res) {
         return res.status(200).json({ ...data, _config });
       }
 
-      // Link existing Evolution instance — vincula instância já existente sem criar nova
+      // Link existing Evolution instance
       if (action === 'link-evolution-instance') {
         const { instanceName, instanceKey } = req.body;
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
-        const base = _evoBase();
+        const base = evoBase();
         if (!base) return res.status(500).json({ error: 'Evolution API não configurada' });
-        // Verifica se a instância existe na Evolution antes de registrar
-        const hdrs = instanceKey
-          ? { 'Content-Type': 'application/json', apikey: instanceKey }
-          : await _evoGlobalHdrs();
-        const r = await fetch(`${base}/instance/connectionState/${encodeURIComponent(instanceName)}`, { headers: hdrs });
-        if (r.status === 401) return res.status(400).json({ error: 'Credenciais inválidas para esta instância.' });
-        if (r.status === 404) return res.status(404).json({ error: `Instância "${instanceName}" não encontrada na Evolution.` });
-        if (!r.ok) return res.status(400).json({ error: `Evolution retornou HTTP ${r.status}` });
-        // Registra no banco local
-        const newId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
+        const { ok, status: evoStatus } = await connectionState({ name: instanceName, key: instanceKey || null });
+        if (evoStatus === 401) return res.status(400).json({ error: 'Credenciais inválidas para esta instância.' });
+        if (evoStatus === 404) return res.status(404).json({ error: `Instância "${instanceName}" não encontrada na Evolution.` });
+        if (!ok) return res.status(400).json({ error: `Evolution retornou HTTP ${evoStatus}` });
+        const newId = crypto.randomUUID();
         await db.execute({ sql: 'INSERT OR IGNORE INTO evolution_instances (id, name, api_key) VALUES (?, ?, ?)', args: [newId, instanceName, instanceKey || ''] });
         return res.status(200).json({ ok: true });
       }
 
-      // Delete Evolution API instance — remove da API e do banco local
+      // Delete Evolution API instance
       if (action === 'delete-evolution-instance') {
         const { instanceName } = req.body;
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
-        const base = _evoBase();
-        if (!base) return res.status(500).json({ error: 'Evolution API não configurada' });
-        const r = await fetch(`${base}/instance/delete/${instanceName}`, {
-          method: 'DELETE',
-          headers: await _evoGlobalHdrs(),
-        });
-        // Remove do banco independentemente do resultado da API
+        if (!evoBase()) return res.status(500).json({ error: 'Evolution API não configurada' });
+        const { ok, status: evoStatus, data } = await deleteInstance(instanceName, null);
         await db.execute({ sql: 'DELETE FROM evolution_instances WHERE name = ?', args: [instanceName] });
-        const data = await r.json().catch(() => ({}));
-        const status = r.ok ? 200 : (r.status === 401 ? 502 : r.status);
+        const status = ok ? 200 : (evoStatus === 401 ? 502 : evoStatus);
         return res.status(status).json(data);
       }
 
-      // Unlink instance — remove apenas do banco local (sem deletar da Evolution)
+      // Unlink instance (remove from DB only)
       if (action === 'unlink-evolution-instance') {
         const { instanceName } = req.body;
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
@@ -382,7 +379,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      // Define instância padrão — desmarca todas e marca a escolhida
+      // Define instância padrão
       if (action === 'set-default-evolution-instance') {
         const { instanceName } = req.body;
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
@@ -401,7 +398,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      // Atualiza a api_key de uma instância já cadastrada
+      // Atualiza a api_key de uma instância
       if (action === 'update-instance-key') {
         const { instanceName, instanceKey } = req.body;
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
@@ -410,7 +407,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      // Normalize all phone numbers to include DDI
+      // Normalize phone numbers
       if (action === 'normalize-phones') {
         const { rows } = await db.execute("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone != ''");
         const users = rowsToObjects(rows);
@@ -434,197 +431,94 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, checked: users.length, updated });
       }
 
-      // Send WhatsApp message (text / any media) to a list of users
+      // Send WhatsApp message — enfileira campanha e retorna imediatamente
       if (action === 'send-message') {
-        const { user_ids, text, image_url, media_base64, media_type, media_name, delay_ms } = req.body;
+        const { user_ids, text, media_base64, media_type, media_name, delay_ms } = req.body;
         if (!user_ids?.length) return res.status(400).json({ error: 'user_ids é obrigatório' });
-        if (!text && !media_base64 && !image_url) return res.status(400).json({ error: 'mensagem ou mídia são obrigatórios' });
+        if (!text && !media_base64) return res.status(400).json({ error: 'mensagem ou mídia são obrigatórios' });
 
-        // Usa a instância padrão cadastrada neste sistema
-        const { rows: defRows } = await db.execute("SELECT name, api_key FROM evolution_instances WHERE is_default = 1 LIMIT 1");
+        // Valida instância padrão e status de conexão (fonte: DB, atualizado por webhook/listagem)
+        const { rows: defRows } = await db.execute("SELECT name, api_key, connection_status FROM evolution_instances WHERE is_default=1 LIMIT 1");
         const defInst = rowsToObjects(defRows)[0] || null;
         if (!defInst) return res.status(400).json({ error: 'Nenhuma instância padrão definida. Acesse Sistema → WhatsApp e defina uma instância como padrão.' });
 
-        const base = _evoBase();
-        if (!base) return res.status(500).json({ error: 'Evolution API não configurada (EVOLUTION_URL ausente)' });
+        const instStatus = defInst.connection_status || 'unknown';
+        if (instStatus !== 'connected') {
+          return res.status(400).json({ error: `Instância "${defInst.name}" não está conectada (status: ${instStatus}). Reconecte e tente novamente.` });
+        }
 
-        // Fallback de chave: instância → chave global do DB (mesma usada em create/QR/delete) → env
-        const globalKey    = await getSystemSetting('evolution_global_key');
-        const instKey      = defInst.api_key || globalKey || _evoKey();
-        const sendTextUrl  = `${base}/message/sendText/${encodeURIComponent(defInst.name)}`;
-        const sendMediaUrl = `${base}/message/sendMedia/${encodeURIComponent(defInst.name)}`;
-        const hasMedia     = !!(media_base64 || image_url);
-        const mtype        = media_type || 'image';
-        const media        = media_base64 || image_url;
-        const evoHeaders   = { 'Content-Type': 'application/json', 'apikey': instKey };
-        // Cadência: delay entre mensagens (máx 60 s para não estourar timeout serverless)
-        const cadencia     = Math.min(Math.max(0, parseInt(delay_ms) || 0), 60000);
+        // Dados do remetente
+        const { rows: senderRows } = await db.execute({ sql: 'SELECT name FROM users WHERE id=?', args: [user.sub] });
+        const senderName  = rowsToObjects(senderRows)[0]?.name || user.email || '';
+        const cadenceMs   = Math.max(0, parseInt(delay_ms) || 0);
+        const hasMedia    = !!media_base64;
 
-        // Randomiza variações {op1|op2|op3} — aplicado por mensagem (resultado diferente por usuário)
-        const applySpin = (str) => str.replace(/\{([^{}]+\|[^{}]+)\}/g, (_, opts) => {
-          const choices = opts.split('|');
-          return choices[Math.floor(Math.random() * choices.length)];
+        // Cria campanha
+        const campaignId = crypto.randomUUID();
+        await db.execute({
+          sql: `INSERT INTO message_campaigns
+                  (id, created_by_id, created_by_name, created_by_email, instance_name,
+                   text, has_media, media_type, media_name, media_b64,
+                   cadence_ms, total, sent, failed, status, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,0,'running',datetime('now'))`,
+          args: [
+            campaignId, user.sub, senderName, user.email || '', defInst.name,
+            text || '', hasMedia ? 1 : 0, media_type || '', media_name || '', media_base64 || '',
+            cadenceMs, user_ids.length,
+          ],
         });
 
-        // Substitui variáveis personalizadas do usuário
-        const applyVars = (str, u) => str
-          .replace(/\{nome\}/gi,     u.name      || '')
-          .replace(/\{email\}/gi,    u.email     || '')
-          .replace(/\{telefone\}/gi, u.phone     || '')
-          .replace(/\{status\}/gi,   u.plan_active == 1 ? 'Ativo' : 'Inativo')
-          .replace(/\{plano\}/gi,    u.plan_name  || 'Sem plano')
-          .replace(/\{saldo\}/gi,    u.saldo != null
-            ? 'R$ ' + Number(u.saldo).toFixed(2).replace('.', ',')
-            : '—');
+        // Busca telefones de todos os destinatários de uma vez
+        const placeholders = user_ids.map(() => '?').join(',');
+        const { rows: uRows } = await db.execute({
+          sql: `SELECT id, name, phone FROM users WHERE id IN (${placeholders})`,
+          args: user_ids,
+        });
+        const userMap = {};
+        for (const u of rowsToObjects(uRows)) userMap[u.id] = u;
 
-        const evoError = (data, status) => {
-          if (!data || typeof data !== 'object') return `HTTP ${status}`;
-          const detail =
-            (Array.isArray(data.message) ? data.message.join(', ') : data.message) ||
-            (Array.isArray(data.response?.message) ? data.response.message.join(', ') : data.response?.message) ||
-            data.error ||
-            JSON.stringify(data).slice(0, 120);
-          return detail || `HTTP ${status}`;
-        };
+        // Enfileira dispatches
+        let pendingIndex = 0;
+        for (const uid of user_ids) {
+          const u = userMap[uid] || { id: uid, name: '', phone: '' };
+          const phone = (u.phone || '').replace(/\D/g, '');
 
-        const { rows: senderRows } = await db.execute({ sql: 'SELECT name FROM users WHERE id = ?', args: [user.sub] });
-        const senderName  = (rowsToObjects(senderRows)[0]?.name) || user.email || '';
-        const senderId    = user.sub;
-        const senderEmail = user.email || '';
-
-        const results = [];
-        for (let i = 0; i < user_ids.length; i++) {
-          const uid = user_ids[i];
-
-          // Busca dados do usuário + plano + saldo das contas
-          const [{ rows: uRows }, { rows: acctRows }] = await Promise.all([
-            db.execute({
-              sql: `SELECT u.name, u.email, u.phone,
-                           p.active AS plan_active, p.name AS plan_name
-                    FROM users u
-                    LEFT JOIN user_plans p ON p.user_id = u.id
-                    WHERE u.id = ?`,
-              args: [uid],
-            }),
-            db.execute({
-              sql: 'SELECT COALESCE(SUM(initial_balance), 0) AS saldo FROM accounts WHERE user_id = ?',
-              args: [uid],
-            }),
-          ]);
-
-          const target = rowsToObjects(uRows)[0];
-          const acct   = rowsToObjects(acctRows)[0];
-          if (target) target.saldo = acct?.saldo ?? null;
-
-          if (!target?.phone) {
-            results.push({ id: uid, ok: false, error: 'sem telefone' });
-            await db.execute({ sql: `INSERT INTO message_logs (id,sent_by_id,sent_by_name,sent_by_email,instance_name,recipient_id,recipient_name,recipient_phone,message_text,has_media,media_type,media_name,status,error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-              args: [crypto.randomUUID(), senderId, senderName, senderEmail, defInst.name, uid, target?.name||'', '', text||'', hasMedia?1:0, mtype||'', media_name||'', 'failed', 'sem telefone'] });
-            continue;
-          }
-
-          const phone = target.phone.replace(/\D/g, '');
           if (!phone) {
-            results.push({ id: uid, ok: false, error: 'telefone inválido' });
-            await db.execute({ sql: `INSERT INTO message_logs (id,sent_by_id,sent_by_name,sent_by_email,instance_name,recipient_id,recipient_name,recipient_phone,message_text,has_media,media_type,media_name,status,error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-              args: [crypto.randomUUID(), senderId, senderName, senderEmail, defInst.name, uid, target?.name||'', target?.phone||'', text||'', hasMedia?1:0, mtype||'', media_name||'', 'failed', 'telefone inválido'] });
-            continue;
-          }
-
-          // Aplica spin + variáveis ao texto (resultado único por usuário)
-          const personalizedText = applyVars(applySpin(text || ''), target);
-
-          let logStatus = 'ok', logError = '';
-          try {
-            let resp;
-
-            if (hasMedia) {
-              const rawMedia = media && media.startsWith('data:') ? media.split(',')[1] : media;
-              // Infere o mimetype: 1) prefixo data:<mime>;base64 da mídia original; 2) extensão do nome
-              let mimetype = '';
-              const dataMatch = typeof media === 'string' ? media.match(/^data:([^;,]+)[;,]/) : null;
-              if (dataMatch) {
-                mimetype = dataMatch[1];
-              } else if (media_name && media_name.includes('.')) {
-                const ext = media_name.split('.').pop().toLowerCase();
-                const extMap = {
-                  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
-                  mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
-                  mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav', m4a: 'audio/mp4',
-                  pdf: 'application/pdf', doc: 'application/msword',
-                  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                  xls: 'application/vnd.ms-excel',
-                  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                };
-                mimetype = extMap[ext] || '';
-              }
-              resp = await fetch(sendMediaUrl, {
-                method: 'POST',
-                headers: evoHeaders,
-                body: JSON.stringify({
-                  number:    phone,
-                  mediatype: mtype,
-                  media:     rawMedia,
-                  caption:   personalizedText,
-                  ...(mimetype ? { mimetype } : {}),
-                  ...(media_name ? { fileName: media_name } : {}),
-                }),
-              });
-            } else {
-              resp = await fetch(sendTextUrl, {
-                method: 'POST',
-                headers: evoHeaders,
-                body: JSON.stringify({ number: phone, text: personalizedText }),
-              });
-            }
-
-            const data = await resp.json().catch(() => ({}));
-            if (!resp.ok) {
-              logStatus = 'failed';
-              logError  = evoError(data, resp.status);
-              results.push({ id: uid, ok: false, phone, error: logError });
-            } else {
-              results.push({ id: uid, ok: true, phone, name: target.name });
-            }
-          } catch(e) {
-            logStatus = 'failed';
-            logError  = e.message;
-            results.push({ id: uid, ok: false, error: e.message });
-          }
-
-          // Registra no log de mensagens
-          await db.execute({
-            sql: `INSERT INTO message_logs (id,sent_by_id,sent_by_name,sent_by_email,instance_name,recipient_id,recipient_name,recipient_phone,message_text,has_media,media_type,media_name,status,error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            args: [
-              crypto.randomUUID(),
-              senderId, senderName, senderEmail,
-              defInst.name,
-              uid, target.name || '', phone,
-              personalizedText,
-              hasMedia ? 1 : 0, mtype || '', media_name || '',
-              logStatus, logError,
-            ],
-          });
-
-          // Cadência: aguarda antes da próxima mensagem
-          if (cadencia > 0 && i < user_ids.length - 1) {
-            await new Promise(r => setTimeout(r, cadencia));
+            // Sem telefone: skipped imediatamente
+            await db.execute({
+              sql: `INSERT INTO message_dispatch
+                      (id, campaign_id, user_id, recipient_name, phone, status, attempts, scheduled_for, created_at)
+                    VALUES (?,?,?,?,'','skipped',0,'',datetime('now'))`,
+              args: [crypto.randomUUID(), campaignId, uid, u.name || ''],
+            });
+            await db.execute({
+              sql: `INSERT INTO message_logs
+                      (id,sent_by_id,sent_by_name,sent_by_email,instance_name,
+                       recipient_id,recipient_name,recipient_phone,message_text,
+                       has_media,media_type,media_name,status,error,sent_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
+              args: [
+                crypto.randomUUID(), user.sub, senderName, user.email || '', defInst.name,
+                uid, u.name || '', '', text || '', hasMedia ? 1 : 0, media_type || '', media_name || '',
+                'failed', 'sem telefone',
+              ],
+            });
+          } else {
+            const scheduledFor = new Date(Date.now() + pendingIndex * cadenceMs).toISOString();
+            await db.execute({
+              sql: `INSERT INTO message_dispatch
+                      (id, campaign_id, user_id, recipient_name, phone, status, attempts, scheduled_for, created_at)
+                    VALUES (?,?,?,?,?,'pending',0,?,datetime('now'))`,
+              args: [crypto.randomUUID(), campaignId, uid, u.name || '', phone, scheduledFor],
+            });
+            pendingIndex++;
           }
         }
 
-        const sent = results.filter(r => r.ok).length;
-        const total = user_ids.length;
-        // Falha total: reflete erro no status/payload em vez de mascarar como sucesso
-        if (sent === 0 && total > 0) {
-          const firstErr = results.find(r => !r.ok && r.error)?.error || 'Falha ao enviar as mensagens';
-          return res.status(502).json({ ok: false, error: firstErr, sent, total, results });
-        }
-        // Falha parcial: sucesso, mas sinaliza que nem todos foram enviados
-        const partial = sent > 0 && sent < total;
-        return res.status(200).json({ ok: true, ...(partial ? { partial: true } : {}), sent, total, results });
+        return res.status(200).json({ ok: true, campaign_id: campaignId, total: user_ids.length });
       }
 
-      // Create user (admin bypass — ignores allow_registration)
+      // Create user (admin bypass)
       if (action === 'create-user') {
         const { email, password, name, phone: rawPhone } = req.body;
         if (!email || !password || !name) return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios' });

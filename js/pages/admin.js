@@ -2460,13 +2460,7 @@ async function _sendAdminMessage() {
   if (!text && !_stickyMsgMedia) { toast('Digite uma mensagem ou anexe um arquivo', 'error'); return; }
 
   btn.disabled = true;
-  btn.innerHTML = icon('loader', 14) + ' Enviando…';
-
-  // Estimativa de tempo para o usuário
-  if (delay_ms > 0 && userIds.length > 1) {
-    const estimSec = Math.round(delay_ms * (userIds.length - 1) / 1000);
-    toast(`Disparo iniciado — estimativa: ~${estimSec}s com cadência de ${delayS}s`, 'warning');
-  }
+  btn.innerHTML = icon('loader', 14) + ' Enfileirando…';
 
   try {
     let media_base64 = null, media_type = null, media_name = null;
@@ -2479,35 +2473,111 @@ async function _sendAdminMessage() {
     const res = await _api('POST', '/admin/users', {
       action: 'send-message',
       user_ids: userIds,
-      text: text || ' ',
+      text: text || '',
       delay_ms,
       ...(media_base64 ? { media_base64, media_type, media_name } : {}),
     });
 
+    if (!res.ok || !res.campaign_id) {
+      toast('Erro ao criar campanha de disparo', 'error');
+      btn.disabled = false;
+      btn.innerHTML = icon('send', 14) + ' Enviar para ' + userIds.length;
+      return;
+    }
+
+    toast(`Campanha criada — ${res.total} destinatários enfileirados`, 'success');
+
+    // Progresso visual enquanto o dispatcher processa em background
     if (resultEl) {
-      const ok = res.sent > 0;
       resultEl.innerHTML = `
-        <div style="background:${ok ? 'var(--income-light,#dcfce7)' : '#fee2e2'};border-radius:var(--r-md);
-          padding:10px 12px;font-size:.85rem;display:flex;gap:8px;align-items:flex-start;margin-top:4px">
-          ${icon(ok ? 'check-circle' : 'alert-circle', 14)}
-          <div>
-            <strong>${res.sent}</strong> de <strong>${res.total}</strong> mensagens enviadas com sucesso.
-            ${res.results?.filter(r => !r.ok).length
-              ? `<div style="margin-top:4px;color:#dc2626;font-size:.78rem">
-                   Falhas: ${res.results.filter(r => !r.ok).map(r => _escHtml(r.error || 'erro')).join(' | ')}
-                 </div>` : ''}
+        <div id="msg-progress" style="background:var(--surface-alt,#f8fafc);border:1px solid var(--border);
+          border-radius:var(--r-md);padding:10px 12px;margin-top:4px">
+          <div style="font-size:.83rem;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+            ${icon('loader', 13)} Disparo em andamento…
           </div>
+          <div style="height:6px;background:var(--border);border-radius:3px;margin-bottom:6px;overflow:hidden">
+            <div id="msg-progress-bar" style="height:100%;width:0%;background:var(--primary);border-radius:3px;transition:width .4s"></div>
+          </div>
+          <div id="msg-progress-text" style="font-size:.78rem;color:var(--text-muted)">Aguardando processamento pelo cron…</div>
         </div>`;
       if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [resultEl] });
     }
 
-    toast(`${res.sent}/${res.total} enviadas`, res.sent === res.total ? 'success' : 'warning');
-    if (res.sent > 0 && res.sent === res.total) setTimeout(() => closeModal(), 2500);
+    // Polling de status a cada 2s
+    const campaignId = res.campaign_id;
+    const total      = res.total;
+    let pollTimer    = null;
+    let failCount    = 0;
+    const MAX_FAILS  = 10;
+    const startedAt  = Date.now();
+    const MAX_POLL_MS = 5 * 60 * 1000;
+
+    const poll = async () => {
+      try {
+        const stats = await _api('GET', `/admin/users?resource=campaign-status&id=${campaignId}`);
+        failCount = 0; // reset on success
+        const sent       = stats.sent       || 0;
+        const failed     = stats.failed     || 0;
+        const skipped    = stats.skipped    || 0;
+        const pending    = stats.pending    || 0;
+        const processing = stats.processing || 0;
+        const pct        = total > 0 ? Math.round((sent + failed + skipped) / total * 100) : 0;
+
+        const barEl  = document.getElementById('msg-progress-bar');
+        const textEl = document.getElementById('msg-progress-text');
+        if (barEl)  barEl.style.width = pct + '%';
+        if (textEl) textEl.innerHTML =
+          `<strong>${sent}</strong> enviadas · <strong style="color:#dc2626">${failed}</strong> falhas · <strong>${pending + processing}</strong> na fila`;
+
+        if (stats.done) {
+          clearTimeout(pollTimer);
+          const ok = sent > 0;
+          if (resultEl) {
+            resultEl.innerHTML = `
+              <div style="background:${ok ? 'var(--income-light,#dcfce7)' : '#fee2e2'};border-radius:var(--r-md);
+                padding:10px 12px;font-size:.85rem;display:flex;gap:8px;align-items:flex-start;margin-top:4px">
+                ${icon(ok ? 'check-circle' : 'alert-circle', 14)}
+                <div>
+                  <strong>${sent}</strong> de <strong>${total}</strong> mensagens enviadas com sucesso.
+                  ${failed > 0
+                    ? `<div style="margin-top:4px;color:#dc2626;font-size:.78rem">${failed} falha(s) — verifique o histórico de mensagens.</div>`
+                    : ''}
+                </div>
+              </div>`;
+            if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [resultEl] });
+          }
+          toast(`${sent}/${total} enviadas`, sent === total ? 'success' : 'warning');
+          btn.disabled = false;
+          btn.innerHTML = icon('send', 14) + ' Enviar para ' + userIds.length;
+          if (sent > 0 && sent === total) setTimeout(() => closeModal(), 2500);
+        } else {
+          pollTimer = setTimeout(poll, 2000);
+        }
+      } catch (e) {
+        console.warn('[poll campaign]', e);
+        failCount++;
+        if (failCount >= MAX_FAILS || Date.now() - startedAt > MAX_POLL_MS) {
+          clearTimeout(pollTimer);
+          if (resultEl) {
+            resultEl.innerHTML = `
+              <div style="background:#fee2e2;border-radius:var(--r-md);padding:10px 12px;font-size:.85rem">
+                Não foi possível acompanhar o progresso — o disparo continua em segundo plano.
+              </div>`;
+          }
+          btn.disabled = false;
+          btn.innerHTML = icon('send', 14) + ' Enviar para ' + userIds.length;
+        } else {
+          pollTimer = setTimeout(poll, 2000);
+        }
+      }
+    };
+
+    pollTimer = setTimeout(poll, 2000);
+
   } catch (e) {
-    toast('Erro: ' + (e.message || 'falha ao enviar'), 'error');
-  } finally {
-    const b = document.getElementById('msg-send-btn');
-    if (b) { b.disabled = false; b.innerHTML = icon('send', 14) + ' Enviar para ' + userIds.length; }
+    toast('Erro: ' + (e.message || 'falha ao enfileirar'), 'error');
+    btn.disabled = false;
+    btn.innerHTML = icon('send', 14) + ' Enviar para ' + userIds.length;
   }
 }
 
