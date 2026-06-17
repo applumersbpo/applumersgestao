@@ -37,11 +37,17 @@ async function renderDashboard(month, year) {
   const realClass  = saldoReal >= 0 ? 'balance-positive' : 'balance-negative';
 
   const overdue   = expenses.filter(t => isOverdue(t.due_date, t.status));
-  const upcoming  = expenses.filter(t => {
-    if (t.status === 'paid') return false;
-    const diff = (new Date(t.due_date) - new Date()) / 86400000;
-    return diff >= 0 && diff <= 7;
-  });
+
+  // Contas a vencer: despesas pendentes cujo VENCIMENTO (due_date) cai no mês
+  // vigente e ainda não venceram. Carregado por due_date (não por competência)
+  // para não perder contas cuja competência está em outro mês.
+  const _monthPrefix = today().slice(0, 7);
+  const _pendingExp  = await db.transactions
+    .filter(`transaction_type = 'expense' && status = 'pending'`).toArray();
+  const upcoming = _pendingExp
+    .filter(t => t.due_date && t.due_date.slice(0, 7) === _monthPrefix && t.due_date >= today())
+    .sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0));
+  const _curMonthName = MONTHS[parseInt(today().slice(5, 7), 10) - 1];
 
   const _uid = (pb.authStore.model || pb.authStore.record)?.id || 'local';
   const revenueGoal = parseFloat(localStorage.getItem(`revenue_goal_${_uid}_${year}_${month}`) || '0');
@@ -422,11 +428,11 @@ async function renderDashboard(month, year) {
     ${upcoming.length > 0 ? `
     <div class="card" style="margin-bottom:20px">
       <div class="section-header">
-        <div class="section-title">Vencem nos próximos 7 dias</div>
+        <div class="section-title">Contas a vencer em ${_curMonthName}</div>
         <a href="#/expenses" class="btn btn-sm btn-ghost">Ver todas</a>
       </div>
       <div class="transaction-list">
-        ${upcoming.slice(0, 5).map(t => transactionRow(t, catsMap, false)).join('')}
+        ${upcoming.slice(0, 5).map(t => transactionRow(t, catsMap, false, true)).join('')}
       </div>
     </div>` : ''}
 
@@ -501,10 +507,13 @@ function openRevenueGoalModal() {
   input.addEventListener('keydown', e => { if (e.key === 'Enter') backdrop.querySelector('#goal-modal-save').click(); });
 }
 
-function transactionRow(t, catsMap, showActions = true) {
+function transactionRow(t, catsMap, showActions = true, showCountdown = false) {
   const cat = catsMap[t.category_id];
   const isExp = ['expense', 'installment', 'general', 'daily'].includes(t.transaction_type);
   const overdue = isOverdue(t.due_date, t.status);
+  const countdownHtml = showCountdown && t.due_date
+    ? `<span style="color:var(--warning-text);font-weight:600">${labelVencimento(t.due_date)}</span>`
+    : '';
 
   return `
     <div class="transaction-item" data-id="${t.id}">
@@ -516,6 +525,7 @@ function transactionRow(t, catsMap, showActions = true) {
         <div class="t-meta">
           ${cat ? catTag(cat) : ''}
           <span>${fmtDate(t.due_date)}</span>
+          ${countdownHtml}
           ${statusBadge(t.status, t.due_date)}
         </div>
       </div>

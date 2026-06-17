@@ -49,6 +49,22 @@ function isOverdue(due_date, status) {
   return due_date < today();
 }
 
+/** Dias inteiros até o vencimento, sem efeito de fuso. 0=hoje, 1=amanhã, <0=vencida. */
+function diasAteVencer(due_date) {
+  if (!due_date) return null;
+  return Math.round((Date.parse(due_date) - Date.parse(today())) / 86400000);
+}
+
+/** Rótulo de contagem regressiva: "vence hoje", "vence amanhã", "vence em N dias", "vencida". */
+function labelVencimento(due_date) {
+  const d = diasAteVencer(due_date);
+  if (d === null) return '';
+  if (d < 0)  return 'vencida';
+  if (d === 0) return 'vence hoje';
+  if (d === 1) return 'vence amanhã';
+  return `vence em ${d} dias`;
+}
+
 function statusBadge(status, due_date) {
   if (status === 'paid') return '<span class="badge badge-paid">Pago</span>';
   if (isOverdue(due_date, status)) return '<span class="badge badge-overdue">Vencido</span>';

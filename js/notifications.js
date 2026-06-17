@@ -7,15 +7,17 @@ async function getUpcomingBills() {
   const now = Date.now();
   if (_upcomingCache !== null && now - _upcomingTs < 120000) return _upcomingCache;
 
-  const today = new Date();
-  const in3   = new Date(today.getTime() + 3 * 86400000);
-  const tStr  = today.toISOString().split('T')[0];
-  const i3Str = in3.toISOString().split('T')[0];
+  const todayStr     = today();
+  const monthPrefix  = todayStr.slice(0, 7);
 
   try {
-    _upcomingCache = await db.transactions
-      .filter(`transaction_type = 'expense' && status = 'pending' && due_date >= '${tStr}' && due_date <= '${i3Str}'`)
+    const pending = await db.transactions
+      .filter(`transaction_type = 'expense' && status = 'pending'`)
       .toArray();
+    // Despesas pendentes que vencem no mês vigente e ainda não venceram.
+    _upcomingCache = pending
+      .filter(t => t.due_date && t.due_date.slice(0, 7) === monthPrefix && t.due_date >= todayStr)
+      .sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0));
     _upcomingTs = now;
     return _upcomingCache;
   } catch {
@@ -63,13 +65,10 @@ async function injectUpcomingAlert() {
   const bills = await getUpcomingBills();
   if (bills.length === 0) return;
 
-  const today = new Date().toISOString().split('T')[0];
-  const overdue  = bills.filter(b => b.due_date < today);
-  const upcoming = bills.filter(b => b.due_date >= today);
-
-  const lines = [];
-  if (overdue.length)  lines.push(`<strong>${overdue.length} vencida(s):</strong> ${overdue.map(b => b.name).join(', ')}`);
-  if (upcoming.length) lines.push(`<strong>${upcoming.length} vence(m) em até 3 dias:</strong> ${upcoming.map(b => b.name).join(', ')}`);
+  const lines = [
+    `<strong>${bills.length} conta(s) a vencer este mês:</strong>`,
+    ...bills.map(b => `${b.name} — ${labelVencimento(b.due_date)}`),
+  ];
 
   const alert = document.createElement('div');
   alert.id = 'upcoming-alert';
