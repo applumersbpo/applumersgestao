@@ -26,7 +26,8 @@ async function renderReports(month, year) {
     return m ? { year: +m[1], month: +m[2], day: +m[3] } : null;
   };
   // Caixa (regime de caixa): valor efetivamente pago/recebido e data do pagamento
-  const cashValue = t => (t.paid_amount || t.amount || 0);
+  // F-210: NULL = não-informado → usa amount; 0 = R$0 real pago → conta como 0.
+  const cashValue = t => (t.paid_amount != null ? t.paid_amount : (t.amount || 0));
   // Fallback p/ legados pagos sem data de pagamento (cash_date/paid_date vazios):
   // usa competence_date e, por último, due_date — assim não somem do Fluxo de Caixa (F-213).
   // Registros COM cash_date/paid_date mantêm o comportamento original.
@@ -589,7 +590,7 @@ function exportReportExcel(regime = 'competencia') {
       return t.status === 'paid' && p && p.year === year && p.month === month;
     });
     dateOf  = t => t.cash_date || t.paid_date || t.competence_date || t.due_date || '';
-    valueOf = t => (t.paid_amount || t.amount || 0);
+    valueOf = t => (t.paid_amount != null ? t.paid_amount : (t.amount || 0));
     resumoRows = (_reportData.cashMonthly || []).map(d => ({
       'Mês':     MONTHS[d.month - 1],
       'Receita': d.income,

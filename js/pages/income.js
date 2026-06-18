@@ -137,7 +137,7 @@ function bindIncomeActions() {
       });
     }
     if (action === 'unreceive') {
-      await db.transactions.update(id, { status: 'pending', paid_date: null, cash_date: null, paid_amount: 0 });
+      await db.transactions.update(id, { status: 'pending', paid_date: null, cash_date: null, paid_amount: null });
       clearUpcomingCache();
       toast('Alteração desfeita');
       renderIncome(_incCache.month, _incCache.year);
@@ -318,7 +318,11 @@ async function saveIncome(id, month, year) {
   const notes  = document.getElementById('inc-notes').value.trim();
   const isReceived = document.getElementById('inc-paid-cb') ? document.getElementById('inc-paid-cb').checked : false;
   const paidDateVal = document.getElementById('inc-paid-date') ? document.getElementById('inc-paid-date').value : '';
-  const paidAmountVal = parseBRNumber(document.getElementById('inc-paid-amount') ? document.getElementById('inc-paid-amount').value : '');
+  // F-210: lê o input CRU para distinguir não-informado (vazio → null, relatório usa
+  // amount) de R$0 real digitado explicitamente ("0"/"0,00" → 0). parseBRNumber('')
+  // e parseBRNumber('0') retornam ambos 0, por isso checamos a string crua.
+  const paidAmountRaw = document.getElementById('inc-paid-amount') ? document.getElementById('inc-paid-amount').value.trim() : '';
+  const paidAmountVal = paidAmountRaw === '' ? null : parseBRNumber(paidAmountRaw);
 
   if (!name) { toast('Informe a descrição', 'error'); return; }
   // amount and category are mandatory
@@ -351,12 +355,12 @@ async function saveIncome(id, month, year) {
     record.status = 'paid';
     record.cash_date = pd;
     record.paid_date = pd;
-    record.paid_amount = paidAmountVal > 0 ? paidAmountVal : amount;
+    record.paid_amount = paidAmountVal != null ? paidAmountVal : amount;
   } else {
     record.status = 'pending';
     record.cash_date = null;
     record.paid_date = null;
-    record.paid_amount = 0;
+    record.paid_amount = null;
   }
 
   if (id && id !== '') {

@@ -140,7 +140,7 @@ function bindExpenseActions(month, year) {
           renderExpenses(_expCache.month, _expCache.year);
         });
       } else if (action === 'unpay') {
-        await db.transactions.update(id, { status: 'pending', paid_date: null, cash_date: null, paid_amount: 0 });
+        await db.transactions.update(id, { status: 'pending', paid_date: null, cash_date: null, paid_amount: null });
         clearUpcomingCache();
         toast('Alteração desfeita');
         renderExpenses(_expCache.month, _expCache.year);
@@ -306,7 +306,11 @@ async function saveExpense(id, month, year) {
   const notes  = document.getElementById('exp-notes').value.trim();
   const isPaid = document.getElementById('exp-paid-cb') ? document.getElementById('exp-paid-cb').checked : false;
   const paidDateVal = document.getElementById('exp-paid-date') ? document.getElementById('exp-paid-date').value : '';
-  const paidAmountVal = parseBRNumber(document.getElementById('exp-paid-amount') ? document.getElementById('exp-paid-amount').value : '');
+  // F-210: lê o input CRU para distinguir não-informado (vazio → null, relatório usa
+  // amount) de R$0 real digitado explicitamente ("0"/"0,00" → 0). parseBRNumber('')
+  // e parseBRNumber('0') retornam ambos 0, por isso checamos a string crua.
+  const paidAmountRaw = document.getElementById('exp-paid-amount') ? document.getElementById('exp-paid-amount').value.trim() : '';
+  const paidAmountVal = paidAmountRaw === '' ? null : parseBRNumber(paidAmountRaw);
 
   if (!name)   { toast('Informe a descrição', 'error'); return; }
   if (!amount || amount <= 0) { toast('Informe um valor válido', 'error'); return; }
@@ -339,12 +343,12 @@ async function saveExpense(id, month, year) {
     record.status = 'paid';
     record.cash_date = pd;
     record.paid_date = pd;
-    record.paid_amount = paidAmountVal > 0 ? paidAmountVal : amount;
+    record.paid_amount = paidAmountVal != null ? paidAmountVal : amount;
   } else {
     record.status = 'pending';
     record.paid_date = null;
     record.cash_date = null;
-    record.paid_amount = 0;
+    record.paid_amount = null;
   }
 
   if (id && id !== '') {

@@ -324,7 +324,26 @@ export async function initDb() {
     await db.execute("ALTER TABLE transactions ADD COLUMN competence_date TEXT DEFAULT ''");
   }
   if (!existingCols.includes('paid_amount')) {
-    await db.execute("ALTER TABLE transactions ADD COLUMN paid_amount REAL DEFAULT 0");
+    // F-210: nullable, sem DEFAULT 0. NULL = "não-informado" (relatório usa amount);
+    // 0 = "R$0 real pago". Novos registros gravam paid_amount explicitamente.
+    await db.execute("ALTER TABLE transactions ADD COLUMN paid_amount REAL");
+  }
+  // F-210: legados que receberam paid_amount=0 na migração anterior significavam
+  // "não-informado", não "R$0 real pago". Converte 0 → NULL UMA única vez. O flag em
+  // system_settings garante idempotência e evita zerar pagamentos R$0 legítimos
+  // criados depois (rodar de novo não causa dano).
+  {
+    const { rows: f210rows } = await db.execute({
+      sql: "SELECT value FROM system_settings WHERE key = 'migr_f210_paid_amount_zero_to_null'",
+      args: [],
+    });
+    if (!(f210rows || []).length) {
+      await db.execute("UPDATE transactions SET paid_amount = NULL WHERE paid_amount = 0");
+      await db.execute({
+        sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('migr_f210_paid_amount_zero_to_null', '1')",
+        args: [],
+      });
+    }
   }
 
   // Migrations — users table
