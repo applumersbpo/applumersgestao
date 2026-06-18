@@ -795,6 +795,10 @@ function _adminUserRow(u) {
 
         <!-- Ações -->
         <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;margin-left:4px">
+          <button class="btn btn-sm btn-icon btn-ghost" style="color:var(--primary)"
+            onclick="impersonateUser('${u.id}',this)" title="Acessar conta (somente leitura)">
+            ${icon('eye',14)}
+          </button>
           <button class="btn btn-sm" style="background:var(--primary-light);color:var(--primary);font-weight:600;gap:4px"
             onclick="renderAdminUserProfile('${u.id}')" title="Ver perfil completo">
             ${icon('bar-chart-2',13)} Perfil
@@ -822,6 +826,19 @@ function _adminUserRow(u) {
         <span style="font-size:.78rem;color:var(--text-muted);margin-left:auto">${(u.last_active||u.last_login) ? fmtDateTime(u.last_active||u.last_login) : 'Nunca logou'}</span>
       </div>
     </div>`;
+}
+
+// ── Impersonação: "Acessar conta" (somente leitura) ────────────────────────────
+async function impersonateUser(userId, btn) {
+  if (btn) { btn.disabled = true; }
+  try {
+    const res = await _api('POST', '/admin/impersonate', { targetUserId: userId });
+    enterImpersonation(res.token, res.target);
+  } catch (err) {
+    if (btn) btn.disabled = false;
+    const msg = err?.response?.message || err?.message || 'Erro ao acessar a conta';
+    toast(msg, 'error');
+  }
 }
 
 // ── Perfil Completo do Usuário ─────────────────────────────────────────────────
@@ -886,6 +903,9 @@ async function renderAdminUserProfile(userId) {
           </div>
           <!-- Ações rápidas -->
           <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">
+            <button class="btn btn-sm btn-outline" style="color:var(--primary)" onclick="impersonateUser('${user.id}',this)">
+              ${icon('eye',13)} Acessar conta
+            </button>
             ${phone ? `<button class="btn btn-primary btn-sm" onclick="_adminMsgOpenFor('${user.id}')">
               ${icon('send',13)} Mensagem
             </button>` : ''}
