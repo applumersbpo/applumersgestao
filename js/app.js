@@ -3,6 +3,8 @@ const app = {
   currentYear:  new Date().getFullYear(),
   currentPage:  'dashboard',
 
+  get isImpersonating() { return _store.isImpersonating; },
+
   async init() {
     loadBrand();
     if (_checkResetToken()) return;
@@ -15,6 +17,7 @@ const app = {
 
   async _start() {
     hideAuthScreen();
+    this._showImpersonationNotice();
     this._showUser();
     await seedDefaultCategories();
     this.bindNav();
@@ -99,8 +102,39 @@ const app = {
     setTimeout(() => { if (el.parentNode) el.remove(); }, 12000);
   },
 
+  _showImpersonationNotice() {
+    const notice = sessionStorage.getItem('_lg_imp_notice');
+    if (!notice) return;
+    sessionStorage.removeItem('_lg_imp_notice');
+    setTimeout(() => { if (typeof toast === 'function') toast(notice, 'error'); }, 400);
+  },
+
+  // Banner fixo "Vendo como <usuário> — somente leitura" + classe global no body.
+  _updateImpersonationBanner(user) {
+    const on = _store.isImpersonating;
+    document.body.classList.toggle('impersonating', on);
+    if (on) {
+      const nameEl = document.getElementById('imp-banner-name');
+      if (nameEl) nameEl.textContent = (user?.name || user?.email || 'usuário');
+    }
+  },
+
+  // Read-only UX: enquanto impersonando, oculta controles de mutação renderizados
+  // no conteúdo (criar/editar/excluir/pagar/seleção em massa). O backend já rejeita;
+  // isto evita oferecer a ação. Varredura única por onclick de verbos de mutação.
+  _applyImpersonationReadOnly() {
+    if (!_store.isImpersonating) return;
+    const content = document.getElementById('content');
+    if (!content) return;
+    const MUT = /\b(open\w*Modal|openQuickAdd|openPayDateModal|save\w*|delete\w*|edit\w*|bulk\w*|pay\w*|markPaid|togglePaid|toggle\w*Bulk|add\w*|create\w*|remove\w*|new\w*)\s*\(/;
+    content.querySelectorAll('[onclick]').forEach(el => {
+      if (MUT.test(el.getAttribute('onclick') || '')) el.style.display = 'none';
+    });
+  },
+
   _showUser() {
     const user = pb.authStore.model || pb.authStore.record;
+    this._updateImpersonationBanner(user);
     const el = document.getElementById('user-name');
     if (el && user) el.textContent = user.name || user.email;
 
@@ -187,6 +221,7 @@ case 'accounts':   await renderAccounts();       break;
         default:           await renderDashboard(m, y);
       }
       if (typeof lucide !== 'undefined') lucide.createIcons();
+      this._applyImpersonationReadOnly();
     } catch (err) {
       console.error('Render error:', err);
       const content = document.getElementById('content');

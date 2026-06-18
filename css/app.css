@@ -1336,6 +1336,46 @@ input, select, textarea { font: inherit; }
 #fab:hover  { transform: scale(1.08); box-shadow: 0 6px 20px rgba(44,70,48,.5); }
 #fab:active { transform: scale(0.95); }
 
+/* ── Banner de impersonação (admin "ver como usuário", somente leitura) ── */
+.imp-banner {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 40px;
+  z-index: 6000;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 0 16px;
+  background: #b45309;
+  color: #fff;
+  font-size: .85rem;
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(0,0,0,.18);
+}
+body.impersonating .imp-banner { display: flex; }
+.imp-banner-text { display: inline-flex; align-items: center; gap: 8px; }
+.imp-banner-exit {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(255,255,255,.18);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,.35);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.imp-banner-exit:hover { background: rgba(255,255,255,.3); }
+
+/* Empurra o layout para baixo quando o banner está visível */
+body.impersonating .sidebar { top: 40px; }
+body.impersonating .topbar  { top: 40px; }
+body.impersonating .main    { padding-top: 40px; }
+
+/* Read-only: esconde o FAB de lançamento rápido durante a impersonação */
+body.impersonating #fab { display: none !important; }
+
 /* ── Insight / Alert Banner ── */
 .insight-card {
   display: flex;

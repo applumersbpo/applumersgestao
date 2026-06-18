@@ -137,6 +137,16 @@
 
   <!-- ── App ── -->
   <div id="app" style="display:none">
+    <!-- Banner de impersonação (visível apenas com body.impersonating) -->
+    <div id="imp-banner" class="imp-banner" role="status">
+      <span class="imp-banner-text">
+        <i data-lucide="eye" style="width:15px;height:15px"></i>
+        Vendo como <strong id="imp-banner-name">usuário</strong> — somente leitura
+      </span>
+      <button class="imp-banner-exit" onclick="exitImpersonation()">
+        <i data-lucide="log-out" style="width:14px;height:14px"></i> Sair
+      </button>
+    </div>
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <div class="logo">
@@ -255,7 +265,7 @@
             <span style="font-weight:600">Borgescley Soluções Digitais</span>
           </a>
         </div>
-        <div class="sidebar-version">v1.2.5</div>
+        <div class="sidebar-version">v1.3.0</div>
       </div>
     </aside>
 
