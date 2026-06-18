@@ -208,47 +208,7 @@ function _expTogglePaid() {
   }
 }
 
-// Modal compartilhado (despesa e receita) para confirmar data e valor ao marcar pago/recebido.
-function openPayDateModal(tx, type, onDone) {
-  const isExpense = type === 'expense';
-  const t = today();
-  showModal(`
-    <div class="modal-backdrop">
-      <div class="modal" style="max-width:380px">
-        <div class="modal-header">
-          <div class="modal-title">${isExpense ? 'Confirmar pagamento' : 'Confirmar recebimento'}</div>
-          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label">${isExpense ? 'Data do pagamento' : 'Data do recebimento'}</label>
-            <input id="paydate-date" type="date" class="form-control" max="${t}" value="${t}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">${isExpense ? 'Valor pago' : 'Valor recebido'} (R$)</label>
-            <input id="paydate-amount" class="form-control" type="text" inputmode="decimal" placeholder="0,00" value="${tx?.amount != null ? tx.amount : ''}">
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-          <button class="btn btn-primary" id="paydate-confirm">Confirmar</button>
-        </div>
-      </div>
-    </div>
-  `);
-  document.getElementById('paydate-confirm').addEventListener('click', async () => {
-    const dateVal = document.getElementById('paydate-date').value;
-    const amountVal = parseBRNumber(document.getElementById('paydate-amount').value);
-    if (!dateVal) { toast('Informe a data', 'error'); return; }
-    if (dateVal > today()) { toast('Não é possível registrar um pagamento/recebimento com data superior à data de hoje.', 'error'); return; }
-    const paid_amount = amountVal > 0 ? amountVal : (tx?.amount || 0);
-    const upd = { status: 'paid', cash_date: dateVal, paid_date: dateVal, paid_amount };
-    await db.transactions.update(tx.id, upd);
-    clearUpcomingCache();
-    closeModal();
-    if (onDone) onDone(upd);
-  });
-}
+// openPayDateModal foi movida para js/utils.js (carregado antes) — ver F-211.
 
 async function openExpenseModal(month, year, data = null) {
   const catsMap = await getCategoriesMap();

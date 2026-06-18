@@ -1,7 +1,7 @@
 let _upcomingCache = null;
 let _upcomingTs    = 0;
 
-function clearUpcomingCache() { _upcomingCache = null; }
+// clearUpcomingCache foi movida para js/utils.js (carregado antes) — ver F-211.
 
 async function getUpcomingBills() {
   const now = Date.now();
