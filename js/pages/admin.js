@@ -832,7 +832,7 @@ function _adminUserRow(u) {
 async function impersonateUser(userId, btn) {
   if (btn) { btn.disabled = true; }
   try {
-    const res = await _api('POST', '/admin/impersonate', { targetUserId: userId });
+    const res = await _api('POST', '/admin/users', { action: 'impersonate', targetUserId: userId });
     enterImpersonation(res.token, res.target);
   } catch (err) {
     if (btn) btn.disabled = false;

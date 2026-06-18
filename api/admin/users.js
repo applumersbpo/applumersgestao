@@ -1,5 +1,5 @@
 import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from '../_lib/db.js';
-import { requireAuth, cors, isImpersonation } from '../_lib/auth.js';
+import { requireAuth, cors, isImpersonation, signToken } from '../_lib/auth.js';
 import {
   evoBase, resolveKey, headers as evoHdrs, normalizeStatus, parseEvoError,
   connectionState, connectQr, deleteInstance, setSettings, setWebhook,
@@ -605,6 +605,47 @@ export default async function handler(req, res) {
         const secret = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
         await setSystemSetting('cron_secret', secret);
         return res.status(200).json({ ok: true, secret });
+      }
+
+      // Impersonação: emite token rebaixado (read-only, 2h) para "ver como" um usuário.
+      // Consolidado aqui (antes em api/admin/impersonate.js) p/ caber no limite de 12 funções Hobby.
+      // Os guards de topo (isImpersonation → 403, !is_admin → 403) já garantem anti-escalonamento
+      // e que apenas admin/super_admin com token normal chegam até aqui.
+      if (action === 'impersonate') {
+        const { targetUserId } = req.body || {};
+        if (!targetUserId) return res.status(400).json({ error: 'targetUserId é obrigatório' });
+
+        const { rows: tRows } = await db.execute({
+          sql: 'SELECT id, email, name FROM users WHERE id = ?',
+          args: [targetUserId],
+        });
+        const target = rowsToObjects(tRows)[0];
+        if (!target) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+        // Token rebaixado: is_admin SEMPRE false, role SEMPRE 'user', imp=true. Expira em 2h.
+        const token = await signToken(
+          {
+            sub: target.id,
+            email: target.email,
+            is_admin: false,
+            role: 'user',
+            imp: true,
+            imp_by: user.sub,
+            imp_by_email: user.email,
+          },
+          { expiresIn: '2h' }
+        );
+
+        // Auditoria
+        await db.execute({
+          sql: 'INSERT INTO impersonation_logs (id, admin_id, admin_email, target_id, target_email) VALUES (?, ?, ?, ?, ?)',
+          args: [crypto.randomUUID(), user.sub, user.email || '', target.id, target.email || ''],
+        });
+
+        return res.status(200).json({
+          token,
+          target: { id: target.id, name: target.name || '', email: target.email },
+        });
       }
 
       return res.status(400).json({ error: 'Ação inválida' });
