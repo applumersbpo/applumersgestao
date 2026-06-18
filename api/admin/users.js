@@ -228,7 +228,7 @@ export default async function handler(req, res) {
           FROM transactions t
           INNER JOIN users u ON u.id = t.user_id
           WHERE u.is_admin = 0
-          ORDER BY t.created_at DESC
+          ORDER BY datetime(t.created_at) DESC
           LIMIT 10`),
       ]);
 
