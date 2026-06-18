@@ -4,12 +4,20 @@ const getSecret = () => new TextEncoder().encode(
   process.env.JWT_SECRET || 'lumers-gestao-secret-2025-change-in-production'
 );
 
-export async function signToken(payload) {
+export async function signToken(payload, options = {}) {
+  // expiresIn é opcional e retrocompatível: login normal mantém 30d (default);
+  // token de impersonação passa '2h'.
+  const expiresIn = options.expiresIn || '30d';
   return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('30d')
+    .setExpirationTime(expiresIn)
     .sign(getSecret());
+}
+
+// Token de impersonação (admin "vendo como usuário"): sempre read-only.
+export function isImpersonation(payload) {
+  return !!(payload && payload.imp === true);
 }
 
 export async function verifyToken(token) {

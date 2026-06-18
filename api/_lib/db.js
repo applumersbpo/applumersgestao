@@ -299,6 +299,14 @@ export async function initDb() {
       sent_at TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     )`,
+    `CREATE TABLE IF NOT EXISTS impersonation_logs (
+      id TEXT PRIMARY KEY,
+      admin_id TEXT NOT NULL,
+      admin_email TEXT DEFAULT '',
+      target_id TEXT NOT NULL,
+      target_email TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {
