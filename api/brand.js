@@ -1,5 +1,5 @@
 import { getDb, initDb } from './_lib/db.js';
-import { requireAuth, cors } from './_lib/auth.js';
+import { requireAuth, cors, isImpersonation } from './_lib/auth.js';
 
 // Aumenta o limite para comportar logos em base64 (~2MB imagem → ~2.7MB base64)
 export const config = {
@@ -95,6 +95,7 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     try {
       const user = await requireAuth(req);
+      if (isImpersonation(user)) return res.status(403).json({ error: 'Acesso somente leitura: visualização de conta de usuário não permite alterações.' });
       if (!user.is_admin) return res.status(403).json({ error: 'Forbidden' });
 
       const body = req.body || {};
