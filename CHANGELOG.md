@@ -5,6 +5,18 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.2.4] — 2026-06-18
+
+### Corrigido
+- **Legados pagos sem data somem do Fluxo de Caixa (F-213)**: no regime de caixa, lançamentos `pagos` com `cash_date` e `paid_date` vazios eram excluídos; agora há fallback para `competence_date` e, por último, `due_date`, mantendo intacto o comportamento de registros que já têm data de pagamento (relatório e export)
+- **Acoplamento frágil de funções compartilhadas (F-211)**: `openPayDateModal` e `clearUpcomingCache` foram movidas para `js/utils.js` (carregado cedo), eliminando a dependência de `income.js`/`bills.js` em funções definidas em arquivos carregados depois
+
+### Notas
+- **F-210** marcado como `precisa-decisão`: representar pagamento/recebimento real de R$ 0,00 exige decisão de schema/migração (distinguir 0 legado de 0 real) — não aplicado fix parcial para não criar inconsistência save↔relatório
+- Cache bumped de `lumers-v33` para `lumers-v34`
+
+---
+
 ## [v1.2.3] — 2026-06-17
 
 ### Corrigido
