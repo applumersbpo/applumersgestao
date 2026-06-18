@@ -1,8 +1,21 @@
 import { SignJWT, jwtVerify } from 'jose';
 
-const getSecret = () => new TextEncoder().encode(
-  process.env.JWT_SECRET || 'lumers-gestao-secret-2025-change-in-production'
-);
+const isProduction = () =>
+  process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+const resolveSecret = () => {
+  const secret = process.env.JWT_SECRET;
+  if (secret) return secret;
+
+  if (isProduction()) {
+    throw new Error('JWT_SECRET não configurado — abortando por segurança');
+  }
+
+  console.warn('[auth] JWT_SECRET ausente — usando fallback de DEV. NÃO use em produção.');
+  return 'dev-only-insecure-secret';
+};
+
+const getSecret = () => new TextEncoder().encode(resolveSecret());
 
 export async function signToken(payload, options = {}) {
   // expiresIn é opcional e retrocompatível: login normal mantém 30d (default);
