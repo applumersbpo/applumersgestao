@@ -79,6 +79,14 @@ function kindBadge(kind) {
     : '<span class="badge badge-variable">Variável</span>';
 }
 
+function txTypeBadge(t) {
+  if (t.transaction_type === 'installment')
+    return '<span class="badge badge-installment">Parcelado</span>';
+  if (t.template_id)
+    return '<span class="badge badge-recurring">Recorrente</span>';
+  return '';
+}
+
 function catTag(cat) {
   if (!cat) return '';
   return `<span class="cat-tag" style="background:${cat.color}22;color:${cat.color}">${cat.icon || ''} ${cat.name}</span>`;

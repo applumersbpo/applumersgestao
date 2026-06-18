@@ -203,9 +203,9 @@ async function saveInstallment(id) {
   } else {
     record.start_month = _instMonth;
     record.start_year  = _instYear;
-    await db.installments.add(record);
+    const instId = await db.installments.add(record);
     toast('Parcelamento criado!', 'success');
-    await generateInstallmentTransactions(_instMonth, _instYear);
+    await generateAllInstallmentTransactions(instId);
   }
 
   closeModal();

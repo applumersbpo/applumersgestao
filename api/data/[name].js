@@ -10,7 +10,7 @@ const FIELDS = {
   templates:               ['name', 'category_id', 'transaction_type', 'kind', 'amount', 'due_day', 'active'],
   transactions:            ['template_id', 'name', 'category_id', 'account_id', 'transaction_type', 'kind', 'amount', 'paid_amount', 'due_date', 'paid_date', 'cash_date', 'competence_date', 'status', 'month', 'year', 'notes'],
   settings:                ['key', 'value'],
-  installments:            ['name', 'category_id', 'total_amount', 'installments', 'paid_installments', 'due_day', 'notes'],
+  installments:            ['name', 'category_id', 'total_amount', 'installments', 'paid_installments', 'due_day', 'notes', 'account_id', 'start_month', 'start_year'],
   goals:                   ['name', 'target_amount', 'current_amount', 'deadline', 'color', 'icon'],
   accounts:                ['bank_id', 'name', 'bank_name', 'type', 'currency', 'initial_balance', 'initial_balance_date', 'notes'],
   banks:                   ['code', 'name', 'logo_url', 'published', 'approved_by', 'notes'],

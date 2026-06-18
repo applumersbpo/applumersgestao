@@ -11,19 +11,21 @@ async function renderDashboard(month, year) {
   ]);
   const banksMapById = Object.fromEntries(banks.map(b => [b.id, b]));
 
+  const EXPENSE_TYPES = ['expense', 'installment', 'general', 'daily'];
   const expenses   = transactions.filter(t => t.transaction_type === 'expense');
   const generalExp = transactions.filter(t => t.transaction_type === 'general' || t.transaction_type === 'daily');
   const incomes    = transactions.filter(t => t.transaction_type === 'income');
   const instTx     = transactions.filter(t => t.transaction_type === 'installment');
+  const allExpenses = transactions.filter(t => EXPENSE_TYPES.includes(t.transaction_type));
 
   const totalIncome   = incomes.reduce((s, t) => s + (t.amount || 0), 0);
-  const totalExpense  = expenses.reduce((s, t) => s + (t.amount || 0), 0);
+  const totalExpense  = allExpenses.reduce((s, t) => s + (t.amount || 0), 0);
   const totalGeneral  = generalExp.reduce((s, t) => s + (t.amount || 0), 0);
   const instTotal     = instTx.reduce((s, t) => s + (t.amount || 0), 0);
   const instPaid      = instTx.filter(t => t.status === 'paid').reduce((s, t) => s + (t.amount || 0), 0);
 
-  const received  = incomes.filter(t => t.status === 'paid').reduce((s, t) => s + (t.amount || 0), 0);
-  const expPaid   = expenses.filter(t => t.status === 'paid').reduce((s, t) => s + (t.amount || 0), 0);
+  const received   = incomes.filter(t => t.status === 'paid').reduce((s, t) => s + (t.amount || 0), 0);
+  const expPaid    = allExpenses.filter(t => t.status === 'paid').reduce((s, t) => s + (t.amount || 0), 0);
   const expPending = totalExpense - expPaid;
 
   const recvPct = totalIncome > 0 ? Math.round((received / totalIncome) * 100) : 0;
@@ -36,14 +38,14 @@ async function renderDashboard(month, year) {
   const projClass = saldoProjetado >= 0 ? 'balance-positive' : 'balance-negative';
   const realClass  = saldoReal >= 0 ? 'balance-positive' : 'balance-negative';
 
-  const overdue   = expenses.filter(t => isOverdue(t.due_date, t.status));
+  const overdue   = allExpenses.filter(t => isOverdue(t.due_date, t.status));
 
   // Contas a vencer: despesas pendentes cujo VENCIMENTO (due_date) cai no mês
   // vigente e ainda não venceram. Carregado por due_date (não por competência)
   // para não perder contas cuja competência está em outro mês.
   const _monthPrefix = today().slice(0, 7);
   const _pendingExp  = await db.transactions
-    .filter(`transaction_type = 'expense' && status = 'pending'`).toArray();
+    .filter(`(transaction_type = 'expense' || transaction_type = 'installment' || transaction_type = 'general' || transaction_type = 'daily') && status = 'pending'`).toArray();
   const upcoming = _pendingExp
     .filter(t => t.due_date && t.due_date.slice(0, 7) === _monthPrefix && t.due_date >= today())
     .sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0));
@@ -353,7 +355,7 @@ async function renderDashboard(month, year) {
       </div>
       <div class="insight-body">
         <div class="insight-heading">Contas Pendentes — ${fmt(expPending)}</div>
-        <div class="insight-desc">${expenses.filter(t => t.status !== 'paid').length} conta${expenses.filter(t => t.status !== 'paid').length !== 1 ? 's' : ''} em aberto</div>
+        <div class="insight-desc">${allExpenses.filter(t => t.status !== 'paid').length} conta${allExpenses.filter(t => t.status !== 'paid').length !== 1 ? 's' : ''} em aberto</div>
       </div>
       <a href="#/expenses" class="btn btn-sm btn-ghost" style="flex-shrink:0;align-self:center">Ver</a>
     </div>` : ''}
@@ -526,6 +528,7 @@ function transactionRow(t, catsMap, showActions = true, showCountdown = false) {
           ${cat ? catTag(cat) : ''}
           <span>${fmtDate(t.due_date)}</span>
           ${countdownHtml}
+          ${txTypeBadge(t)}
           ${statusBadge(t.status, t.due_date)}
         </div>
       </div>

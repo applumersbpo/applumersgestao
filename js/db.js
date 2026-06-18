@@ -682,6 +682,54 @@ async function generateInstallmentTransactions(month, year) {
   }
 }
 
+async function generateAllInstallmentTransactions(instId) {
+  const inst = await db.installments.get(instId);
+  if (!inst) return;
+
+  if (!inst.start_month || !inst.start_year) {
+    // Legacy fallback: no start date — generate only the current month as safety net
+    await generateInstallmentTransactions(new Date().getMonth() + 1, new Date().getFullYear());
+    return;
+  }
+
+  const total = inst.installments || 1;
+  const existingTx = await db.transactions.filter(
+    `template_id = '${instId}' && transaction_type = 'installment'`
+  ).toArray();
+  const existingByMonthYear = {};
+  existingTx.forEach(tx => { existingByMonthYear[`${tx.month}-${tx.year}`] = tx; });
+
+  for (let idx = 1; idx <= total; idx++) {
+    const totalMonths = (inst.start_month - 1) + (idx - 1);
+    const month = (totalMonths % 12) + 1;
+    const year  = inst.start_year + Math.floor(totalMonths / 12);
+    const key   = `${month}-${year}`;
+
+    if (existingByMonthYear[key]) continue; // dedup-safe: skip already-materialised months
+
+    const asPaid  = idx <= (inst.paid_installments || 0);
+    const monthly = inst.total_amount / total;
+    const day     = Math.min(inst.due_day || 1, new Date(year, month, 0).getDate());
+    const due     = new Date(year, month - 1, day);
+
+    await db.transactions.add({
+      template_id:      inst.id,
+      name:             `${inst.name} (${idx}/${total})`,
+      category_id:      inst.category_id || '',
+      account_id:       inst.account_id  || '',
+      transaction_type: 'installment',
+      kind:             'variable',
+      amount:           monthly,
+      due_date:         due.toISOString().split('T')[0],
+      paid_date:        asPaid ? today() : '',
+      cash_date:        asPaid ? today() : '',
+      status:           asPaid ? 'paid' : 'pending',
+      month, year,
+      notes:            inst.notes || '',
+    });
+  }
+}
+
 const _generatedMonths = new Set();
 async function getOrGenerateMonth(month, year) {
   const key = `${year}-${month}`;

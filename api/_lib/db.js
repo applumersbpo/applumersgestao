@@ -124,6 +124,9 @@ export async function initDb() {
       paid_installments INTEGER DEFAULT 0,
       due_day INTEGER DEFAULT 1,
       notes TEXT DEFAULT '',
+      account_id TEXT DEFAULT '',
+      start_month INTEGER DEFAULT NULL,
+      start_year INTEGER DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     )`,
     `CREATE TABLE IF NOT EXISTS goals (
@@ -358,6 +361,13 @@ export async function initDb() {
       ], 'write');
     }
   }
+
+  // Migrations — installments table
+  const { rows: iCols } = await db.execute("PRAGMA table_info('installments')");
+  const iColNames = (iCols || []).map(r => r.name);
+  if (!iColNames.includes('account_id'))  await db.execute("ALTER TABLE installments ADD COLUMN account_id TEXT DEFAULT ''");
+  if (!iColNames.includes('start_month')) await db.execute("ALTER TABLE installments ADD COLUMN start_month INTEGER DEFAULT NULL");
+  if (!iColNames.includes('start_year'))  await db.execute("ALTER TABLE installments ADD COLUMN start_year INTEGER DEFAULT NULL");
 
   // Migrations — users table
   const { rows: ucols } = await db.execute("PRAGMA table_info('users')");

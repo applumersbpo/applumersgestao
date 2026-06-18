@@ -1012,8 +1012,10 @@ input, select, textarea { font: inherit; }
 .badge-paid     { background: var(--income-light);   color: var(--income-text); }
 .badge-pending  { background: var(--warning-light);  color: var(--warning-text); }
 .badge-overdue  { background: var(--expense-light);  color: var(--expense-text); }
-.badge-fixed    { background: var(--primary-100);    color: var(--primary-700); }
-.badge-variable { background: var(--neutral-100);    color: var(--neutral-600); }
+.badge-fixed        { background: var(--primary-100);    color: var(--primary-700); }
+.badge-variable     { background: var(--neutral-100);    color: var(--neutral-600); }
+.badge-installment  { background: var(--primary-100);    color: var(--primary-700); }
+.badge-recurring    { background: var(--info-light);     color: var(--info-text); }
 
 /* ── Forms / Modal ── */
 .modal-backdrop {

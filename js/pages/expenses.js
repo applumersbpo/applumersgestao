@@ -109,6 +109,7 @@ function expenseRow(t, catsMap, accounts) {
           ${acc ? `<span title="Conta">🏦 ${acc.name}</span>` : ''}
           <span>${fmtDate(t.due_date)}</span>
           ${statusBadge(t.status, t.due_date)}
+          ${txTypeBadge(t)}
           ${t.notes ? `<span title="${t.notes}">📝 ${t.notes.substring(0, 30)}${t.notes.length > 30 ? '…' : ''}</span>` : ''}
         </div>
       </div>
@@ -275,7 +276,7 @@ async function openExpenseModal(month, year, data = null) {
           <div class="form-group">
             <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
               <input type="checkbox" id="exp-parcel-cb" onchange="_expToggleParcel()">
-              Parcelar esta compra
+              Parcelar esta despesa
             </label>
           </div>
           <div id="exp-parcel-block" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px 12px 4px;margin-bottom:4px;background:var(--surface-2,#f7f7f5)">
@@ -399,7 +400,7 @@ async function saveExpense(id, month, year) {
       start_year:        year,
     };
     const instId = await db.installments.add(instRecord);
-    await generateInstallmentTransactions(month, year);
+    await generateAllInstallmentTransactions(instId);
     if (isPaid) {
       const paidDate = paidDateVal || today();
       const txList = await db.transactions.filter(

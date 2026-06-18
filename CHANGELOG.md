@@ -5,6 +5,26 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.5.0] — 2026-06-18
+
+### Adicionado
+- **Badge "Parcelado"/"Recorrente" nas linhas de despesa**: em `expenses.js` (`expenseRow`) e `transactions.js` (`transactionRowTx`), cada linha agora exibe um badge discreto: `badge-installment` (azul/primary) se `transaction_type === 'installment'`; `badge-recurring` (teal/info) se `template_id` estiver preenchido em outros tipos; nenhum badge nos gastos avulsos. Helper `txTypeBadge(t)` adicionado a `utils.js`. Classes `.badge-installment` e `.badge-recurring` adicionadas ao CSS.
+- **Parcelas e recorrentes incluídos no total de despesas e saldo do dashboard**: `totalExpense` e `expPaid` em `dashboard.js` agora somam todos os `EXPENSE_TYPES` (`expense`, `installment`, `general`, `daily`), via `allExpenses`. `saldoProjetado` e `saldoReal` passam a refletir todas as saídas do mês. `overdue` e `upcoming` atualizados para o mesmo conjunto. Contagem de "contas em aberto" usa `allExpenses`. Os cards informativos "Gastos Gerais" e "Parcelas do Mês" continuam exibindo sub-totais (`totalGeneral`, `instTotal`/`instPaid`) apenas como detalhe — não são somados ao KPI novamente, evitando double-count.
+- **Parcelamento no Lançamento Rápido (FAB)**: o modal "Lançamento rápido" agora suporta parcelamento de despesas. Abaixo do campo Valor aparece o checkbox "Parcelar esta despesa" com bloco de configuração (nº de parcelas mín 2–360, dia de vencimento opcional, helper em tempo real "Nx de R$X = R$Y total"). Ao salvar no modo parcelado, cria um registro em `db.installments` com `start_month`/`start_year` e chama `generateInstallmentTransactions`; se houver data de vencimento preenchida, a 1ª parcela do mês é marcada como paga. Usa IDs próprios (`fab-parcel-cb`, `fab-parcel-block`, `fab-parcel-count`, `fab-parcel-day`, `fab-parcel-helper`, `fab-amount-label`) para não colidir com o modal de Novo Gasto.
+
+### Alterado
+- **Texto "Parcelar esta compra" → "Parcelar esta despesa"** no modal de Novo Gasto (`js/pages/expenses.js`).
+- **Toggle Despesa/Receita no FAB** (`fabSetType`): ao mudar para Receita, oculta o bloco de parcelamento e desmarca o checkbox; ao voltar para Despesa, exibe o bloco novamente. O label do campo Valor alterna entre "Valor (R$)" e "Valor da parcela (R$)" conforme o estado do checkbox.
+
+### Corrigido
+- **Schema da tabela `installments` — colunas `start_month`, `start_year` e `account_id` agora persistem corretamente** (DDL `CREATE TABLE` + migração PRAGMA idempotente via `ALTER TABLE` + allowlist `FIELDS` em `api/data/[name].js` e `api/data/[name]/[id].js`). Sem essa correção, os três campos eram descartados silenciosamente pelo filtro de body, tornando a geração index-aware/eager de parcelas inoperante em qualquer banco novo ou já existente. A migração PRAGMA garante compatibilidade com bases de produção existentes sem risco de falha por coluna já presente.
+- **Parcelas materializadas integralmente na criação** (`generateAllInstallmentTransactions` em `js/db.js`): ao criar um parcelamento, todas as N transações mensais são gravadas imediatamente no banco — não apenas a do mês corrente. Relatórios e Fluxo Anual (`js/pages/reports.js`, `api/data/[name].js`) passam a enxergar parcelas de meses futuros sem necessidade de "visitar" cada mês. Fix do `today()` no FAB (linha que chamava `today` sem parênteses, causando NaN em start_month/start_year) e remoção de leitura redundante do campo `competence`. Badge "Parcelado"/"Recorrente" adicionado ao `transactionRow` do dashboard (`js/pages/dashboard.js`).
+
+### Notas
+- Cache bumped de `lumers-v38` para `lumers-v39`
+
+---
+
 ## [v1.4.0] — 2026-06-18
 
 ### Adicionado
