@@ -387,10 +387,14 @@ function openPayDateModal(tx, type, onDone) {
   `);
   document.getElementById('paydate-confirm').addEventListener('click', async () => {
     const dateVal = document.getElementById('paydate-date').value;
-    const amountVal = parseBRNumber(document.getElementById('paydate-amount').value);
     if (!dateVal) { toast('Informe a data', 'error'); return; }
     if (dateVal > today()) { toast('Não é possível registrar um pagamento/recebimento com data superior à data de hoje.', 'error'); return; }
-    const paid_amount = amountVal > 0 ? amountVal : (tx?.amount || 0);
+    // F-210: lê o input CRU para distinguir "vazio" (não-informado → usa amount) de
+    // "0"/"0,00" digitado explicitamente (R$0 real). parseBRNumber('') e parseBRNumber('0')
+    // retornam ambos 0, então o teste `amountVal > 0` mascarava o R$0 real — corrigido
+    // lendo a string crua, alinhado à semântica dos saves de expenses.js/income.js.
+    const paidAmountRaw = document.getElementById('paydate-amount').value.trim();
+    const paid_amount = paidAmountRaw === '' ? (tx?.amount || 0) : parseBRNumber(paidAmountRaw);
     const upd = { status: 'paid', cash_date: dateVal, paid_date: dateVal, paid_amount };
     await db.transactions.update(tx.id, upd);
     clearUpcomingCache();

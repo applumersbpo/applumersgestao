@@ -8,7 +8,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 ## [v1.2.5] — 2026-06-18
 
 ### Corrigido
-- **Pagamento/recebimento real de R$ 0,00 era impossível de representar (F-210)**: `paid_amount` agora distingue `NULL` (não-informado → relatório usa `amount`) de `0` (R$0 real pago → contabilizado como 0). Schema passou a aceitar `NULL` sem `DEFAULT 0`; migração única e idempotente (com flag em `system_settings`) converte legados `paid_amount = 0` em `NULL`, preservando o fallback para `amount`. No save de despesas/receitas o valor pago é lido do input cru: vazio → `NULL`, `"0"`/`"0,00"` → `0` real; ao desmarcar pago grava `NULL`. Relatório e export (regime de caixa) trocaram `t.paid_amount || t.amount` por `t.paid_amount != null ? t.paid_amount : amount`
+- **Pagamento/recebimento real de R$ 0,00 era impossível de representar (F-210)**: `paid_amount` agora distingue `NULL` (não-informado → relatório usa `amount`) de `0` (R$0 real pago → contabilizado como 0). Schema passou a aceitar `NULL` sem `DEFAULT 0`; migração única e idempotente (com flag em `system_settings`) converte legados `paid_amount = 0` em `NULL`, preservando o fallback para `amount`. No save de despesas/receitas — e também no modal de confirmação de pagamento/recebimento (botão check da lista, `openPayDateModal`) — o valor pago é lido do input cru: vazio → `NULL`/`amount`, `"0"`/`"0,00"` → `0` real (antes o modal mascarava o R$0, caindo no valor cheio); ao desmarcar pago grava `NULL`. Relatório e export (regime de caixa) trocaram `t.paid_amount || t.amount` por `t.paid_amount != null ? t.paid_amount : amount`. A migração `0 → NULL` passou a rodar num batch transacional (libsql) para atomicidade
 
 ### Notas
 - Cache bumped de `lumers-v34` para `lumers-v35`

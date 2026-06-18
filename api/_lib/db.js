@@ -338,11 +338,16 @@ export async function initDb() {
       args: [],
     });
     if (!(f210rows || []).length) {
-      await db.execute("UPDATE transactions SET paid_amount = NULL WHERE paid_amount = 0");
-      await db.execute({
-        sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('migr_f210_paid_amount_zero_to_null', '1')",
-        args: [],
-      });
+      // F-210: UPDATE + gravação do flag num único batch transacional (libsql) para
+      // atomicidade — uma queda entre os dois reexecutaria o UPDATE no próximo boot,
+      // re-anulando eventuais R$0 legítimos. O batch garante "tudo-ou-nada".
+      await db.batch([
+        "UPDATE transactions SET paid_amount = NULL WHERE paid_amount = 0",
+        {
+          sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('migr_f210_paid_amount_zero_to_null', '1')",
+          args: [],
+        },
+      ], 'write');
     }
   }
 
