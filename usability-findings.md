@@ -100,10 +100,11 @@ Escopo: revisão estática da feature "regime de caixa / pago-recebido" (commits
 - (resolvedor) Correção: default do campo `inc-cash` alinhado ao de despesa — `value="${data?.cash_date || data?.paid_date || today()}"`. Só o default mudou; a regra de month/year (via `competence_date`) permanece intacta. Arquivo: js/pages/income.js (commit local desta rodada). Validado com `node --check`.
 - (reviewer F-2XX, re-revisão estática) VERIFICADO: income.js:237 com `value="${data?.cash_date || data?.paid_date || today()}"` (alinhado a exp-cash em expenses.js:300). Sem regressão: em `saveIncome` (income.js:332) `month/year` continuam derivados de `competence_date || due` — `inc-cash` segue alimentando apenas `due_date`. `node --check js/pages/income.js` OK.
 
-## F-213 | categoria: funcional | severidade: baixa | status: aberto
+## F-213 | categoria: funcional | severidade: baixa | status: corrigido
 - Tela: js/pages/reports.js:65,71 (e export 583-586)
 - Bug: no regime de CAIXA, `cashYMD = parseYMD(t.cash_date || t.paid_date)`; se um lançamento `status==='paid'` tiver cash_date E paid_date vazios, `cashYMD→null` → `cashYear/cashMonth→null` → excluído do Fluxo de Caixa.
 - Observado: o guard `isPaid(t)` protege contra NaN/crash (ponto verificado: não quebra). Porém registros legados marcados como pagos antes da migração, sem nenhuma data de pagamento, somem silenciosamente do regime de caixa (subnotificação). Baixa.
+- (resolvedor) Correção: a cadeia do helper `cashYMD` (regime de caixa, na render) e a do export (`exportReportExcel('caixa')`) ganharam fallback: `parseYMD(t.cash_date || t.paid_date || t.competence_date || t.due_date)`. `due_date` é obrigatório (sempre presente), então o caso `cashYMD→null` para pagos some — legados pagos sem data de pagamento passam a ser alocados pelo mês de competência (ou, em último caso, vencimento), parando de sumir do Fluxo de Caixa. SEM regressão para registros que JÁ têm cash_date/paid_date: esses continuam mandando (curto-circuito `||`). `dateOf` do export recebeu o mesmo fallback para que a coluna de data exibida reflita o mês usado na inclusão. `cashValue` (valor) inalterado. Arquivo: js/pages/reports.js. Validado com `node --check js/pages/reports.js` (OK).
 
 ### Pontos auditados e APROVADOS (sem bug)
 - Validação de mensagem de toast: o texto "Não é possível registrar um pagamento/recebimento com data superior à data de hoje." é IDÊNTICO nos 3 pontos (expenses.js:377, income.js:349, modal expenses.js:245). OK.
