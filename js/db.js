@@ -4,17 +4,43 @@
 const _API = '/api';
 
 // ── Auth Store ────────────────────────────────────────────────────────────────
+// Impersonação ("ver como usuário"): quando lg_imp_token existe, ele é usado no
+// Bearer e o model reflete o usuário-ALVO. O token/usuário do admin (lg_token /
+// lg_user) permanecem intactos para o admin poder voltar (exitImpersonation).
 const _store = {
-  get token()  { return localStorage.getItem('lg_token'); },
+  get isImpersonating() { return !!localStorage.getItem('lg_imp_token'); },
+  get token()  { return localStorage.getItem('lg_imp_token') || localStorage.getItem('lg_token'); },
   setToken(v)  { v ? localStorage.setItem('lg_token', v) : localStorage.removeItem('lg_token'); },
   get model()  {
-    try { return JSON.parse(localStorage.getItem('lg_user') || 'null'); }
+    const key = this.isImpersonating ? 'lg_imp_user' : 'lg_user';
+    try { return JSON.parse(localStorage.getItem(key) || 'null'); }
     catch { return null; }
   },
   setModel(v)  { v ? localStorage.setItem('lg_user', JSON.stringify(v)) : localStorage.removeItem('lg_user'); },
   get isValid(){ return !!this.token && !!this.model; },
-  clear()      { localStorage.removeItem('lg_token'); localStorage.removeItem('lg_user'); }
+  clear()      {
+    localStorage.removeItem('lg_token'); localStorage.removeItem('lg_user');
+    localStorage.removeItem('lg_imp_token'); localStorage.removeItem('lg_imp_user');
+  }
 };
+
+// Entra no modo "ver como usuário": grava token+alvo e recarrega no dashboard do alvo.
+function enterImpersonation(token, targetUser) {
+  localStorage.setItem('lg_imp_token', token);
+  localStorage.setItem('lg_imp_user', JSON.stringify(targetUser || {}));
+  location.hash = '#/';
+  location.reload();
+}
+
+// Sai do modo impersonação: limpa apenas os dados de impersonação e volta ao
+// painel admin com o token normal. `notice` (opcional) é exibido após o reload.
+function exitImpersonation(notice) {
+  localStorage.removeItem('lg_imp_token');
+  localStorage.removeItem('lg_imp_user');
+  if (notice) sessionStorage.setItem('_lg_imp_notice', notice);
+  location.hash = '#/admin-users';
+  location.reload();
+}
 
 // ── API Request ───────────────────────────────────────────────────────────────
 async function _api(method, path, body) {
@@ -27,6 +53,11 @@ async function _api(method, path, body) {
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && !path.startsWith('/auth/')) {
+    if (_store.isImpersonating) {
+      // Token de impersonação expirou (2h): volta ao painel admin com o token normal.
+      exitImpersonation('Sessão de visualização expirada. Você voltou ao painel admin.');
+      throw Object.assign(new Error('Unauthorized'), { response: { message: 'Sessão de visualização expirada' } });
+    }
     _store.clear();
     showAuthScreen();
     throw Object.assign(new Error('Unauthorized'), { response: { message: 'Sessão expirada' } });
