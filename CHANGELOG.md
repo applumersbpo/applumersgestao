@@ -10,6 +10,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 ### Adicionado
 - **Acesso de admin/superadmin à conta do usuário ("Ver como usuário"), somente leitura e com auditoria**: admin e super_admin podem abrir a conta de qualquer usuário e navegar com a mesma visão dele (dashboard, receitas, despesas etc.) sem poder alterar nada. Botões "Acessar conta" na lista e no perfil do usuário (página Admin → Usuários). Arquitetura: o backend emite um token de impersonação dedicado (`POST /api/admin/impersonate`) com payload rebaixado (`is_admin: false`, `role: 'user'`, `imp: true`, `imp_by`/`imp_by_email`) e expiração curta de 2h — o cliente nunca envia `user_id`, o backend filtra tudo por `token.sub`. Imposição **server-side** de somente-leitura: endpoints de dados/usuário rejeitam qualquer método ≠ GET com HTTP 403, e endpoints admin bloqueiam totalmente o token de impersonação. Cada acesso é registrado na tabela `impersonation_logs` (admin, alvo, data). No frontend: banner fixo "Vendo como <usuário> — somente leitura" com botão Sair, ocultação dos controles de criar/editar/excluir/pagar e do FAB, persistência via `localStorage` (sobrevive a recarga) e retorno limpo ao painel admin (inclusive quando a sessão de 2h expira)
 
+### Melhorado
+- **Modo somente-leitura mais coerente na impersonação**: a varredura de ocultação no frontend passou a mirar uma whitelist explícita de funções de mutação (criar/editar/excluir/pagar/seleção em massa/importar/salvar), em vez de um regex genérico de verbos — assim modais de **visualização** que compartilham verbos (changelog, histórico de avaliações, histórico de mensagens) e ações de navegar/exportar permanecem disponíveis ao admin. Defesa em profundidade: `POST /api/brand` agora rejeita explicitamente o token de impersonação (`isImpersonation` → 403), em linha com os demais endpoints
+
 ### Notas
 - Cache bumped de `lumers-v35` para `lumers-v36`
 

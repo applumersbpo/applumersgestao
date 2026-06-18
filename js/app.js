@@ -119,14 +119,50 @@ const app = {
     }
   },
 
-  // Read-only UX: enquanto impersonando, oculta controles de mutação renderizados
-  // no conteúdo (criar/editar/excluir/pagar/seleção em massa). O backend já rejeita;
-  // isto evita oferecer a ação. Varredura única por onclick de verbos de mutação.
+  // Lista explícita das funções de MUTAÇÃO acionadas via onclick nas páginas do
+  // usuário (criar/editar/excluir/pagar/seleção em massa/importar). Mirar nomes
+  // conhecidos — em vez de um regex genérico de verbos — evita ocultar modais de
+  // VISUALIZAÇÃO que compartilham verbos (ex.: openChangelogModal, openValuationsModal,
+  // openMsgHistoryModal) e preserva navegação/exportação no modo somente-leitura.
+  // O backend continua sendo a fonte de verdade (já rejeita o token de impersonação);
+  // isto é apenas UX coerente: não oferecer a ação.
+  _IMP_MUTATION_HANDLERS: [
+    // Abrir modais de criação/edição ("Novo/Editar X")
+    'openExpenseModal', 'openIncomeModal', 'openAccountModal', 'openBankModal',
+    'openCategoryModal', 'openGoalModal', 'openRevenueGoalModal', 'openInvestmentModal',
+    'openInvTxModal', 'openAssetModal', 'openInstallmentModal', 'openRecurringModal',
+    'openBillModal', 'openDailyModal', 'openTransactionModal',
+    // Atualizar (modal dedicado de mutação → save)
+    'openUpdateGoalModal', 'openUpdatePriceModal', 'updateGoalAmount',
+    'editGoal', 'editInstallment',
+    // Excluir
+    'deleteAccount', 'deleteAsset', 'deleteGoal', 'deleteInstallment', 'deleteInvestment',
+    'confirmDeleteAccount',
+    // Pagar / desfazer pagamento
+    'payInstallment', 'unpayInstallment',
+    // Ações em massa (e entrar no modo de seleção em massa, precursor da mutação)
+    'bulkAccDelete', 'bulkBanksDelete', 'bulkBanksPublish', 'bulkCatDelete',
+    'bulkExpenseDelete', 'bulkExpensePay', 'bulkGoalsDelete', 'bulkIncomeDelete',
+    'bulkIncomeReceive', 'toggleAccBulk', 'toggleBanksBulk', 'toggleCatBulk',
+    'toggleExpenseBulk', 'toggleGoalsBulk', 'toggleIncomeBulk',
+    // Adição rápida / importação
+    'quickAddCategory', 'addAllSuggestions', 'confirmImport', 'confirmJsonImport',
+    // Salvar (botões inline em #content — ex.: Configurações: perfil/telefone/senha)
+    'saveAccount', 'saveAsset', 'saveBank', 'saveBill', 'saveCategory', 'saveDaily',
+    'saveExpense', 'saveGoal', 'saveIncome', 'saveInstallment', 'saveInvTx',
+    'saveInvestment', 'saveTransaction', 'saveRecurring', 'saveValuation',
+    'saveUpdatePrice', 'saveProfileName', 'savePhone', 'savePassword', 'saveQuickAdd',
+  ],
+
+  // Read-only UX: enquanto impersonando, oculta SOMENTE os gatilhos de mutação
+  // conhecidos (whitelist acima). Visualizar/navegar/exportar continuam disponíveis.
   _applyImpersonationReadOnly() {
     if (!_store.isImpersonating) return;
     const content = document.getElementById('content');
     if (!content) return;
-    const MUT = /\b(open\w*Modal|openQuickAdd|openPayDateModal|save\w*|delete\w*|edit\w*|bulk\w*|pay\w*|markPaid|togglePaid|toggle\w*Bulk|add\w*|create\w*|remove\w*|new\w*)\s*\(/;
+    // Casa "handler(" para qualquer função de mutação conhecida, mesmo quando o
+    // onclick encadeia/embrulha a chamada (ex.: "if(confirm(...)) deleteGoal(id)").
+    const MUT = new RegExp('\\b(' + this._IMP_MUTATION_HANDLERS.join('|') + ')\\s*\\(');
     content.querySelectorAll('[onclick]').forEach(el => {
       if (MUT.test(el.getAttribute('onclick') || '')) el.style.display = 'none';
     });
