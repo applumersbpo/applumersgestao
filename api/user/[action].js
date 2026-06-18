@@ -1,5 +1,5 @@
 import { getDb, initDb, rowsToObjects } from '../_lib/db.js';
-import { requireAuth, cors } from '../_lib/auth.js';
+import { requireAuth, cors, isImpersonation } from '../_lib/auth.js';
 import bcrypt from 'bcryptjs';
 
 export default async function handler(req, res) {
@@ -9,6 +9,12 @@ export default async function handler(req, res) {
   try {
     await initDb();
     const user = await requireAuth(req);
+
+    // Read-only: token de impersonação não altera o perfil/senha/conta do alvo.
+    if (isImpersonation(user) && req.method !== 'GET') {
+      return res.status(403).json({ error: 'Acesso somente leitura: visualização de conta de usuário não permite alterações.' });
+    }
+
     const { action } = req.query;
     const db = getDb();
 

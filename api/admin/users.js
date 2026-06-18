@@ -1,5 +1,5 @@
 import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from '../_lib/db.js';
-import { requireAuth, cors } from '../_lib/auth.js';
+import { requireAuth, cors, isImpersonation } from '../_lib/auth.js';
 import {
   evoBase, resolveKey, headers as evoHdrs, normalizeStatus, parseEvoError,
   connectionState, connectQr, deleteInstance, setSettings, setWebhook,
@@ -22,6 +22,8 @@ export default async function handler(req, res) {
   try {
     await initDb();
     const user = await requireAuth(req);
+    // Um token de impersonação nunca acessa área admin.
+    if (isImpersonation(user)) return res.status(403).json({ error: 'Forbidden' });
     if (!user.is_admin) return res.status(403).json({ error: 'Forbidden' });
 
     const db = getDb();

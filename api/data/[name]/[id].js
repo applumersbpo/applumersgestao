@@ -1,5 +1,5 @@
 import { getDb, initDb, rowsToObjects } from '../../_lib/db.js';
-import { requireAuth, cors } from '../../_lib/auth.js';
+import { requireAuth, cors, isImpersonation } from '../../_lib/auth.js';
 
 const ALLOWED = ['categories', 'templates', 'transactions', 'settings', 'installments', 'goals', 'accounts', 'banks'];
 
@@ -24,6 +24,12 @@ export default async function handler(req, res) {
     if (!ALLOWED.includes(name)) return res.status(404).json({ error: 'Collection not found' });
 
     const user = await requireAuth(req);
+
+    // Read-only: token de impersonação só permite GET (visualização da conta do alvo).
+    if (isImpersonation(user) && req.method !== 'GET') {
+      return res.status(403).json({ error: 'Acesso somente leitura: visualização de conta de usuário não permite alterações.' });
+    }
+
     const db = getDb();
 
     if (req.method === 'GET') {
