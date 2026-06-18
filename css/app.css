@@ -1376,6 +1376,27 @@ body.impersonating .main    { padding-top: 40px; }
 /* Read-only: esconde o FAB de lançamento rápido durante a impersonação */
 body.impersonating #fab { display: none !important; }
 
+/* Read-only: oculta os botões de ação (mutação) das listas durante a impersonação.
+   Esses botões usam data-action + listener delegado, então a varredura de onclick
+   em js/app.js NÃO os alcança — ficavam visíveis e tomavam 403 ao clicar.
+   Escopado por lista (não global) porque em transactions.js a .t-actions hospeda o
+   VALOR da transação inline (controle de leitura), que NÃO deve ser ocultado.
+   !important é necessário porque algumas .t-actions usam style="display:flex" inline. */
+body.impersonating #expenses-list .t-actions,
+body.impersonating #income-list .t-actions,
+body.impersonating #daily-list .t-actions,
+body.impersonating #bills-list .t-actions,
+body.impersonating #banks-list .t-actions,
+body.impersonating #accounts-list .t-actions,
+body.impersonating #cat-list .t-actions,
+body.impersonating #cat-list-income .t-actions,
+body.impersonating #recurring-expenses-list .t-actions,
+body.impersonating #recurring-incomes-list .t-actions { display: none !important; }
+
+/* Read-only: oculta a seleção em massa (bulk) — também é mutação */
+body.impersonating #bulk-bar,
+body.impersonating .bulk-cb-wrap { display: none !important; }
+
 /* ── Insight / Alert Banner ── */
 .insight-card {
   display: flex;

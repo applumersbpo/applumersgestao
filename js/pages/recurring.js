@@ -27,7 +27,7 @@ async function renderRecurring() {
       <div class="card">
         <div class="card-title">Despesas Recorrentes (${expenses.length})</div>
         ${expenses.length === 0 ? '<div class="empty-state" style="padding:24px"><p>Nenhuma despesa recorrente</p></div>' : `
-        <div style="display:flex;flex-direction:column;gap:1px;background:var(--border);border-radius:8px;overflow:hidden;margin-top:12px">
+        <div style="display:flex;flex-direction:column;gap:1px;background:var(--border);border-radius:8px;overflow:hidden;margin-top:12px" id="recurring-expenses-list">
           ${expenses.map(t => recurringRow(t, catsMap)).join('')}
         </div>`}
       </div>
@@ -35,7 +35,7 @@ async function renderRecurring() {
       <div class="card">
         <div class="card-title">Receitas Recorrentes (${incomes.length})</div>
         ${incomes.length === 0 ? '<div class="empty-state" style="padding:24px"><p>Nenhuma receita recorrente</p></div>' : `
-        <div style="display:flex;flex-direction:column;gap:1px;background:var(--border);border-radius:8px;overflow:hidden;margin-top:12px">
+        <div style="display:flex;flex-direction:column;gap:1px;background:var(--border);border-radius:8px;overflow:hidden;margin-top:12px" id="recurring-incomes-list">
           ${incomes.map(t => recurringRow(t, catsMap)).join('')}
         </div>`}
       </div>
