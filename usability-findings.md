@@ -63,20 +63,22 @@ Escopo desta rodada: integração Evolution API.
 
 Escopo: revisão estática da feature "regime de caixa / pago-recebido" (commits f423d96, 374a6f8, c1f1f42, 0fed961).
 
-## F-208 | categoria: funcional | severidade: média | status: corrigido
+## F-208 | categoria: funcional | severidade: média | status: verificado
 - Tela: js/pages/expenses.js:138-148 ; js/pages/income.js:132-146
 - Bug: ao marcar Pago/Recebido pelo modal `openPayDateModal` (ou ao "Desfazer"), o callback atualiza só o cache (`_expCache.txs`/`_incCache.txs`) e chama `_expFilterRender()`/`_incFilterRender()`, que re-renderizam APENAS a `<div id="expenses-list">`/`#income-list`. Os cards de resumo no topo (Total/Pago/A Pagar e Receita/Recebido/A Receber) são calculados só em `renderExpenses`/`renderIncome` e NÃO são recomputados.
 - Observado: após pagar/receber ou desfazer um item, os totais "Pago"/"A Pagar" e "Recebido"/"A Receber" ficam desatualizados (errados) até o usuário trocar de mês ou recarregar. As ações em massa (`bulkExpensePay`/`bulkIncomeReceive`) chamam `app.render()` (re-render completo) e não têm o problema — inconsistência entre os dois caminhos.
 - Esperado: após a ação individual, os cards de resumo refletirem os novos totais (ex.: re-render completo da página, como nas ações em massa).
 - (resolvedor) Correção: o callback `onDone` do `openPayDateModal` (pay/receive) e os handlers `unpay`/`unreceive` agora chamam `renderExpenses(_expCache.month,_expCache.year)` / `renderIncome(_incCache.month,_incCache.year)` em vez de atualizar só o cache + `_expFilterRender()`/`_incFilterRender()`, recomputando os cards de resumo. Toast mantido. Arquivos: js/pages/expenses.js, js/pages/income.js (commit local desta rodada). Validado com `node --check`.
+- (reviewer F-2XX, re-revisão estática commits d9ec0b2/6919e75) VERIFICADO: expenses.js:140 (pay onDone) e :146 (unpay) chamam `renderExpenses(_expCache.month,_expCache.year)`; income.js:136 (receive onDone) e :143 (unreceive) chamam `renderIncome(_incCache.month,_incCache.year)`. `_expCache`/`_incCache` são módulo-scope (decl. expenses.js:1 / income.js:1; `.month`/`.year` setados em expenses.js:12 / income.js:11) — sem ReferenceError nem variável fora de escopo. renderExpenses/renderIncome recomputam total/pago/a-pagar (e recebido/a-receber) a cada chamada. Sem dupla renderização (uma render por ação), sem acúmulo de listener (innerHTML substitui o nó da lista e re-bind via bindExpenseActions/bindIncomeActions), toast preservado. `node --check` OK nos dois arquivos.
 
-## F-209 | categoria: funcional | severidade: média | status: corrigido
+## F-209 | categoria: funcional | severidade: média | status: verificado
 - Tela: js/utils.js:43-45 (usada em expenses.js:245,376 ; income.js:348)
 - Bug: `today()` retorna `new Date().toISOString().split('T')[0]`, que é a data em UTC. No fuso BRT (UTC-3), das 21:00 às 23:59 locais, `today()` já retorna o DIA SEGUINTE.
 - Observado: a validação "data não pode ser > hoje" (`dateVal > today()`) e os atributos `max`/`value` dos inputs de data passam a aceitar/sugerir a data de "amanhã" local nessa janela. Pior: o default de `cash_date`/`paid_date` (= `today()`) pode cair no 1º dia do mês seguinte quando a ação ocorre na noite do último dia do mês → o lançamento é alocado no mês errado no regime de CAIXA (reports.js `cashMonth`/`cashYear`), justamente o que a feature pretende medir.
 - Esperado: usar data local (ex.: derivar Y-M-D do horário local, não UTC) para `today()`, validação e defaults.
 - Nota: a comparação string ISO `data > today()` em si está correta lexicograficamente; o problema é o valor de `today()`, não o operador.
 - (resolvedor) Correção: `today()` em js/utils.js reescrita para retornar a DATA LOCAL — `const d=new Date(); const off=d.getTimezoneOffset()*60000; return new Date(d.getTime()-off).toISOString().split('T')[0];` — mantendo a assinatura ('YYYY-MM-DD'). Melhoria global correta: validação de data futura, defaults de `cash_date`/`paid_date` e alocação de mês no regime de caixa passam a usar o dia local. Arquivo: js/utils.js (commit local desta rodada). Validado com `node --check`.
+- (reviewer F-2XX, re-revisão estática) VERIFICADO: js/utils.js:43-47 com a forma exata esperada. `getTimezoneOffset()*60000` desloca o epoch de modo que `.toISOString()` leia o relógio LOCAL; em BRT (UTC-3) o retorno é o `YYYY-MM-DD` local correto. Assinatura/formato inalterados (sem args, string 'YYYY-MM-DD'). Usos a jusante intactos: `isOverdue` (comparação string), `diasAteVencer` (`Date.parse` de YYYY-MM-DD — parse UTC-meia-noite consistente nos dois operandos, diferença não afetada) e defaults `max`/`value` dos inputs. Nenhum uso quebra. `node --check js/utils.js` OK.
 
 ## F-210 | categoria: funcional | severidade: baixa | status: aberto
 - Tela: js/pages/expenses.js:384 ; js/pages/income.js:356 ; js/pages/reports.js:29
@@ -88,11 +90,12 @@ Escopo: revisão estática da feature "regime de caixa / pago-recebido" (commits
 - Bug: `openPayDateModal` é DEFINIDA em expenses.js (carregado na linha 325) e USADA em income.js (carregado ANTES, linha 321). `clearUpcomingCache` (notifications.js, linha 328) idem.
 - Observado: em runtime NÃO há ReferenceError, pois `openPayDateModal` só é invocada dentro do handler de clique (`bindIncomeActions`), executado bem depois de todos os `<script>` carregarem — ambas as funções já estão no escopo global. Não é bug funcional na execução normal. Risco residual: se expenses.js falhar ao carregar (rede), "Receber" na tela de Receitas lança ReferenceError. Acoplamento frágil — função compartilhada deveria viver em utils.js. Severidade baixa.
 
-## F-212 | categoria: consistência | severidade: baixa | status: corrigido
+## F-212 | categoria: consistência | severidade: baixa | status: verificado
 - Tela: js/pages/income.js:239 vs js/pages/expenses.js:302
 - Bug: o input "Data de vencimento" tem default vazio em receita (`inc-cash` value `data?.cash_date || data?.paid_date || ''`) e default `today()` em despesa (`exp-cash` ... `|| today()`).
 - Observado: sem quebra funcional — em `saveIncome` o `due = cash_date || regDate` cai para `regDate` (= `inc-date` oculto = hoje) e `month/year` vêm de `competence_date` (default hoje). Apenas inconsistência de UX/dados entre os dois fluxos. Baixa.
 - (resolvedor) Correção: default do campo `inc-cash` alinhado ao de despesa — `value="${data?.cash_date || data?.paid_date || today()}"`. Só o default mudou; a regra de month/year (via `competence_date`) permanece intacta. Arquivo: js/pages/income.js (commit local desta rodada). Validado com `node --check`.
+- (reviewer F-2XX, re-revisão estática) VERIFICADO: income.js:237 com `value="${data?.cash_date || data?.paid_date || today()}"` (alinhado a exp-cash em expenses.js:300). Sem regressão: em `saveIncome` (income.js:332) `month/year` continuam derivados de `competence_date || due` — `inc-cash` segue alimentando apenas `due_date`. `node --check js/pages/income.js` OK.
 
 ## F-213 | categoria: funcional | severidade: baixa | status: aberto
 - Tela: js/pages/reports.js:65,71 (e export 583-586)
