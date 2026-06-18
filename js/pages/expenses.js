@@ -210,6 +210,42 @@ function _expTogglePaid() {
 
 // openPayDateModal foi movida para js/utils.js (carregado antes) — ver F-211.
 
+function _expToggleParcel() {
+  const cb = document.getElementById('exp-parcel-cb');
+  const block = document.getElementById('exp-parcel-block');
+  const amtLabel = document.getElementById('exp-amount-label');
+  if (!cb || !block) return;
+  block.style.display = cb.checked ? 'block' : 'none';
+  if (amtLabel) amtLabel.textContent = cb.checked ? 'Valor da parcela (R$)' : 'Valor (R$)';
+  if (cb.checked) {
+    // Pre-populate due_day from the vencimento date field
+    const dueDate = document.getElementById('exp-cash')?.value || '';
+    const dayInput = document.getElementById('exp-parcel-day');
+    if (dayInput && dueDate && !dayInput.value) {
+      const day = parseInt(dueDate.split('-')[2]);
+      if (day) dayInput.value = day;
+    }
+    _expUpdateParcelHelper();
+  }
+}
+
+function _expUpdateParcelHelper() {
+  if (!document.getElementById('exp-parcel-cb')?.checked) return;
+  const amt   = parseBRNumber(document.getElementById('exp-amount')?.value || '0');
+  const count = parseInt(document.getElementById('exp-parcel-count')?.value) || 0;
+  const helper = document.getElementById('exp-parcel-helper');
+  if (!helper) return;
+  if (count >= 2 && amt > 0) {
+    helper.innerHTML = `<strong style="color:var(--primary)">${count}x de ${fmt(amt)} = ${fmt(amt * count)} total</strong>`;
+  } else if (count === 1) {
+    helper.innerHTML = `<span style="color:var(--expense)">Mínimo 2 parcelas</span>`;
+  } else if (count >= 2 && amt <= 0) {
+    helper.innerHTML = `<span style="color:var(--text-muted)">Informe o valor da parcela acima</span>`;
+  } else {
+    helper.innerHTML = '';
+  }
+}
+
 async function openExpenseModal(month, year, data = null) {
   const catsMap = await getCategoriesMap();
   const cats    = Object.values(catsMap).filter(c => c.type === 'expense')
@@ -230,10 +266,31 @@ async function openExpenseModal(month, year, data = null) {
             <input id="exp-name" class="form-control" placeholder="Ex: Pagamento funcionário, Material..." value="${data?.name || ''}">
           </div>
           <div class="form-group">
-            <label class="form-label">Valor (R$)</label>
-            <input id="exp-amount" class="form-control" type="text" inputmode="decimal" placeholder="0,00" value="${data?.amount || ''}">
+            <label id="exp-amount-label" class="form-label">Valor (R$)</label>
+            <input id="exp-amount" class="form-control" type="text" inputmode="decimal" placeholder="0,00" value="${data?.amount || ''}" oninput="_expUpdateParcelHelper()">
           </div>
           <input type="hidden" id="exp-date" value="${data?.due_date || today()}">
+
+          ${!isEdit ? `
+          <div class="form-group">
+            <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="exp-parcel-cb" onchange="_expToggleParcel()">
+              Parcelar esta compra
+            </label>
+          </div>
+          <div id="exp-parcel-block" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px 12px 4px;margin-bottom:4px;background:var(--surface-2,#f7f7f5)">
+            <div class="form-row">
+              <div class="form-group" style="flex:1">
+                <label class="form-label">Nº de parcelas</label>
+                <input id="exp-parcel-count" class="form-control" type="number" min="2" max="360" placeholder="Ex: 10" oninput="_expUpdateParcelHelper()">
+              </div>
+              <div class="form-group" style="flex:1">
+                <label class="form-label">Dia de vencimento</label>
+                <input id="exp-parcel-day" class="form-control" type="number" min="1" max="31" placeholder="1–31">
+              </div>
+            </div>
+            <div id="exp-parcel-helper" style="font-size:.82rem;min-height:20px;padding-bottom:8px"></div>
+          </div>` : ''}
 
           <div class="form-group">
             <label class="form-label">Conta</label>
@@ -316,6 +373,49 @@ async function saveExpense(id, month, year) {
   if (!amount || amount <= 0) { toast('Informe um valor válido', 'error'); return; }
   if (!cat) { toast('Informe a categoria', 'error'); return; }
   if (!date)   { toast('Informe a data', 'error'); return; }
+
+  // ── Parcel mode: create an installment record instead of a one-off expense ──
+  const isParcelMode = !id && document.getElementById('exp-parcel-cb')?.checked;
+  if (isParcelMode) {
+    const parcelCount = parseInt(document.getElementById('exp-parcel-count')?.value) || 0;
+    const parcelDay   = parseInt(document.getElementById('exp-parcel-day')?.value)   || 0;
+    if (parcelCount < 2) { toast('Informe pelo menos 2 parcelas', 'error'); return; }
+    if (isPaid && paidDateVal && paidDateVal > today()) {
+      toast('Não é possível registrar pagamento com data futura.', 'error'); return;
+    }
+    // Determine due_day: explicit field → day from vencimento date → 1
+    const cashDay    = parseInt((cash_date || today()).split('-')[2]) || 1;
+    const instDueDay = parcelDay || cashDay;
+    const instRecord = {
+      name,
+      total_amount:      amount * parcelCount,
+      installments:      parcelCount,
+      paid_installments: isPaid ? 1 : 0,
+      due_day:           instDueDay,
+      category_id:       cat,
+      account_id:        account_id || '',
+      notes,
+      start_month:       month,
+      start_year:        year,
+    };
+    const instId = await db.installments.add(instRecord);
+    await generateInstallmentTransactions(month, year);
+    if (isPaid) {
+      const paidDate = paidDateVal || today();
+      const txList = await db.transactions.filter(
+        `template_id = '${instId}' && transaction_type = 'installment' && month = ${month} && year = ${year}`
+      ).toArray();
+      if (txList.length > 0) {
+        await db.transactions.update(txList[0].id, {
+          status: 'paid', paid_date: paidDate, cash_date: paidDate, paid_amount: amount,
+        });
+      }
+    }
+    toast('Parcelamento criado!', 'success');
+    closeModal();
+    renderExpenses(month, year);
+    return;
+  }
 
   // "Data de vencimento" (campo exp-cash) é o que alimenta due_date (cálculo de "Vencido").
   const due = cash_date || date;

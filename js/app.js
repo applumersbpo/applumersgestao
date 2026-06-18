@@ -139,7 +139,7 @@ const app = {
     'deleteAccount', 'deleteAsset', 'deleteGoal', 'deleteInstallment', 'deleteInvestment',
     'confirmDeleteAccount',
     // Pagar / desfazer pagamento
-    'payInstallment', 'unpayInstallment',
+    'openPayInstallmentModal', 'unpayInstallment',
     // Ações em massa (e entrar no modo de seleção em massa, precursor da mutação)
     'bulkAccDelete', 'bulkBanksDelete', 'bulkBanksPublish', 'bulkCatDelete',
     'bulkExpenseDelete', 'bulkExpensePay', 'bulkGoalsDelete', 'bulkIncomeDelete',

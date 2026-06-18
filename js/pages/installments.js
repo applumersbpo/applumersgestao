@@ -85,7 +85,7 @@ function installmentCard(item, catsMap, tx) {
         </div>
         <div style="display:flex;gap:4px;flex-shrink:0">
           ${!done && !txPaid ? `
-          <button class="btn btn-sm btn-primary" onclick="payInstallment('${item.id}')">Pagar ${nextNum}ª</button>` : ''}
+          <button class="btn btn-sm btn-primary" onclick="openPayInstallmentModal('${item.id}')">Pagar ${nextNum}ª</button>` : ''}
           ${!done && txPaid ? `
           <button class="btn btn-sm btn-ghost" style="color:var(--text-muted)" onclick="unpayInstallment('${item.id}')">Desfazer</button>` : ''}
           <button class="btn btn-sm btn-icon btn-ghost" onclick="editInstallment('${item.id}')" title="Editar">
@@ -201,6 +201,8 @@ async function saveInstallment(id) {
     await db.installments.update(id, record);
     toast('Parcelamento atualizado!', 'success');
   } else {
+    record.start_month = _instMonth;
+    record.start_year  = _instYear;
     await db.installments.add(record);
     toast('Parcelamento criado!', 'success');
     await generateInstallmentTransactions(_instMonth, _instYear);
@@ -210,59 +212,41 @@ async function saveInstallment(id) {
   renderInstallments(_instMonth, _instYear);
 }
 
-async function payInstallment(id) {
+async function unpayInstallment(id) {
   const item = await db.installments.get(id);
   if (!item) return;
 
-  const txList = await db.transactions.filter(
-    `template_id = '${id}' && transaction_type = 'installment' && month = ${_instMonth} && year = ${_instYear}`
-  ).toArray();
+  const oldPaid = item.paid_installments || 0;
+  const newPaid = Math.max(oldPaid - 1, 0);
 
-  if (txList.length > 0) {
-    const tx = txList[0];
-    if (tx.status === 'paid') { toast('Parcela já paga neste mês', 'error'); return; }
-    await db.transactions.update(tx.id, { status: 'paid', paid_date: today() });
+  if (item.start_month && item.start_year) {
+    // Index-aware: revert ALL transactions whose parcel idx > newPaid so that
+    // paid_installments and the set of paid tx stay in sync (F-01).
+    const allTxForInst = await db.transactions.filter(
+      `template_id = '${id}' && transaction_type = 'installment'`
+    ).toArray();
+    for (const tx of allTxForInst) {
+      const idx = (tx.year - item.start_year) * 12 + (tx.month - item.start_month) + 1;
+      if (idx > newPaid) {
+        await db.transactions.update(tx.id, {
+          status: 'pending', paid_date: null, cash_date: null, paid_amount: null,
+        });
+      }
+    }
   } else {
-    const monthly = item.total_amount / (item.installments || 1);
-    const day = Math.min(item.due_day || 1, new Date(_instYear, _instMonth, 0).getDate());
-    const due = new Date(_instYear, _instMonth - 1, day);
-    await db.transactions.add({
-      template_id:      id,
-      name:             item.name,
-      category_id:      item.category_id || null,
-      transaction_type: 'installment',
-      kind:             'variable',
-      amount:           monthly,
-      due_date:         due.toISOString().split('T')[0],
-      paid_date:        today(),
-      status:           'paid',
-      month:            _instMonth,
-      year:             _instYear,
-      notes:            item.notes || '',
-    });
+    // Legacy (no start_*): only revert current month's transaction.
+    const txList = await db.transactions.filter(
+      `template_id = '${id}' && transaction_type = 'installment' && month = ${_instMonth} && year = ${_instYear}`
+    ).toArray();
+    if (txList.length > 0) {
+      await db.transactions.update(txList[0].id, {
+        status: 'pending', paid_date: null, cash_date: null, paid_amount: null,
+      });
+    }
   }
 
-  const newPaid = Math.min((item.paid_installments || 0) + 1, item.installments);
   await db.installments.update(id, { paid_installments: newPaid });
-  const done = newPaid >= item.installments;
-  toast(done ? `"${item.name}" quitado!` : `Parcela ${newPaid}/${item.installments} paga!`, 'success');
-  renderInstallments(_instMonth, _instYear);
-}
-
-async function unpayInstallment(id) {
-  const txList = await db.transactions.filter(
-    `template_id = '${id}' && transaction_type = 'installment' && month = ${_instMonth} && year = ${_instYear}`
-  ).toArray();
-  if (!txList.length) return;
-
-  const tx = txList[0];
-  await db.transactions.update(tx.id, { status: 'pending', paid_date: null });
-
-  const item = await db.installments.get(id);
-  if (item) {
-    const newPaid = Math.max((item.paid_installments || 0) - 1, 0);
-    await db.installments.update(id, { paid_installments: newPaid });
-  }
+  clearUpcomingCache && clearUpcomingCache();
   toast('Pagamento desfeito');
   renderInstallments(_instMonth, _instYear);
 }
@@ -271,5 +255,184 @@ async function deleteInstallment(id) {
   if (!confirm('Excluir este parcelamento?')) return;
   await db.installments.delete(id);
   toast('Parcelamento excluído');
+  renderInstallments(_instMonth, _instYear);
+}
+
+// ── Pay installment modal (1 / N / all) ──────────────────────────────────────
+
+async function openPayInstallmentModal(id) {
+  const item = await db.installments.get(id);
+  if (!item) return;
+
+  const total     = item.installments || 1;
+  const paid      = Math.min(item.paid_installments || 0, total);
+  const remaining = total - paid;
+  const monthly   = item.total_amount / total;
+
+  if (remaining <= 0) { toast('Parcelamento já quitado', 'info'); return; }
+
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">Pagar Parcelas</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
+        </div>
+        <div class="modal-body">
+          <div style="background:var(--surface-2,#f7f7f5);border-radius:8px;padding:12px;margin-bottom:16px">
+            <div style="font-weight:700;margin-bottom:4px">${item.name}</div>
+            <div style="font-size:.82rem;color:var(--text-muted)">
+              ${paid}/${total} pagas · ${fmt(monthly)}/mês · <strong>${remaining} restante(s)</strong>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+            <button class="btn btn-sm btn-outline" style="flex:1;min-width:100px" onclick="_instSetN(1)">
+              ${icon('check', 13)} Pagar 1ª
+            </button>
+            <button class="btn btn-sm btn-outline" style="flex:1;min-width:140px;font-size:.78rem" onclick="_instSetN(${remaining})">
+              ${icon('zap', 13)} Quitar tudo (${remaining}x — ${fmt(monthly * remaining)})
+            </button>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Quantas parcelas pagar?</label>
+              <input id="inst-pay-n" class="form-control" type="number" min="1" max="${remaining}" value="1"
+                data-monthly="${monthly}" oninput="_instUpdatePayHelper()">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Data do pagamento</label>
+              <input id="inst-pay-date" class="form-control" type="date" value="${today()}" max="${today()}">
+            </div>
+          </div>
+
+          <div id="inst-pay-helper" style="font-size:.88rem;color:var(--primary);font-weight:600;padding:4px 0 4px">
+            Total a pagar: ${fmt(monthly)}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-primary" style="background:var(--expense)" onclick="_doPayInstallmentN('${id}')">
+            ${icon('check', 15)} Confirmar Pagamento
+          </button>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+function _instSetN(n) {
+  const input = document.getElementById('inst-pay-n');
+  if (!input) return;
+  const max = parseInt(input.max) || n;
+  input.value = Math.min(n, max);
+  _instUpdatePayHelper();
+}
+
+function _instUpdatePayHelper() {
+  const input = document.getElementById('inst-pay-n');
+  if (!input) return;
+  const max     = parseInt(input.max) || 1;
+  let n         = parseInt(input.value) || 1;
+  n             = Math.max(1, Math.min(n, max));
+  input.value   = n;
+  const monthly = parseFloat(input.dataset.monthly || 0);
+  const helper  = document.getElementById('inst-pay-helper');
+  if (helper) helper.textContent = `Total a pagar: ${fmt(monthly * n)}`;
+}
+
+async function _doPayInstallmentN(id) {
+  const input     = document.getElementById('inst-pay-n');
+  const dateInput = document.getElementById('inst-pay-date');
+  if (!input || !dateInput) return;
+
+  const max     = parseInt(input.max) || 1;
+  const n       = Math.max(1, Math.min(parseInt(input.value) || 1, max));
+  const payDate = dateInput.value;
+
+  if (!payDate) { toast('Informe a data do pagamento', 'error'); return; }
+  if (payDate > today()) { toast('A data de pagamento não pode ser futura', 'error'); return; }
+
+  await payInstallmentN(id, n, payDate);
+}
+
+async function payInstallmentN(id, n, payDate) {
+  const item = await db.installments.get(id);
+  if (!item) return;
+
+  const total     = item.installments || 1;
+  const oldPaid   = item.paid_installments || 0;
+  const remaining = total - oldPaid;
+
+  if (remaining <= 0) { toast('Parcelamento já quitado', 'info'); return; }
+
+  n = Math.min(n, remaining);
+  const newPaid = oldPaid + n;
+  const monthly = item.total_amount / total;
+
+  // 1. Update installment paid count
+  await db.installments.update(id, { paid_installments: newPaid });
+
+  // 2. Handle current month's transaction (create or mark paid)
+  const currentTxList = await db.transactions.filter(
+    `template_id = '${id}' && transaction_type = 'installment' && month = ${_instMonth} && year = ${_instYear}`
+  ).toArray();
+
+  if (currentTxList.length > 0) {
+    const tx = currentTxList[0];
+    if (tx.status !== 'paid') {
+      await db.transactions.update(tx.id, {
+        status: 'paid', paid_date: payDate, cash_date: payDate, paid_amount: monthly,
+      });
+    }
+  } else {
+    const day = Math.min(item.due_day || 1, new Date(_instYear, _instMonth, 0).getDate());
+    const due = new Date(_instYear, _instMonth - 1, day);
+    // NB-04: include parcel index in name when start_* is known
+    const txIdx = (item.start_month && item.start_year)
+      ? (_instYear - item.start_year) * 12 + (_instMonth - item.start_month) + 1
+      : null;
+    await db.transactions.add({
+      template_id:      id,
+      name:             txIdx !== null ? `${item.name} (${txIdx}/${total})` : item.name,
+      category_id:      item.category_id || null,
+      account_id:       item.account_id  || '',
+      transaction_type: 'installment',
+      kind:             'variable',
+      amount:           monthly,
+      due_date:         due.toISOString().split('T')[0],
+      paid_date:        payDate,
+      cash_date:        payDate,
+      paid_amount:      monthly,
+      status:           'paid',
+      month:            _instMonth,
+      year:             _instYear,
+      notes:            item.notes || '',
+    });
+  }
+
+  // 3. Mark any already-materialized future pending transactions that are now pre-paid.
+  //    Only possible when start_month/start_year are set (index-aware installments).
+  if (n > 1 && item.start_month && item.start_year) {
+    const allTxForInst = await db.transactions.filter(
+      `template_id = '${id}' && transaction_type = 'installment'`
+    ).toArray();
+    for (const tx of allTxForInst) {
+      if (tx.month === _instMonth && tx.year === _instYear) continue; // already handled
+      if (tx.status === 'paid') continue;
+      const idx = (tx.year - item.start_year) * 12 + (tx.month - item.start_month) + 1;
+      if (idx >= 1 && idx <= newPaid) {
+        await db.transactions.update(tx.id, {
+          status: 'paid', paid_date: payDate, cash_date: payDate, paid_amount: monthly,
+        });
+      }
+    }
+  }
+
+  const done = newPaid >= total;
+  clearUpcomingCache && clearUpcomingCache();
+  toast(done ? `"${item.name}" quitado!` : `${n} parcela(s) paga(s)! (${newPaid}/${total})`, 'success');
+  closeModal();
   renderInstallments(_instMonth, _instYear);
 }

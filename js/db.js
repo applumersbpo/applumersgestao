@@ -617,24 +617,67 @@ async function generateInstallmentTransactions(month, year) {
     db.installments.toArray(),
     db.transactions.filter(`transaction_type = 'installment' && month = ${month} && year = ${year}`).toArray()
   ]);
-  const active     = allInst.filter(i => (i.paid_installments || 0) < (i.installments || 1));
-  const existingIds = new Set(existingTx.map(t => t.template_id));
-  for (const inst of active) {
-    if (existingIds.has(inst.id)) continue;
-    const monthly = inst.total_amount / (inst.installments || 1);
+
+  const existingById = {};
+  existingTx.forEach(t => { existingById[t.template_id] = t; });
+
+  for (const inst of allInst) {
+    const total = inst.installments || 1;
+    const paid  = inst.paid_installments || 0;
+    let inRange = false;
+    let asPaid  = false;
+
+    if (inst.start_month && inst.start_year) {
+      // Index-aware mode: calculate which parcel index this month represents
+      const idx = (year - inst.start_year) * 12 + (month - inst.start_month) + 1;
+      if (idx < 1 || idx > total) continue; // outside the installment's lifespan
+      inRange = true;
+      asPaid  = idx <= paid; // parcel already pre-paid → generate as paid, not pending
+    } else {
+      // Legacy fallback (no start date): only generate for active installments
+      if (paid >= total) continue;
+      inRange = true;
+      asPaid  = false;
+    }
+
+    if (!inRange) continue;
+
+    if (existingById[inst.id]) {
+      // Transaction already exists — upgrade to paid if it should be
+      const existing = existingById[inst.id];
+      if (asPaid && existing.status !== 'paid') {
+        await db.transactions.update(existing.id, {
+          status:    'paid',
+          paid_date: existing.paid_date || today(),
+          cash_date: existing.cash_date || today(),
+        });
+      }
+      continue;
+    }
+
+    const monthly = inst.total_amount / total;
     const day = Math.min(inst.due_day || 1, new Date(year, month, 0).getDate());
     const due = new Date(year, month - 1, day);
+    // NB-02: paid_date/cash_date use today() as best-available fallback when a pre-paid
+    // parcel is generated late (e.g. user navigates to a future month without passing
+    // through payInstallmentN). The real payment date is only known at pay time.
     await db.transactions.add({
       template_id:      inst.id,
-      name:             inst.name,
+      // NB-04: include parcel index in name for index-aware installments
+      name:             (inst.start_month && inst.start_year)
+                          ? `${inst.name} (${(year - inst.start_year) * 12 + (month - inst.start_month) + 1}/${total})`
+                          : inst.name,
       category_id:      inst.category_id || '',
+      account_id:       inst.account_id  || '',
       transaction_type: 'installment',
       kind:             'variable',
       amount:           monthly,
       due_date:         due.toISOString().split('T')[0],
-      paid_date:        '',
-      status:           'pending',
-      month, year, notes: inst.notes || '',
+      paid_date:        asPaid ? today() : '',
+      cash_date:        asPaid ? today() : '',
+      status:           asPaid ? 'paid' : 'pending',
+      month, year,
+      notes:            inst.notes || '',
     });
   }
 }

@@ -5,6 +5,29 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.4.0] — 2026-06-18
+
+### Adicionado
+- **Parcelamento direto no modal "Novo Gasto"**: checkbox "Parcelar esta compra" transforma o lançamento avulso em um registro de parcelamento. O label do campo Valor muda dinamicamente para "Valor da parcela (R$)" e um helper em tempo real exibe o resumo (ex: "10x de R$500,00 = R$5.000,00 total"). Campos adicionais: nº de parcelas (mín 2, máx 360) e dia de vencimento (auto-preenchido a partir da data de vencimento do gasto). Ao marcar "Pago", a 1ª parcela já é registrada como quitada. Valida categoria obrigatória, parcelas ≥ 2 e valor > 0.
+- **Modal de pagamento de parcelas com múltiplas opções** (`openPayInstallmentModal`): substituiu o botão "Pagar Nª" nos cards de parcelamento. O modal exibe parcelas restantes, valor mensal, atalhos "Pagar 1ª" e "Quitar tudo (N parcelas — R$X)", campo numérico editável para quantas parcelas pagar, campo de data (padrão hoje, não permite data futura), e total atualizado em tempo real.
+- **Pagamento de N parcelas de uma vez** (`payInstallmentN`): paga N parcelas simultaneamente. Atualiza `paid_installments` no registro, marca a transação do mês corrente como paga, e — para parcelamentos com `start_month`/`start_year` — retroativamente marca como pagas todas as transações já materializadas em meses futuros que se tornaram pré-pagas.
+
+### Corrigido
+- **Double-count em pré-pagamento (consistência crítica)**: `generateInstallmentTransactions` agora é *index-aware*. Para parcelamentos criados com `start_month`/`start_year`, calcula o índice da parcela para o mês em questão (`idx = meses desde o start + 1`). Se `idx > total`, o mês está fora do ciclo e não gera nada. Se `idx ≤ paid_installments`, a parcela foi pré-paga e a transação é gerada/atualizada como `status: 'paid'` — não como pendente — evitando que meses futuros inflem o "A pagar". Parcelamentos legados sem `start_month`/`start_year` mantêm o comportamento anterior (fallback seguro).
+
+### Corrigido (pós-QA)
+- **F-01 — Desfazer parcela inconsistente com pagamento em lote**: `unpayInstallment` agora reverte de forma consistente. Para parcelamentos com `start_month`/`start_year`, varre todas as transações do parcelamento e reverte para `pending` (status/paid_date/cash_date/paid_amount) qualquer parcela cujo índice seja > `newPaid` — garantindo que o número de tx pagas coincida exatamente com `paid_installments`. Parcelamentos legados mantêm o comportamento anterior (só reverte o mês corrente). `clearUpcomingCache` é chamado ao final.
+- **F-02 — account_id não propagado para parcelas**: (1) `saveExpense` inclui `account_id` no `instRecord`; (2) `generateInstallmentTransactions` propaga `account_id: inst.account_id || ''` nas transações geradas; (3) `payInstallmentN` inclui `account_id` ao criar transação avulsa (mês sem tx pré-gerada).
+- **F-03 — Off-by-one em helper de parcela**: condição `count > 2 && amt <= 0` corrigida para `count >= 2 && amt <= 0`, cobrindo o caso de 2 parcelas.
+- **NB-01 — `payInstallment` (dead code)**: verificado que não há nenhuma referência externa; função removida. Referência obsoleta no array `_IMP_MUTATION_HANDLERS` (whitelist de impersonação) também removida. **Regressão corrigida**: `openPayInstallmentModal` adicionado à whitelist de impersonação read-only (substitui o antigo `payInstallment` como gatilho do botão "Pagar" nos cards de parcelamento).
+- **NB-02 — Comentário sobre paid_date fallback em geração tardia**: documentado em `generateInstallmentTransactions` que `today()` é usado como melhor fallback disponível quando a parcela pré-paga é gerada tardiamente (sem passar pelo sweep de `payInstallmentN`).
+- **NB-04 — Nº da parcela no nome da transação**: `generateInstallmentTransactions` e `payInstallmentN` (tx avulsa) agora incluem `(idx/total)` no campo `name` das transações geradas para parcelamentos com `start_month`/`start_year`; parcelamentos legados mantêm o nome original.
+
+### Notas
+- Cache bumped de `lumers-v37` para `lumers-v38` (invalidar cache para distribuir fixes de db.js e installments.js)
+
+---
+
 ## [v1.3.0] — 2026-06-18
 
 ### Adicionado
