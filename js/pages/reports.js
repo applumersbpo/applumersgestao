@@ -84,7 +84,8 @@ async function renderReports(month, year) {
   });
 
   // Cache for export (inclui ambos os regimes)
-  _reportData = { month, year, allTransactions, catsMap, accounts, monthlyData, cashMonthly };
+  // cashFlowData traz o saldo acumulado (cumulative) usado pelo gráfico de Fluxo de Caixa.
+  _reportData = { month, year, allTransactions, catsMap, accounts, monthlyData, cashMonthly, cashFlowData };
   // Cache for Competência × Caixa tab
   _compCaixaData = { year, competencia: monthlyData, caixa: cashMonthly };
   _compCaixaRegime = 'competencia';
@@ -250,12 +251,9 @@ async function renderReports(month, year) {
   renderCompCaixaView(_compCaixaRegime);
 }
 
-function renderMainChart(data, currentMonth) {
-  if (reportChart) { reportChart.destroy(); reportChart = null; }
-  const ctx = document.getElementById('main-chart')?.getContext('2d');
-  if (!ctx) return;
-
-  reportChart = new Chart(ctx, {
+// ── Builders de config (reaproveitados pela renderização visível e offscreen) ──
+function buildMainChartConfig(data) {
+  return {
     type: 'bar',
     data: {
       labels: MONTHS.map(m => m.substring(0, 3)),
@@ -307,15 +305,11 @@ function renderMainChart(data, currentMonth) {
         }
       }
     }
-  });
+  };
 }
 
-function renderCatChart(entries, total) {
-  if (catChart) { catChart.destroy(); catChart = null; }
-  const ctx = document.getElementById('cat-chart')?.getContext('2d');
-  if (!ctx || entries.length === 0) return;
-
-  catChart = new Chart(ctx, {
+function buildCatChartConfig(entries, total) {
+  return {
     type: 'doughnut',
     data: {
       labels: entries.map(e => e.cat ? e.cat.name : 'Outros'),
@@ -347,17 +341,12 @@ function renderCatChart(entries, total) {
       },
       cutout: '68%'
     }
-  });
+  };
 }
 
-function renderCashChart(data, currentMonth) {
-  if (cashChart) { cashChart.destroy(); cashChart = null; }
-  const ctx = document.getElementById('cash-chart')?.getContext('2d');
-  if (!ctx) return;
-
+function buildCashChartConfig(data) {
   const colors = data.map(d => d.cumulative >= 0 ? 'rgba(58,90,64,.7)' : 'rgba(201,90,71,.7)');
-
-  cashChart = new Chart(ctx, {
+  return {
     type: 'bar',
     data: {
       labels: MONTHS.map(m => m.substring(0, 3)),
@@ -425,7 +414,28 @@ function renderCashChart(data, currentMonth) {
         }
       }
     }
-  });
+  };
+}
+
+function renderMainChart(data, currentMonth) {
+  if (reportChart) { reportChart.destroy(); reportChart = null; }
+  const ctx = document.getElementById('main-chart')?.getContext('2d');
+  if (!ctx) return;
+  reportChart = new Chart(ctx, buildMainChartConfig(data));
+}
+
+function renderCatChart(entries, total) {
+  if (catChart) { catChart.destroy(); catChart = null; }
+  const ctx = document.getElementById('cat-chart')?.getContext('2d');
+  if (!ctx || entries.length === 0) return;
+  catChart = new Chart(ctx, buildCatChartConfig(entries, total));
+}
+
+function renderCashChart(data, currentMonth) {
+  if (cashChart) { cashChart.destroy(); cashChart = null; }
+  const ctx = document.getElementById('cash-chart')?.getContext('2d');
+  if (!ctx) return;
+  cashChart = new Chart(ctx, buildCashChartConfig(data));
 }
 
 function switchReportTab(tab) {
@@ -483,12 +493,8 @@ function renderCompCaixaView(regime) {
   renderCompCaixaChart(data);
 }
 
-function renderCompCaixaChart(data) {
-  if (compCaixaChart) { compCaixaChart.destroy(); compCaixaChart = null; }
-  const ctx = document.getElementById('compcaixa-chart')?.getContext('2d');
-  if (!ctx) return;
-
-  compCaixaChart = new Chart(ctx, {
+function buildCompCaixaChartConfig(data) {
+  return {
     type: 'bar',
     data: {
       labels: MONTHS.map(m => m.substring(0, 3)),
@@ -556,12 +562,60 @@ function renderCompCaixaChart(data) {
         }
       }
     }
-  });
+  };
+}
+
+function renderCompCaixaChart(data) {
+  if (compCaixaChart) { compCaixaChart.destroy(); compCaixaChart = null; }
+  const ctx = document.getElementById('compcaixa-chart')?.getContext('2d');
+  if (!ctx) return;
+  compCaixaChart = new Chart(ctx, buildCompCaixaChartConfig(data));
 }
 
 // ── Excel Export ──────────────────────────────────────────────────────────────
 
-async function exportReportExcel(regime = 'competencia') {
+// Renderiza gráficos OFFSCREEN com tamanho de pixel explícito para o export.
+// F-214: os Chart.js visíveis das abas inativas ficam 0×0 (display:none) e
+// toBase64Image() retorna PNG em branco. Aqui cada gráfico é re-instanciado num
+// canvas com dimensões reais (fora da viewport), garantindo PNG correto
+// independentemente da aba ativa. specs: [{ config, label }].
+function renderChartsOffscreen(specs) {
+  const container = document.createElement('div');
+  // Fora da tela, mas COM dimensões reais (não display:none) p/ o canvas renderizar.
+  container.style.cssText = 'position:absolute;left:-99999px;top:0;width:960px;height:600px;';
+  document.body.appendChild(container);
+  const results = [];
+  try {
+    specs.forEach(spec => {
+      let chart;
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 960;
+        canvas.height = 600;
+        container.appendChild(canvas);
+        const cfg = spec.config;
+        cfg.options = cfg.options || {};
+        cfg.options.animation = false;     // sem animação → render síncrono completo
+        cfg.options.responsive = false;    // usa o tamanho fixo do canvas
+        cfg.options.maintainAspectRatio = false;
+        cfg.options.devicePixelRatio = 2;  // nitidez (backing store 1920×1200)
+        chart = new Chart(canvas.getContext('2d'), cfg);
+        const dataUrl = chart.toBase64Image('image/png', 1.0);
+        if (dataUrl) results.push({ dataUrl, label: spec.label });
+      } catch (e) {
+        // Mantém o comportamento gracioso: pula este gráfico e segue.
+        console.warn('Falha ao renderizar gráfico offscreen:', spec.label, e);
+      } finally {
+        if (chart) chart.destroy();
+      }
+    });
+  } finally {
+    container.remove();
+  }
+  return results;
+}
+
+async function exportReportExcel(regime = 'competencia', opts = {}) {
   if (!_reportData) {
     toast('Dados não disponíveis para exportar', 'error');
     return;
@@ -662,6 +716,20 @@ async function exportReportExcel(regime = 'competencia') {
   };
   const incCats = aggregate(incTxs);
   const expCats = aggregate(expTxs);
+
+  // Entradas (com cor) para o gráfico de Despesas por Categoria — regime-aware,
+  // mesma estrutura usada pelo gráfico visível ({ cat, val }).
+  const buildCatEntries = (txs) => {
+    const totals = {};
+    txs.forEach(t => {
+      const key = t.category_id || 'none';
+      totals[key] = (totals[key] || 0) + valueOf(t);
+    });
+    return Object.entries(totals)
+      .map(([id, val]) => ({ cat: catsMap[id], val }))
+      .sort((a, b) => b.val - a.val);
+  };
+  const exportCatEntries = buildCatEntries(expTxs);
 
   // ── Estilos / constantes ──────────────────────────────────────────────────────
   const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF243D28' } };
@@ -774,20 +842,31 @@ async function exportReportExcel(regime = 'competencia') {
     wsResumo.getRow(5).height = 20;
     wsResumo.getRow(6).height = 26;
 
-    // Gráficos embutidos (somente os que existirem)
-    const charts = [
-      { inst: reportChart,     label: 'Evolução: Receita × Despesa × Saldo' },
-      { inst: catChart,        label: 'Despesas por Categoria' },
-      { inst: cashChart,       label: 'Fluxo de Caixa' },
-      { inst: compCaixaChart,  label: 'Competência × Caixa' },
-    ].filter(c => c.inst && typeof c.inst.toBase64Image === 'function');
+    // Gráficos embutidos — renderizados OFFSCREEN (F-214) para sairem corretos
+    // independentemente da aba ativa. Seleção COERENTE com o regime exportado:
+    //  • compcaixa  → Competência × Caixa (regime selecionado) + Despesas por Categoria
+    //  • caixa      → Fluxo de Caixa + Despesas por Categoria
+    //  • competência → Evolução (Receita × Despesa) + Despesas por Categoria
+    const chartSpecs = [];
+    if (opts.compCaixa) {
+      const ccData = (_compCaixaData && _compCaixaData[regime]) || [];
+      if (ccData.length) chartSpecs.push({ config: buildCompCaixaChartConfig(ccData), label: `Competência × Caixa (${regimeLabel})` });
+    } else if (isCaixa) {
+      const cf = _reportData.cashFlowData || _reportData.cashMonthly || [];
+      if (cf.length) chartSpecs.push({ config: buildCashChartConfig(cf), label: 'Fluxo de Caixa (caixa — realizado)' });
+    } else {
+      const md = _reportData.monthlyData || [];
+      if (md.length) chartSpecs.push({ config: buildMainChartConfig(md), label: 'Evolução: Receita × Despesa (competência)' });
+    }
+    if (exportCatEntries.length) {
+      chartSpecs.push({ config: buildCatChartConfig(exportCatEntries, totalExp), label: `Despesas por Categoria — ${periodLabel}` });
+    }
+
+    const chartImages = (typeof Chart !== 'undefined') ? renderChartsOffscreen(chartSpecs) : [];
 
     const IMG_W = 480, IMG_H = 300;
-    charts.forEach((c, idx) => {
-      let dataUrl;
-      try { dataUrl = c.inst.toBase64Image(); } catch (e) { return; }
-      if (!dataUrl) return;
-      const imgId = wb.addImage({ base64: dataUrl, extension: 'png' });
+    chartImages.forEach((c, idx) => {
+      const imgId = wb.addImage({ base64: c.dataUrl, extension: 'png' });
       const left = (idx % 2) === 0;
       const colIdx0 = left ? 1 : 9;                       // 0-based: B ou J
       const blockRow0 = 8 + Math.floor(idx / 2) * 18;     // 0-based linha do rótulo
@@ -797,8 +876,8 @@ async function exportReportExcel(regime = 'competencia') {
       wsResumo.addImage(imgId, { tl: { col: colIdx0, row: blockRow0 + 1 }, ext: { width: IMG_W, height: IMG_H } });
     });
 
-    if (!charts.length) {
-      wsResumo.getCell('B9').value = 'Gráficos indisponíveis (abra as abas de relatório antes de exportar para incluí-los).';
+    if (!chartImages.length) {
+      wsResumo.getCell('B9').value = 'Gráficos indisponíveis para este período.';
       wsResumo.getCell('B9').font = { italic: true, color: { argb: 'FF807B6C' } };
     }
 
@@ -878,5 +957,5 @@ async function exportReportExcel(regime = 'competencia') {
 }
 
 function exportCompCaixa() {
-  exportReportExcel(_compCaixaRegime);
+  exportReportExcel(_compCaixaRegime, { compCaixa: true });
 }
