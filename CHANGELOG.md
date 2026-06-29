@@ -5,6 +5,22 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.6.0] — 2026-06-29
+
+### Adicionado
+- **Aba "Resumo" com gráficos embutidos** na planilha de exportação (agora a 1ª página do workbook): título com nome do cliente/regime/período, cartões de KPI (Total de Receitas, Total de Despesas e Saldo do Mês) e os gráficos do relatório (Evolução, Despesas por Categoria, Fluxo de Caixa, Competência × Caixa) capturados das instâncias Chart.js via `toBase64Image()` e inseridos como imagem PNG (`worksheet.addImage`). Se uma instância de gráfico não existir (aba não renderizada), a planilha é gerada sem aquela imagem, sem quebrar.
+- **Aba "Por Categoria"** consolidando total por categoria, separando **Receitas** e **Despesas**, cada seção com colunas Categoria, Total (R$), % do total e nº de Lançamentos, ordenadas por valor e com linha de total.
+
+### Melhorado
+- **Visual profissional da planilha exportada**: migração da geração de XLSX (SheetJS, sem suporte a estilo/imagem) para **ExcelJS**. Cabeçalhos na cor verde do sidebar (`#243D28`) com texto branco em negrito, primeira linha congelada (freeze), linhas zebradas em verde claro, bordas finas, colunas com **auto-ajuste de largura** pela maior célula (mín. 12 / máx. 40) e valores monetários alinhados à direita com formato `R$ #,##0.00`.
+- **Ordem das abas** padronizada: 1) Resumo, 2) Por Categoria, 3) Receitas, 4) Despesas, 5) Resumo Anual. Datas exibidas como `dd/mm/aaaa`. Download via Blob/`URL.createObjectURL` mantendo o nome `Lumers_<Regime>_<ano>_<mês>_<MÊS>.xlsx` e o toast de sucesso; tratamento de erro com toast claro caso o ExcelJS esteja indisponível.
+
+### Notas
+- Adicionado CDN do ExcelJS (`exceljs@4.4.0`) em `index.html`; o `xlsx@0.18.5` permanece carregado para os demais usos (admin/import).
+- Cache bumped de `lumers-v39` para `lumers-v40`.
+
+---
+
 ## [v1.5.0] — 2026-06-18
 
 ### Adicionado

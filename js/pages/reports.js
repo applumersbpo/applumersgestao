@@ -561,9 +561,13 @@ function renderCompCaixaChart(data) {
 
 // ── Excel Export ──────────────────────────────────────────────────────────────
 
-function exportReportExcel(regime = 'competencia') {
-  if (!_reportData || typeof XLSX === 'undefined') {
+async function exportReportExcel(regime = 'competencia') {
+  if (!_reportData) {
     toast('Dados não disponíveis para exportar', 'error');
+    return;
+  }
+  if (typeof ExcelJS === 'undefined') {
+    toast('Biblioteca de exportação (ExcelJS) não carregada. Recarregue a página.', 'error');
     return;
   }
   const { month, year, allTransactions, catsMap, accounts } = _reportData;
@@ -613,8 +617,13 @@ function exportReportExcel(regime = 'competencia') {
     regimeLabel = 'Competencia';
   }
 
-  const incRows = monthTxs.filter(isIncome).map(t => ({
-    'Data':       dateOf(t),
+  const fmtD = (s) => { const p = parseYMD(s); return p ? `${String(p.day).padStart(2,'0')}/${String(p.month).padStart(2,'0')}/${p.year}` : ''; };
+
+  const incTxs = monthTxs.filter(isIncome);
+  const expTxs = monthTxs.filter(isExpense);
+
+  const incRows = incTxs.map(t => ({
+    'Data':       fmtD(dateOf(t)),
     'Descrição':  t.name,
     'Categoria':  catsMap[t.category_id]?.name || 'Sem categoria',
     'Conta':      accMap[t.account_id]?.name || '',
@@ -623,8 +632,8 @@ function exportReportExcel(regime = 'competencia') {
     'Observação': t.notes || '',
   }));
 
-  const expRows = monthTxs.filter(isExpense).map(t => ({
-    'Data':       dateOf(t),
+  const expRows = expTxs.map(t => ({
+    'Data':       fmtD(dateOf(t)),
     'Descrição':  t.name,
     'Categoria':  catsMap[t.category_id]?.name || 'Sem categoria',
     'Conta':      accMap[t.account_id]?.name || '',
@@ -633,14 +642,239 @@ function exportReportExcel(regime = 'competencia') {
     'Observação': t.notes || '',
   }));
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(incRows),    'Receitas');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expRows),    'Despesas');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumoRows), 'Resumo Anual');
+  const totalInc = incRows.reduce((s, r) => s + (r.Valor || 0), 0);
+  const totalExp = expRows.reduce((s, r) => s + (r.Valor || 0), 0);
+  const saldoMes = totalInc - totalExp;
 
-  const filename = `Lumers_${regimeLabel}_${year}_${String(month).padStart(2, '0')}_${MONTHS[month - 1]}.xlsx`;
-  XLSX.writeFile(wb, filename);
-  toast(`Exportado: ${filename}`, 'success');
+  // ── Consolidação por categoria (Receitas e Despesas) ──────────────────────────
+  const aggregate = (txs) => {
+    const map = {};
+    txs.forEach(t => {
+      const name = catsMap[t.category_id]?.name || 'Sem categoria';
+      if (!map[name]) map[name] = { total: 0, count: 0 };
+      map[name].total += valueOf(t);
+      map[name].count += 1;
+    });
+    const grand = Object.values(map).reduce((s, e) => s + e.total, 0);
+    return Object.entries(map)
+      .map(([name, e]) => ({ name, total: e.total, count: e.count, pct: grand ? e.total / grand : 0 }))
+      .sort((a, b) => b.total - a.total);
+  };
+  const incCats = aggregate(incTxs);
+  const expCats = aggregate(expTxs);
+
+  // ── Estilos / constantes ──────────────────────────────────────────────────────
+  const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF243D28' } };
+  const HEADER_FONT = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+  const ZEBRA_FILL  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDE7D8' } };
+  const THIN        = { style: 'thin', color: { argb: 'FFCBD5C4' } };
+  const BORDER      = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+  const MONEY_FMT   = 'R$ #,##0.00';
+  const PCT_FMT     = '0.0%';
+  const DARK        = 'FF243D28';
+  const PRIMARY     = 'FF3A5A40';
+  const RED         = 'FFC95A47';
+
+  // Monta uma tabela estilizada. columns: [{ key, header, money?, pct?, align? }]
+  const buildTable = (ws, columns, rows, startRow, freeze = true) => {
+    const headerRow = ws.getRow(startRow);
+    columns.forEach((c, i) => {
+      const cell = headerRow.getCell(i + 1);
+      cell.value = c.header;
+      cell.fill = HEADER_FILL;
+      cell.font = HEADER_FONT;
+      cell.alignment = { vertical: 'middle', horizontal: c.align || (c.money || c.pct ? 'right' : 'left') };
+      cell.border = BORDER;
+    });
+    headerRow.height = 22;
+    rows.forEach((r, ri) => {
+      const row = ws.getRow(startRow + 1 + ri);
+      columns.forEach((c, i) => {
+        const cell = row.getCell(i + 1);
+        cell.value = r[c.key];
+        cell.border = BORDER;
+        cell.alignment = { vertical: 'middle', horizontal: c.align || (c.money || c.pct ? 'right' : 'left') };
+        if (c.money) cell.numFmt = MONEY_FMT;
+        if (c.pct)   cell.numFmt = PCT_FMT;
+        if (ri % 2 === 1) cell.fill = ZEBRA_FILL;
+      });
+    });
+    // Auto-largura pela maior célula
+    columns.forEach((c, i) => {
+      let maxLen = c.header.length;
+      rows.forEach(r => {
+        let v = r[c.key];
+        if (c.money && typeof v === 'number') v = fmt(v);
+        else if (c.pct && typeof v === 'number') v = (v * 100).toFixed(1) + '%';
+        const len = v == null ? 0 : String(v).length;
+        if (len > maxLen) maxLen = len;
+      });
+      ws.getColumn(i + 1).width = Math.min(Math.max(maxLen + 2, 12), 40);
+    });
+    if (freeze) ws.views = [{ state: 'frozen', ySplit: startRow }];
+    return startRow + 1 + rows.length;
+  };
+
+  const sectionTitle = (ws, rowIdx, text, span, color) => {
+    ws.mergeCells(rowIdx, 1, rowIdx, span);
+    const cell = ws.getCell(rowIdx, 1);
+    cell.value = text;
+    cell.font = { bold: true, size: 13, color: { argb: color || DARK } };
+    cell.alignment = { vertical: 'middle' };
+    ws.getRow(rowIdx).height = 24;
+    return rowIdx + 1;
+  };
+
+  try {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Lumers Flow';
+    wb.created = new Date();
+
+    const clientName = (typeof _brand !== 'undefined' && _brand && _brand.appName) ? _brand.appName : 'Lumers Flow';
+    const periodLabel = `${MONTHS[month - 1]} ${year}`;
+
+    // ── 1) RESUMO (com gráficos) ─────────────────────────────────────────────────
+    const wsResumo = wb.addWorksheet('Resumo', { views: [{ showGridLines: false }] });
+    wsResumo.getColumn(1).width = 3;
+
+    wsResumo.mergeCells('B2:K2');
+    const titleCell = wsResumo.getCell('B2');
+    titleCell.value = `${clientName} — Relatório ${regimeLabel} • ${periodLabel}`;
+    titleCell.font = { bold: true, size: 16, color: { argb: DARK } };
+    titleCell.alignment = { vertical: 'middle' };
+    wsResumo.getRow(2).height = 28;
+
+    wsResumo.mergeCells('B3:K3');
+    const subCell = wsResumo.getCell('B3');
+    subCell.value = `Gerado em ${new Date().toLocaleString('pt-BR')}`;
+    subCell.font = { italic: true, size: 10, color: { argb: 'FF807B6C' } };
+
+    // KPIs (cartões)
+    const kpi = (col, label, value, color) => {
+      wsResumo.mergeCells(5, col, 5, col + 1);
+      const c1 = wsResumo.getCell(5, col);
+      c1.value = label;
+      c1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } };
+      c1.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      c1.alignment = { horizontal: 'center', vertical: 'middle' };
+      c1.border = BORDER;
+      wsResumo.mergeCells(6, col, 6, col + 1);
+      const c2 = wsResumo.getCell(6, col);
+      c2.value = value;
+      c2.numFmt = MONEY_FMT;
+      c2.font = { bold: true, size: 14, color: { argb: DARK } };
+      c2.alignment = { horizontal: 'center', vertical: 'middle' };
+      c2.border = BORDER;
+      wsResumo.getColumn(col).width = 16;
+      wsResumo.getColumn(col + 1).width = 8;
+    };
+    kpi(2, 'RECEITAS', totalInc, PRIMARY);
+    kpi(5, 'DESPESAS', totalExp, RED);
+    kpi(8, 'SALDO DO MÊS', saldoMes, saldoMes >= 0 ? PRIMARY : RED);
+    wsResumo.getRow(5).height = 20;
+    wsResumo.getRow(6).height = 26;
+
+    // Gráficos embutidos (somente os que existirem)
+    const charts = [
+      { inst: reportChart,     label: 'Evolução: Receita × Despesa × Saldo' },
+      { inst: catChart,        label: 'Despesas por Categoria' },
+      { inst: cashChart,       label: 'Fluxo de Caixa' },
+      { inst: compCaixaChart,  label: 'Competência × Caixa' },
+    ].filter(c => c.inst && typeof c.inst.toBase64Image === 'function');
+
+    const IMG_W = 480, IMG_H = 300;
+    charts.forEach((c, idx) => {
+      let dataUrl;
+      try { dataUrl = c.inst.toBase64Image(); } catch (e) { return; }
+      if (!dataUrl) return;
+      const imgId = wb.addImage({ base64: dataUrl, extension: 'png' });
+      const left = (idx % 2) === 0;
+      const colIdx0 = left ? 1 : 9;                       // 0-based: B ou J
+      const blockRow0 = 8 + Math.floor(idx / 2) * 18;     // 0-based linha do rótulo
+      const labelCell = wsResumo.getCell(blockRow0 + 1, colIdx0 + 1);
+      labelCell.value = c.label;
+      labelCell.font = { bold: true, color: { argb: PRIMARY }, size: 12 };
+      wsResumo.addImage(imgId, { tl: { col: colIdx0, row: blockRow0 + 1 }, ext: { width: IMG_W, height: IMG_H } });
+    });
+
+    if (!charts.length) {
+      wsResumo.getCell('B9').value = 'Gráficos indisponíveis (abra as abas de relatório antes de exportar para incluí-los).';
+      wsResumo.getCell('B9').font = { italic: true, color: { argb: 'FF807B6C' } };
+    }
+
+    // ── 2) POR CATEGORIA ─────────────────────────────────────────────────────────
+    const wsCat = wb.addWorksheet('Por Categoria');
+    const catCols = [
+      { key: 'name',  header: 'Categoria' },
+      { key: 'total', header: 'Total', money: true },
+      { key: 'pct',   header: '% do total', pct: true },
+      { key: 'count', header: 'Lançamentos', align: 'right' },
+    ];
+    let r = sectionTitle(wsCat, 1, `Receitas por Categoria — ${periodLabel}`, catCols.length, PRIMARY);
+    r = buildTable(wsCat, catCols, incCats, r, false);
+    // Linha de total receitas
+    const incTotRow = wsCat.getRow(r);
+    incTotRow.getCell(1).value = 'TOTAL RECEITAS';
+    incTotRow.getCell(1).font = { bold: true, color: { argb: PRIMARY } };
+    incTotRow.getCell(2).value = totalInc;
+    incTotRow.getCell(2).numFmt = MONEY_FMT;
+    incTotRow.getCell(2).font = { bold: true, color: { argb: PRIMARY } };
+    incTotRow.getCell(2).alignment = { horizontal: 'right' };
+    r += 2;
+
+    r = sectionTitle(wsCat, r, `Despesas por Categoria — ${periodLabel}`, catCols.length, RED);
+    r = buildTable(wsCat, catCols, expCats, r, false);
+    const expTotRow = wsCat.getRow(r);
+    expTotRow.getCell(1).value = 'TOTAL DESPESAS';
+    expTotRow.getCell(1).font = { bold: true, color: { argb: RED } };
+    expTotRow.getCell(2).value = totalExp;
+    expTotRow.getCell(2).numFmt = MONEY_FMT;
+    expTotRow.getCell(2).font = { bold: true, color: { argb: RED } };
+    expTotRow.getCell(2).alignment = { horizontal: 'right' };
+
+    // ── 3) RECEITAS (detalhado) ──────────────────────────────────────────────────
+    const detailCols = [
+      { key: 'Data',       header: 'Data' },
+      { key: 'Descrição',  header: 'Descrição' },
+      { key: 'Categoria',  header: 'Categoria' },
+      { key: 'Conta',      header: 'Conta' },
+      { key: 'Valor',      header: 'Valor', money: true },
+      { key: 'Status',     header: 'Status' },
+      { key: 'Observação', header: 'Observação' },
+    ];
+    const wsInc = wb.addWorksheet('Receitas');
+    buildTable(wsInc, detailCols, incRows, 1);
+
+    // ── 4) DESPESAS (detalhado) ──────────────────────────────────────────────────
+    const wsExp = wb.addWorksheet('Despesas');
+    buildTable(wsExp, detailCols, expRows, 1);
+
+    // ── 5) RESUMO ANUAL ──────────────────────────────────────────────────────────
+    const wsYear = wb.addWorksheet('Resumo Anual');
+    const yearCols = [
+      { key: 'Mês',     header: 'Mês' },
+      { key: 'Receita', header: 'Receita', money: true },
+      { key: 'Despesa', header: 'Despesa', money: true },
+      { key: 'Saldo',   header: 'Saldo', money: true },
+    ];
+    buildTable(wsYear, yearCols, resumoRows, 1);
+
+    const filename = `Lumers_${regimeLabel}_${year}_${String(month).padStart(2, '0')}_${MONTHS[month - 1]}.xlsx`;
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast(`Exportado: ${filename}`, 'success');
+  } catch (err) {
+    console.error('Falha ao exportar Excel:', err);
+    toast('Erro ao gerar a planilha. Tente novamente.', 'error');
+  }
 }
 
 function exportCompCaixa() {
