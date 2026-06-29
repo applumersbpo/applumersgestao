@@ -5,6 +5,21 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.6.1] — 2026-06-29
+
+Marco de release que consolida e publica a planilha de exportação reformulada introduzida na v1.6.0.
+
+### Adicionado
+- **Planilha de exportação Excel totalmente reformulada (ExcelJS)**: 1ª aba **"Resumo"** com KPIs (Total de Receitas, Total de Despesas, Saldo do Mês) e gráficos consolidados embutidos; aba **"Por Categoria"** (Receitas e Despesas, cada uma com total, % e contagem de lançamentos); abas detalhadas de **Receitas** e **Despesas**.
+
+### Melhorado
+- **Visual profissional da planilha**: cabeçalho na cor verde do sidebar (`#243D28`) com texto branco em negrito, congelamento da 1ª linha, linhas zebradas, bordas, colunas com auto-ajuste de largura e valores em formato monetário `R$ #,##0.00`.
+
+### Corrigido
+- **F-214**: gráficos renderizados offscreen — saem sempre nítidos, independentemente da aba ativa, e coerentes com o regime exportado.
+
+---
+
 ## [v1.6.0] — 2026-06-29
 
 ### Adicionado
