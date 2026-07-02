@@ -156,7 +156,7 @@ async function _enviarBoasVindasWhatsApp(user) {
   if (!url || !key || !user.phone) return;
   const nome = (user.name || '').split(' ')[0] || 'você';
   const msg  =
-    `Olá, ${nome}! 👋 Aqui é a assistente da *Lumers BPO*!\n\n` +
+    `Olá, ${nome}! 👋 Aqui é a assistente da *Lumers Flow*!\n\n` +
     `Estou aqui para facilitar o seu controle financeiro direto pelo WhatsApp.\n\n` +
     `💸 *Despesa:* "gastei 35 no almoço"\n` +
     `💳 *Parcelamento:* "comprei tênis 300 em 3x"\n` +

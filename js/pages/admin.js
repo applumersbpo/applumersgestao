@@ -2933,7 +2933,7 @@ function _adminBrandSection(cfg) {
         </div>
         <div class="form-group" style="margin-top:10px;margin-bottom:0">
           <label class="form-label" style="font-size:.76rem">Rodapé / Copyright</label>
-          <input id="b-login-copyright" class="form-control" value="${_escHtml(c.loginCopyright || '')}" placeholder="ex: © 2026 Lumers BPO Financeiro">
+          <input id="b-login-copyright" class="form-control" value="${_escHtml(c.loginCopyright || '')}" placeholder="ex: © 2026 Lumers Flow Financeiro">
         </div>
       </div>
 

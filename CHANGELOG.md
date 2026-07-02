@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.6.2] — 2026-07-02
+
+### Melhorado
+- **Renomeação da marca "Lumers BPO" para "Lumers Flow"** em todos os pontos de exibição: título de boas-vindas do onboarding, rodapé de copyright do login, placeholder do campo de copyright no admin e mensagens de WhatsApp (assistente e confirmação de conta ativa).
+
+---
+
 ## [v1.6.1] — 2026-06-29
 
 Marco de release que consolida e publica a planilha de exportação reformulada introduzida na v1.6.0.

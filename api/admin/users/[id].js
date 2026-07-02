@@ -86,7 +86,7 @@ export default async function handler(req, res) {
         if (!url || !key) return res.status(500).json({ error: 'Evolution API não configurada' });
 
         const nome = (target.name || '').split(' ')[0] || 'você';
-        const msg = `✅ Conexão confirmada, ${nome}! Sua conta Lumers BPO está ativa e integrada ao WhatsApp.`;
+        const msg = `✅ Conexão confirmada, ${nome}! Sua conta Lumers Flow está ativa e integrada ao WhatsApp.`;
 
         const resp = await fetch(url, {
           method: 'POST',
