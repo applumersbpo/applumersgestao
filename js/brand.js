@@ -71,7 +71,8 @@ const _BRAND_DEFAULTS = {
 
 let _brand = { ..._BRAND_DEFAULTS };
 
-// Aplica cache de cor imediatamente ao carregar (evita flash)
+// Aplica cache (cores + modelo da tela de login) imediatamente ao carregar,
+// sem esperar a rede — evita que o modelo salvo apareça com atraso.
 (function _applyCachedEarly() {
   try {
     // Remove old cache keys to prevent stale theme from overriding new CSS
@@ -81,9 +82,23 @@ let _brand = { ..._BRAND_DEFAULTS };
     localStorage.removeItem('lf_brand_cache_v4');
     localStorage.removeItem('lf_brand_cache_v5');
     const cached = localStorage.getItem(_BRAND_CACHE_KEY);
-    if (cached) _applyCssVars(JSON.parse(cached));
+    if (cached) {
+      const cfg = _normalizeBrand(JSON.parse(cached));
+      _applyCssVars(cfg);
+      _applyLoginConfig(cfg);
+    }
   } catch (_) {}
 })();
+
+// Reaplica o modelo da tela de login a partir do cache (idempotente:
+// só seta textContent/estilos em nós existentes, nunca cria/duplica).
+// Usado após montar/reconstruir o DOM do #auth-screen para não ser sobrescrito.
+function applyLoginModelFromCache() {
+  try {
+    const cached = localStorage.getItem(_BRAND_CACHE_KEY);
+    if (cached) _applyLoginConfig(_normalizeBrand(JSON.parse(cached)));
+  } catch (_) {}
+}
 
 // ── Utilitários de cor ────────────────────────────────────────────────────────
 
@@ -344,7 +359,8 @@ function _applyLoginConfig(cfg) {
   if (desc && cfg.loginBrandDesc) desc.textContent = cfg.loginBrandDesc;
 
   const titleEl = document.getElementById('auth-title');
-  if (titleEl && titleEl.textContent === 'Entrar' && cfg.loginTitle) {
+  if (titleEl && cfg.loginTitle &&
+      (titleEl.textContent === 'Entrar' || titleEl.textContent === 'Bem-vindo de volta')) {
     titleEl.textContent = cfg.loginTitle;
   }
 

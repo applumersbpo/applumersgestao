@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.9.2] — 2026-07-03
+
+### Corrigido
+- **Predefinições da tela de login agora são aplicadas em tempo real, sem esperar o carregamento da rede** — o modelo salvo (layout, cor de fundo, imagem do painel, textos/eyebrow/heading/desc, título, copyright) é aplicado a partir do cache local imediatamente ao carregar a página, antes das libs pesadas de CDN. Antes, a tela de login nascia com o modelo padrão e só "trocava" para o salvo após o `app.init()` rodar (que era bloqueado pelo download dos scripts de CDN), passando a sensação de atraso. O `fetch('/api/brand')` continua atualizando o modelo em background.
+
+---
+
 ## [v1.9.1] — 2026-07-03
 
 ### Melhorado

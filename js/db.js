@@ -259,6 +259,8 @@ async function _loadRegisterStatus() {
 function showAuthScreen() {
   document.getElementById('auth-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
+  // Garante o modelo salvo aplicado no mesmo tick do render (sem esperar a rede)
+  if (typeof applyLoginModelFromCache === 'function') applyLoginModelFromCache();
   _loadRegisterStatus();
 }
 function hideAuthScreen() {
@@ -406,6 +408,8 @@ function _rebuildAuthCard() {
     </p>`;
   _authMode = 'login';
   if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [card] });
+  // Reaplica o modelo (título/subtítulo) após reconstruir o card
+  if (typeof applyLoginModelFromCache === 'function') applyLoginModelFromCache();
 }
 
 function _checkResetToken() {
