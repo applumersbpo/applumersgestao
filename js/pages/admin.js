@@ -3943,35 +3943,35 @@ async function _adminEmailDeleteTemplate(id) {
   }
 }
 
-// ── B2) Builder visual de templates (GrapesJS + preset newsletter) ────────────
+// ── B2) Builder visual de templates (Templatical SDK — Vue3 + Tiptap) ─────────
 //
 // Área dedicada de edição arrastar-soltar que substitui o conteúdo do sub-painel
 // de templates. O modal antigo (_adminEmailEditTemplate) permanece como fallback
 // básico (editor de código) para offline/CDN fora e telas estreitas.
 //
-// Assets carregados LAZY (só na 1ª vez que o builder abre) via CDN unpkg com
-// versões fixas. Um guard (_emGjsLoadPromise) evita injeção dupla dos scripts.
+// Módulos carregados LAZY (só na 1ª vez que o builder abre) via CDN, como ESM
+// puro (import() dinâmico — o app é vanilla, sem bundler). Um guard
+// (_emTplLoadPromise) evita carga dupla. O editor (build /dist/cdn) é
+// autocontido: já embute o Vue e injeta o próprio CSS no shadow DOM.
+//
+// Pipeline de export (o backend consome HTML): o editor exporta um JSON
+// (TemplateContent). No save/preview: renderToMjml(content) → MJML → mjml2html
+// → HTML com CSS inline (email-safe). As merge tags {{var}} (sintaxe handlebars)
+// sobrevivem intactas do editor até o HTML final para o backend substituir.
 
-const _EM_GJS_CSS    = 'https://unpkg.com/grapesjs@0.21.13/dist/css/grapes.min.css';
-const _EM_GJS_JS     = 'https://unpkg.com/grapesjs@0.21.13/dist/grapes.min.js';
-const _EM_GJS_PRESET = 'https://unpkg.com/grapesjs-preset-newsletter@1.0.2/dist/index.js';
+const _EM_TPL_EDITOR   = 'https://cdn.jsdelivr.net/npm/@templatical/editor@0.13.0/dist/cdn/editor.js';
+const _EM_TPL_RENDERER = 'https://esm.sh/@templatical/renderer@0.13.0';
+const _EM_TPL_TYPES    = 'https://esm.sh/@templatical/types@0.13.0';
+const _EM_MJML         = 'https://esm.sh/mjml-browser@4.15.3';
 
-let _emBuilder        = null;   // instância GrapesJS ativa (destruída ao voltar/salvar)
-let _emGjsLoaded      = false;  // guard: assets já carregados e funcionais?
-let _emGjsLoadPromise = null;   // promessa única de carregamento (anti duplo-load)
+let _emBuilder        = null;   // instância Templatical ativa (unmount ao voltar/salvar)
+let _emTplMods        = null;   // { init, renderToMjml, mjml2html, create*Block... }
+let _emTplLoadPromise = null;   // promessa única de carregamento (anti carga dupla)
 let _emBuilderCtx     = null;   // { id, sys, t } do template em edição
 let _emBuilderSaving  = false;  // trava reentrância do save
 let _emBuilderOpening = false;  // trava duplo-init enquanto um load está em andamento
-
-// Layout inicial profissional para templates NOVOS (não começa em branco).
-const _EM_DEFAULT_TEMPLATE =
-  '<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;font-family:Arial,Helvetica,sans-serif;">' +
-    _EM_HEADER_SNIPPET +
-    '<tr><td style="padding:32px 28px 8px;"><h1 style="margin:0;font-size:22px;line-height:1.3;color:#1f2937;">Olá, {{name}}!</h1></td></tr>' +
-    '<tr><td style="padding:8px 28px 20px;font-size:15px;line-height:1.6;color:#374151;">Escreva aqui a mensagem do seu e-mail. Use os blocos à esquerda para montar o layout e arraste as variáveis da categoria &quot;Marca / Variáveis&quot;.</td></tr>' +
-    '<tr><td style="padding:0 28px 28px;"><a href="{{app_url}}" style="display:inline-block;background:{{primary_color}};color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:bold;font-size:15px;">Acessar {{app_name}}</a></td></tr>' +
-    '<tr><td style="padding:20px 28px;background:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.5;color:#9ca3af;text-align:center;">© {{year}} {{app_name}}. Todos os direitos reservados.</td></tr>' +
-  '</table>';
+let _emBuilderReady   = false;  // true após o load inicial de conteúdo (para dirty check)
+let _emBuilderDirty   = false;  // alterações não salvas (via onChange, pós-ready)
 
 /** Ponto de entrada do builder visual (substitui o modal antigo como entrada). */
 function _adminEmailOpenBuilder(id) {
@@ -3996,6 +3996,9 @@ function _adminEmailOpenBuilder(id) {
   _adminEmailBuilderDestroy();
 
   const narrow = window.matchMedia('(max-width: 720px)').matches;
+  // Templates existentes com HTML abrem como um único bloco HTML opaco (o
+  // Templatical não decompõe HTML em blocos visuais) — avisamos o usuário.
+  const legacy = !!(t && t.html && t.html.trim());
 
   body.innerHTML = `
     <div class="em-builder">
@@ -4003,16 +4006,13 @@ function _adminEmailOpenBuilder(id) {
         <button class="btn btn-ghost btn-sm" onclick="_adminEmailBuilderBack()">${icon('arrow-left',14)} Voltar aos templates</button>
         <div class="em-builder-title">${icon('layout-template',15)} ${isNew ? 'Novo template' : 'Editar template'}</div>
         <div class="em-builder-bar-actions">
-          <div class="em-dev-toggle">
-            <button class="btn btn-sm em-dev-btn active" data-dev="Desktop" onclick="_adminEmailBuilderDevice('Desktop')" title="Desktop">${icon('monitor',13)}</button>
-            <button class="btn btn-sm em-dev-btn" data-dev="Mobile" onclick="_adminEmailBuilderDevice('Mobile')" title="Mobile">${icon('smartphone',13)}</button>
-          </div>
           <button id="em-builder-preview" class="btn btn-sm" onclick="_adminEmailBuilderPreview()">${icon('eye',14)} Preview com marca</button>
           <button id="em-builder-save" class="btn btn-primary btn-sm" onclick="_adminEmailBuilderSave()">${icon('save',14)} Salvar template</button>
         </div>
       </div>
 
       ${sys ? `<div class="em-builder-sysbanner">${icon('lock',12)} Template de sistema — nome e categoria travados. Assunto e conteúdo são editáveis.</div>` : ''}
+      ${legacy ? `<div class="em-builder-sysbanner">${icon('code',12)} Template legado — editável como um único bloco HTML.</div>` : ''}
       ${narrow ? `<div class="em-builder-mobilewarn">${icon('alert-triangle',12)} <span>O editor visual funciona melhor no desktop.</span> <button class="btn btn-sm" onclick="_adminEmailEditTemplate('${id}')">${icon('code',12)} Usar editor básico</button></div>` : ''}
 
       <div class="em-builder-fields">
@@ -4058,34 +4058,38 @@ function _adminEmailOpenBuilder(id) {
   _adminEmailBuilderLoad(t);
 }
 
-/** Injeta os assets do GrapesJS uma única vez. Anti duplo-load via promessa
- *  compartilhada; tags de script que falham são removidas para permitir retry. */
-function _adminEmailLoadGjs() {
-  if (_emGjsLoaded) return Promise.resolve();
-  if (_emGjsLoadPromise) return _emGjsLoadPromise;
+/** Carrega, uma única vez, os módulos ESM do Templatical + renderer + mjml via
+ *  import() dinâmico (CDN). Anti carga dupla via promessa compartilhada; em caso
+ *  de falha a promessa é limpa para permitir o "Tentar novamente". */
+function _adminEmailLoadTplModules() {
+  if (_emTplMods) return Promise.resolve(_emTplMods);
+  if (_emTplLoadPromise) return _emTplLoadPromise;
 
-  const loadScript = (src, id) => new Promise((res, rej) => {
-    if (document.getElementById(id)) { res(); return; }  // já carregado com sucesso
-    const s = document.createElement('script');
-    s.id = id; s.src = src; s.async = true;
-    s.onload = () => res();
-    s.onerror = () => { s.remove(); rej(new Error('Falha ao carregar ' + src)); };
-    document.head.appendChild(s);
-  });
-
-  _emGjsLoadPromise = new Promise((resolve, reject) => {
-    if (!document.getElementById('em-gjs-css')) {
-      const link = document.createElement('link');
-      link.id = 'em-gjs-css'; link.rel = 'stylesheet'; link.href = _EM_GJS_CSS;
-      document.head.appendChild(link);
+  _emTplLoadPromise = Promise.all([
+    import(_EM_TPL_EDITOR),
+    import(_EM_TPL_RENDERER),
+    import(_EM_TPL_TYPES),
+    import(_EM_MJML),
+  ]).then(([ed, rd, ty, mj]) => {
+    const mjml2html = mj.default || mj.mjml2html || mj;
+    if (typeof ed.init !== 'function' || typeof rd.renderToMjml !== 'function' || typeof mjml2html !== 'function') {
+      throw new Error('Módulos do editor incompletos');
     }
-    // Core primeiro (o preset depende do global grapesjs), depois o preset.
-    loadScript(_EM_GJS_JS, 'em-gjs-core')
-      .then(() => loadScript(_EM_GJS_PRESET, 'em-gjs-preset'))
-      .then(() => { _emGjsLoaded = true; resolve(); })
-      .catch(err => { _emGjsLoadPromise = null; reject(err); });
-  });
-  return _emGjsLoadPromise;
+    _emTplMods = {
+      init: ed.init,
+      renderToMjml: rd.renderToMjml,
+      mjml2html,
+      createDefaultTemplateContent: ty.createDefaultTemplateContent,
+      createHtmlBlock: ty.createHtmlBlock,
+      createTitleBlock: ty.createTitleBlock,
+      createParagraphBlock: ty.createParagraphBlock,
+      createButtonBlock: ty.createButtonBlock,
+      createImageBlock: ty.createImageBlock,
+    };
+    return _emTplMods;
+  }).catch(err => { _emTplLoadPromise = null; throw err; });
+
+  return _emTplLoadPromise;
 }
 
 /** Carrega os assets e inicializa o editor. Alterna spinner/erro conforme resultado. */
@@ -4095,9 +4099,9 @@ async function _adminEmailBuilderLoad(t) {
   if (err) err.style.display = 'none';
   if (spin) spin.style.display = '';
   try {
-    await _adminEmailLoadGjs();
+    await _adminEmailLoadTplModules();
     if (!document.getElementById('em-gjs-canvas')) return;  // usuário já saiu do builder
-    _adminEmailBuilderInit(t);
+    await _adminEmailBuilderInit(t);
     if (spin) spin.style.display = 'none';
   } catch (e) {
     if (spin) spin.style.display = 'none';
@@ -4115,104 +4119,126 @@ function _adminEmailBuilderRetry() {
   _adminEmailBuilderLoad(t);
 }
 
-/** Inicializa a instância GrapesJS no canvas, carrega o HTML e registra blocos. */
-function _adminEmailBuilderInit(t) {
-  if (typeof grapesjs === 'undefined') throw new Error('GrapesJS indisponível');
-
-  // O global do preset pode vir como camelCase, com hífen (bracket) ou por nome.
-  const presetPlugin = window.grapesjsPresetNewsletter
-    || window['grapesjs-preset-newsletter']
-    || 'grapesjs-preset-newsletter';
-
-  // Segurança: destrói instância anterior antes de criar nova (sem vazamento).
-  if (_emBuilder) { try { _emBuilder.destroy(); } catch (_) {} _emBuilder = null; }
-
-  _emBuilder = grapesjs.init({
-    container: '#em-gjs-canvas',
-    height: '100%',
-    width: 'auto',
-    fromElement: false,
-    storageManager: { type: 'none', autosave: false, autoload: false },
-    assetManager: { embedAsBase64: true },
-    deviceManager: {
-      devices: [
-        { name: 'Desktop', width: '' },
-        { name: 'Mobile',  width: '320px', widthMedia: '480px' },
-      ],
-    },
-    plugins: [presetPlugin],
-  });
-
-  const startHtml = (t.html && t.html.trim()) ? t.html : _EM_DEFAULT_TEMPLATE;
-  _emBuilder.setComponents(startHtml);
-  _adminEmailBuilderAddBlocks(_emBuilder);
-  _emBuilder.setDevice('Desktop');
+/** Config de merge tags: sintaxe handlebars ({{ }}) + a lista de variáveis do
+ *  app (_ET_VARS). O `value` é o token completo — o renderer o preserva literal
+ *  no HTML final para o backend substituir depois. */
+function _emMergeTagsConfig() {
+  return {
+    syntax: 'handlebars',
+    tags: _ET_VARS.map(v => ({ label: v, value: '{{' + v + '}}' })),
+    autocomplete: true,
+  };
 }
 
-/** Adiciona a categoria de blocos "Marca / Variáveis": cabeçalho, CTA e tokens. */
-function _adminEmailBuilderAddBlocks(editor) {
-  const bm  = editor.BlockManager;
-  const cat = 'Marca / Variáveis';
-
-  bm.add('em-header-logo', {
-    label: 'Cabeçalho com logo',
-    category: cat,
-    attributes: { class: 'gjs-fonts gjs-f-b1' },
-    content: '<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;">' + _EM_HEADER_SNIPPET + '</table>',
-  });
-
-  bm.add('em-cta-brand', {
-    label: 'Botão CTA da marca',
-    category: cat,
-    attributes: { class: 'gjs-fonts gjs-f-button' },
-    content: '<a href="{{app_url}}" style="display:inline-block;background:{{primary_color}};color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:bold;font-size:15px;font-family:Arial,Helvetica,sans-serif;">Acessar {{app_name}}</a>',
-  });
-
-  // Tokens {{var}} arrastáveis — texto puro, sobrevivem intactos no HTML final.
-  _ET_VARS.forEach(v => {
-    bm.add('em-var-' + v, {
-      label: '{{' + v + '}}',
-      category: cat,
-      attributes: { class: 'gjs-fonts gjs-f-text' },
-      content: { type: 'text', content: '{{' + v + '}}', style: { padding: '2px' } },
-    });
-  });
+/** Blocos nativos do layout default para templates NOVOS (edição visual real). */
+function _emDefaultBlocks(M) {
+  return [
+    M.createImageBlock({ src: '{{logo_url}}', alt: '{{app_name}}', width: 160, align: 'center' }),
+    M.createTitleBlock({ content: 'Olá, {{name}}!', level: 1, textAlign: 'left', color: '#1f2937' }),
+    M.createParagraphBlock({ content: 'Escreva aqui a mensagem do seu e-mail. Use os blocos à esquerda para montar o layout e digite <strong>{{</strong> para inserir variáveis dinâmicas.' }),
+    M.createButtonBlock({ text: 'Acessar {{app_name}}', url: '{{app_url}}', backgroundColor: '{{primary_color}}', textColor: '#ffffff' }),
+    M.createParagraphBlock({ content: '© {{year}} {{app_name}}. Todos os direitos reservados.' }),
+  ];
 }
 
-/** Alterna o dispositivo de visualização do canvas (Desktop / Mobile ~320px). */
-function _adminEmailBuilderDevice(dev) {
-  if (!_emBuilder) return;
-  _emBuilder.setDevice(dev);
-  document.querySelectorAll('.em-dev-btn').forEach(b =>
-    b.classList.toggle('active', b.dataset.dev === dev));
-}
-
-/** Obtém o HTML final com CSS INLINE (email-safe). Prefere o comando do preset;
- *  cai para getHtml()+getCss() embutido em <style> se o comando não existir. */
-function _adminEmailBuilderInlinedHtml() {
-  let html = '';
-  try { html = _emBuilder.runCommand('gjs-get-inlined-html'); } catch (_) {}
-  if (!html) {
-    const css = _emBuilder.getCss() || '';
-    html = (css ? '<style>' + css + '</style>' : '') + _emBuilder.getHtml();
+/** Monta o TemplateContent (JSON) inicial. NOVO → blocos nativos de marca.
+ *  EXISTENTE (HTML salvo) → um único bloco HTML legado (preserva o dado; o
+ *  Templatical não decompõe HTML em blocos visuais). Nunca lança: em erro cai
+ *  para o default vazio garantido pelo SDK, para o editor sempre abrir. */
+function _emBuilderBuildContent(t, M) {
+  const hasHtml = !!(t && t.html && t.html.trim());
+  try {
+    const base = M.createDefaultTemplateContent('Arial, Helvetica, sans-serif',
+      { backgroundColor: '#f4f4f5', fontFamily: 'Arial, Helvetica, sans-serif' });
+    if (hasHtml) {
+      base.blocks = [ M.createHtmlBlock({ content: t.html }) ];
+    } else {
+      base.blocks = _emDefaultBlocks(M);
+    }
+    return base;
+  } catch (e) {
+    try { return M.createDefaultTemplateContent(); } catch (_) { return undefined; }
   }
-  return html || '';
 }
 
-/** Destrói a instância GrapesJS e limpa o estado de save (sem listeners vazados). */
+/** Inicializa a instância Templatical no canvas com o conteúdo inicial. Async:
+ *  init() resolve quando o editor Vue montou. */
+async function _adminEmailBuilderInit(t) {
+  const M = _emTplMods;
+  if (!M || typeof M.init !== 'function') throw new Error('Templatical indisponível');
+
+  // Segurança: desmonta instância anterior antes de criar nova (sem vazamento).
+  if (_emBuilder) { try { _emBuilder.unmount(); } catch (_) {} _emBuilder = null; }
+
+  const container = document.getElementById('em-gjs-canvas');
+  if (!container) return;  // usuário já saiu do builder
+
+  const content = _emBuilderBuildContent(t, M);
+
+  _emBuilderReady = false;
+  _emBuilderDirty = false;
+
+  const editor = await M.init({
+    container,
+    content,
+    shadowDom: true,        // isolamento total de CSS; o editor injeta o próprio CSS
+    branding: false,        // sem rodapé "Powered by" (permitido pela licença)
+    mergeTags: _emMergeTagsConfig(),
+    onChange: () => { if (_emBuilderReady) _emBuilderDirty = true; },
+  });
+
+  // Re-check pós-await (crítico): se o usuário voltou/trocou de sub-aba enquanto
+  // o init() estava pendente, o canvas já foi removido do DOM (ou o contexto do
+  // template mudou). NÃO ressuscitamos a instância — desmontamos o editor órfão
+  // e saímos. Caso contrário, _emBuilder ficaria truthy e o guard em
+  // _adminEmailOpenBuilder bloquearia reabrir o builder para sempre; além de
+  // vazar uma instância Vue montada num shadow DOM destacado.
+  // (_emBuilderOpening é liberado pelo finally de _adminEmailBuilderLoad.)
+  if (!document.getElementById('em-gjs-canvas') || !_emBuilderCtx || _emBuilderCtx.t !== t) {
+    try { editor.unmount(); } catch (_) {}
+    return;
+  }
+
+  _emBuilder = editor;
+  // Só marca dirty a partir de agora — o load inicial de conteúdo não conta.
+  setTimeout(() => { _emBuilderReady = true; }, 0);
+}
+
+/** Gera o HTML final (CSS inline, email-safe) a partir do JSON do editor:
+ *  getContent() → renderToMjml() → MJML → mjml2html() → HTML. As merge tags
+ *  {{var}} sobrevivem literais (o renderer converte os nós de merge tag em texto
+ *  {{var}} e o mjml não toca nesse texto). allowHtmlBlocks=true renderiza os
+ *  blocos HTML legados. */
+async function _emExportHtml() {
+  const M = _emTplMods;
+  if (!_emBuilder || !M) return '';
+  const content = _emBuilder.getContent();
+  let res;
+  try {
+    const mjml = await M.renderToMjml(content, { allowHtmlBlocks: true });
+    res = M.mjml2html(mjml, { validationLevel: 'skip', minify: false });
+  } catch (e) {
+    throw new Error('Falha ao compilar o HTML do template');
+  }
+  return (res && res.html) || '';
+}
+
+/** Desmonta a instância Templatical e limpa o estado de save/dirty. */
 function _adminEmailBuilderDestroy() {
   _emBuilderSaving = false;
-  if (_emBuilder) { try { _emBuilder.destroy(); } catch (_) {} _emBuilder = null; }
+  _emBuilderReady = false;
+  _emBuilderDirty = false;
+  if (_emBuilder) { try { _emBuilder.unmount(); } catch (_) {} _emBuilder = null; }
 }
 
 /** Guard compartilhado (Back + troca de sub-aba): retorna true se é seguro sair
  *  do builder. Só dispara o confirm se o builder estiver realmente ATIVO e com
- *  alterações não salvas; com _emBuilder null (loading/init falhou) sai direto. */
+ *  alterações não salvas; com _emBuilder null (loading/init falhou) sai direto.
+ *  O Templatical não expõe getDirtyCount — usamos o flag _emBuilderDirty
+ *  alimentado pelo onChange (após o load inicial). */
 function _adminEmailBuilderConfirmDiscard() {
   if (!_emBuilder) return true;
-  let dirty = 0;
-  try { dirty = _emBuilder.getDirtyCount(); } catch (_) {}
-  if (dirty > 0) return confirm('Você tem alterações não salvas no editor. Descartar e sair?');
+  if (_emBuilderDirty) return confirm('Você tem alterações não salvas no editor. Descartar e sair?');
   return true;
 }
 
@@ -4228,9 +4254,25 @@ async function _adminEmailBuilderSave() {
   if (!_emBuilder || _emBuilderSaving) return;
   const ctx = _emBuilderCtx || {};
 
+  let html;
+  try {
+    html = await _emExportHtml();
+  } catch (e) {
+    toast('Erro: ' + (e.message || 'falha ao gerar o HTML'), 'error');
+    return;
+  }
+
+  // Não salva um template vazio silenciosamente (ex.: todos os blocos removidos).
+  // Neste ponto o botão ainda não foi desabilitado nem _emBuilderSaving setado,
+  // então basta avisar e sair mantendo o trabalho no builder.
+  if (!html || !html.trim()) {
+    toast('O template está vazio.', 'error');
+    return;
+  }
+
   const payload = {
     subject: (document.getElementById('et-subject') || {}).value || '',
-    html:    _adminEmailBuilderInlinedHtml(),
+    html:    html,
     text:    (document.getElementById('et-text') || {}).value || '',
   };
   if (ctx.id) payload.id = ctx.id;
@@ -4272,7 +4314,6 @@ async function _adminEmailBuilderSave() {
  *  o resultado renderizado (logo + variáveis de exemplo) num modal isolado. */
 async function _adminEmailBuilderPreview() {
   if (!_emBuilder) return;
-  const html    = _adminEmailBuilderInlinedHtml();
   const subject = (document.getElementById('et-subject') || {}).value || '';
 
   const btn  = document.getElementById('em-builder-preview');
@@ -4281,6 +4322,7 @@ async function _adminEmailBuilderPreview() {
   if (typeof lucide !== 'undefined') lucide.createIcons();
 
   try {
+    const html = await _emExportHtml();
     const res = await _api('POST', '/email/preview', { html, subject });
     _adminEmailBuilderShowPreview((res && res.subject) || subject, (res && res.html) || '');
   } catch (e) {

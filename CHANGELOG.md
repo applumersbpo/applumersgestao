@@ -5,6 +5,26 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.9.0] — 2026-07-03
+
+### Melhorado
+- **Novo editor visual de templates de e-mail** — substituído o GrapesJS pelo SDK Templatical (`@templatical/editor` 0.13.0, drag-and-drop Vue 3 + Tiptap). Carregado LAZY via CDN como ESM puro (sem bundler), autocontido (embute Vue e injeta o próprio CSS no shadow DOM).
+- **Templates novos** abrem num layout de marca com blocos nativos (logo, título, texto, botão CTA, rodapé), totalmente editáveis bloco a bloco.
+- **Merge tags `{{var}}`** (sintaxe handlebars) com autocomplete ao digitar `{{`; sobrevivem intactas até o HTML final para o backend substituir.
+- Mantidos: campos Nome/Categoria/Assunto/Texto, trava de template de sistema, aviso mobile, overlays de carregamento e de erro offline (com fallback para o editor de código básico), guard de alterações não salvas e "Preview com marca".
+
+### Adicionado
+- **Pipeline de export para HTML** no save/preview: JSON do editor → `renderToMjml` → MJML → `mjml2html` → HTML com CSS inline (email-safe), via `@templatical/renderer` e `mjml-browser` (CDN).
+
+### Corrigido
+- Templates existentes (HTML salvo) são preservados ao abrir no novo editor como um bloco HTML (o Templatical não decompõe HTML em blocos visuais — ver notas de migração), agora com **banner "Template legado"** avisando que é editável como bloco único.
+- **Builder travava para sempre** se o usuário voltasse/trocasse de sub-aba enquanto o editor ainda inicializava: a instância era ressuscitada num shadow DOM destacado (vazamento) e o guard de reabertura ficava preso. Ao resolver o `init()` agora revalidamos canvas/contexto e desmontamos a instância órfã.
+- **Save de template vazio** agora é bloqueado com aviso ("O template está vazio.") em vez de sobrescrever silenciosamente.
+- **Erro de export unificado**: a etapa `renderToMjml` passou a ser protegida pelo mesmo try/catch do `mjml2html`, com mensagem de falha consistente.
+- Removido código morto: função no-op `_adminEmailBuilderDevice`, variável não lida `_emBuilderLegacy` e a opção `onError` inexistente no `init` do SDK.
+
+---
+
 ## [v1.8.1] — 2026-07-03
 
 ### Corrigido
