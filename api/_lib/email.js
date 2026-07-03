@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { getDb, getSystemSetting, rowsToObjects } from './db.js';
 
-const DEFAULT_FROM = 'Lumers Flow <no-reply@lumersbpo.com.br>';
+const DEFAULT_FROM = 'Lumers Flow <no-reply@app.lumersbpo.com.br>';
 
 // Lê config de e-mail de system_settings com fallback a env vars.
 export async function getEmailConfig() {

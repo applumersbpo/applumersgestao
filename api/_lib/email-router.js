@@ -3,7 +3,7 @@ import { requireAuth, cors } from './auth.js';
 import * as email from './email.js';
 import crypto from 'crypto';
 
-const DEFAULT_FROM = 'Lumers Flow <no-reply@lumersbpo.com.br>';
+const DEFAULT_FROM = 'Lumers Flow <no-reply@app.lumersbpo.com.br>';
 
 // Actions acessíveis por qualquer usuário autenticado. Todo o resto exige admin.
 const USER_ACTIONS = new Set(['my-notifications']);

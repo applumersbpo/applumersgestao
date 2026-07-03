@@ -5,6 +5,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.7.1] — 2026-07-03
+
+### Corrigido
+- **Remetente padrão de e-mail** migrado para o subdomínio verificado no Resend (`app.lumersbpo.com.br`).
+- **Botão de teste de e-mail** no painel admin agora exibe o erro real do provedor em vez de sempre mostrar sucesso.
+
+---
+
 ## [v1.7.0] — 2026-07-02
 
 ### Adicionado

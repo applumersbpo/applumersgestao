@@ -535,7 +535,7 @@ export async function initDb() {
 
   // Seed e-mail system settings (INSERT OR IGNORE keeps existing values)
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('email_enabled', '0')", args: [] });
-  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('email_from', 'Lumers Flow <no-reply@lumersbpo.com.br>')", args: [] });
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('email_from', 'Lumers Flow <no-reply@app.lumersbpo.com.br>')", args: [] });
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('resend_api_key', '')", args: [] });
 
   // Seed system e-mail templates (idempotent por id fixo/system_key). HTML responsivo PT-BR.

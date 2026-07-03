@@ -3592,7 +3592,7 @@ async function _adminEmailConfig(body) {
       </label>
       <div class="form-group">
         <label class="form-label">Remetente (From)</label>
-        <input id="em-from" class="form-control" value="${_escHtml(cfg.from || '')}" placeholder="Lumers Flow &lt;no-reply@lumersbpo.com.br&gt;">
+        <input id="em-from" class="form-control" value="${_escHtml(cfg.from || '')}" placeholder="Lumers Flow &lt;no-reply@app.lumersbpo.com.br&gt;">
       </div>
       <div class="form-group">
         <label class="form-label">Chave da API Resend</label>
@@ -3649,9 +3649,14 @@ async function _adminEmailTestSend() {
   btn.disabled = true; btn.innerHTML = `${icon('loader',14)} Enviando...`;
   res.style.display = 'none';
   try {
-    await _api('POST', '/email/test-send', { to, system_key: 'welcome' });
-    res.style.display = ''; res.style.color = 'var(--income-text)';
-    res.textContent = `✅ E-mail de teste enviado para ${to}.`;
+    const r = await _api('POST', '/email/test-send', { to, system_key: 'welcome' });
+    if (r && r.ok === false) {
+      res.style.display = ''; res.style.color = 'var(--expense)';
+      res.textContent = `❌ ${r.error || 'Falha no envio'}`;
+    } else {
+      res.style.display = ''; res.style.color = 'var(--income-text)';
+      res.textContent = `✅ E-mail de teste enviado para ${to}.`;
+    }
   } catch (e) {
     res.style.display = ''; res.style.color = 'var(--expense)';
     res.textContent = `❌ ${e.message || 'Falha no envio'}`;
