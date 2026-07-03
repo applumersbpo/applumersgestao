@@ -1,6 +1,6 @@
-import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from '../_lib/db.js';
-import { requireAuth, cors } from '../_lib/auth.js';
-import * as email from '../_lib/email.js';
+import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from './db.js';
+import { requireAuth, cors } from './auth.js';
+import * as email from './email.js';
 import crypto from 'crypto';
 
 const DEFAULT_FROM = 'Lumers Flow <no-reply@lumersbpo.com.br>';
@@ -8,7 +8,7 @@ const DEFAULT_FROM = 'Lumers Flow <no-reply@lumersbpo.com.br>';
 // Actions acessíveis por qualquer usuário autenticado. Todo o resto exige admin.
 const USER_ACTIONS = new Set(['my-notifications']);
 
-export default async function handler(req, res) {
+export default async function emailRouter(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 

@@ -1,8 +1,13 @@
 import { getDb, initDb, rowsToObjects } from '../_lib/db.js';
 import { requireAuth, cors, isImpersonation } from '../_lib/auth.js';
+import emailRouter from '../_lib/email-router.js';
 import bcrypt from 'bcryptjs';
 
 export default async function handler(req, res) {
+  // Requisições /api/email/* são reescritas para cá (marcador __email) e
+  // delegadas ao roteador de e-mail, que faz seu próprio cors/auth/guard.
+  if (req.query.__email !== undefined) return emailRouter(req, res);
+
   cors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 

@@ -1,1 +1,5 @@
-{}
+{
+  "rewrites": [
+    { "source": "/api/email/:action", "destination": "/api/user/:action?__email=1" }
+  ]
+}
