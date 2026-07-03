@@ -55,6 +55,14 @@ async function renderSettings() {
       </div>
 
       <div class="card">
+        <div class="card-title" style="margin-bottom:4px">Notificações por e-mail</div>
+        <p style="font-size:.83rem;color:var(--text-muted);margin-bottom:16px">
+          Escolha quais e-mails você quer receber. Ative ou desative cada tipo de notificação.
+        </p>
+        <div id="notif-prefs-body"></div>
+      </div>
+
+      <div class="card">
         <div class="card-title" style="margin-bottom:16px">Alterar senha</div>
         <div class="form-group">
           <label class="form-label">Senha atual</label>
@@ -85,6 +93,90 @@ async function renderSettings() {
   `;
 
   _initAvatarPreview();
+  _renderNotificationPrefs();
+}
+
+async function _renderNotificationPrefs() {
+  const body = document.getElementById('notif-prefs-body');
+  if (!body) return;
+
+  body.innerHTML = `<div style="font-size:.85rem;color:var(--text-muted);padding:6px 0">Carregando...</div>`;
+
+  let notifs;
+  try {
+    notifs = await _api('GET', '/email/my-notifications');
+  } catch (e) {
+    body.innerHTML = `
+      <div style="font-size:.85rem;color:var(--text-muted);padding:2px 0 12px">
+        Não foi possível carregar suas preferências.
+      </div>
+      <button class="btn btn-sm btn-outline" onclick="_renderNotificationPrefs()">Tentar novamente</button>`;
+    return;
+  }
+
+  if (!Array.isArray(notifs) || notifs.length === 0) {
+    body.innerHTML = `
+      <div style="font-size:.85rem;color:var(--text-muted);padding:6px 0">
+        Nenhuma notificação disponível no momento.
+      </div>`;
+    return;
+  }
+
+  const rows = notifs.map((n, i) => {
+    const enabled = !!n.enabled;
+    const isLast  = i === notifs.length - 1;
+    return `
+      <div style="display:flex;align-items:flex-start;gap:14px;padding:12px 0;${isLast ? '' : 'border-bottom:1px solid var(--border)'}">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:.9rem">${_escHtml(n.name || n.key || '')}</div>
+          ${n.description ? `<div style="font-size:.8rem;color:var(--text-muted);margin-top:2px">${_escHtml(n.description)}</div>` : ''}
+        </div>
+        ${_notifSwitch(n.key, enabled)}
+      </div>`;
+  }).join('');
+
+  body.innerHTML = `
+    <div style="margin-bottom:16px">${rows}</div>
+    <button id="notif-prefs-save" class="btn btn-primary" onclick="saveNotificationPrefs()">Salvar preferências</button>`;
+}
+
+function _notifSwitch(key, enabled) {
+  return `
+    <button type="button" role="switch" aria-checked="${enabled}"
+      data-notif-key="${_escHtml(key)}" data-enabled="${enabled ? '1' : '0'}"
+      onclick="_toggleNotifPref(this)"
+      style="position:relative;flex-shrink:0;width:44px;height:24px;padding:0;border:none;border-radius:999px;
+        cursor:pointer;transition:background .2s;background:${enabled ? 'var(--primary)' : 'var(--border)'}">
+      <span style="position:absolute;top:2px;left:${enabled ? '22px' : '2px'};width:20px;height:20px;border-radius:50%;
+        background:#fff;transition:left .2s;box-shadow:0 1px 2px rgba(0,0,0,.25)"></span>
+    </button>`;
+}
+
+function _toggleNotifPref(btn) {
+  const next = btn.dataset.enabled !== '1';
+  btn.dataset.enabled = next ? '1' : '0';
+  btn.setAttribute('aria-checked', String(next));
+  btn.style.background = next ? 'var(--primary)' : 'var(--border)';
+  const knob = btn.querySelector('span');
+  if (knob) knob.style.left = next ? '22px' : '2px';
+}
+
+async function saveNotificationPrefs() {
+  const btns  = document.querySelectorAll('#notif-prefs-body [data-notif-key]');
+  const prefs = {};
+  btns.forEach(b => { prefs[b.dataset.notifKey] = b.dataset.enabled === '1'; });
+
+  const saveBtn = document.getElementById('notif-prefs-save');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando...'; }
+
+  try {
+    await _api('POST', '/email/my-notifications', { prefs });
+    toast('Preferências salvas!', 'success');
+  } catch (e) {
+    toast(e?.response?.message || 'Erro ao salvar preferências', 'error');
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar preferências'; }
+  }
 }
 
 async function _initAvatarPreview() {

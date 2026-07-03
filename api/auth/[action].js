@@ -1,5 +1,6 @@
 import { getDb, initDb, rowsToObjects, getSystemSetting } from '../_lib/db.js';
 import { requireAuth, cors, signToken } from '../_lib/auth.js';
+import * as email from '../_lib/email.js';
 import bcrypt from 'bcryptjs';
 
 export default async function handler(req, res) {
@@ -54,14 +55,14 @@ export default async function handler(req, res) {
           return res.status(403).json({ error: 'Cadastro de novas contas temporariamente desabilitado.' });
         }
 
-        const { email, password, passwordConfirm, name } = req.body || {};
+        const { email: reqEmail, password, passwordConfirm, name } = req.body || {};
         const phone = req.body?.phone ? req.body.phone.replace(/\D/g, '') : '';
         const normalizedPhone = phone ? (phone.startsWith('55') ? phone : '55' + phone) : '';
-        if (!email || !password) return res.status(400).json({ error: 'Preencha todos os campos', fields: {} });
+        if (!reqEmail || !password) return res.status(400).json({ error: 'Preencha todos os campos', fields: {} });
         if (password !== passwordConfirm) return res.status(400).json({ error: 'As senhas não coincidem', fields: {} });
         if (password.length < 8) return res.status(400).json({ error: 'Senha mínima: 8 caracteres', fields: {} });
 
-        const { rows: existing } = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [email.toLowerCase().trim()] });
+        const { rows: existing } = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [reqEmail.toLowerCase().trim()] });
         if (rowsToObjects(existing).length > 0) {
           return res.status(400).json({ error: 'failed to create', fields: { email: 'E-mail já cadastrado' } });
         }
@@ -71,11 +72,11 @@ export default async function handler(req, res) {
         const now = new Date().toISOString();
         await db.execute({
           sql: 'INSERT INTO users (id, email, password_hash, name, phone, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-          args: [id, email.toLowerCase().trim(), hash, name || '', normalizedPhone, now]
+          args: [id, reqEmail.toLowerCase().trim(), hash, name || '', normalizedPhone, now]
         });
         await db.execute({
           sql: 'INSERT INTO user_plans (id, user_id, email, name, monthly_fee, active) VALUES (?, ?, ?, ?, 0, 1)',
-          args: [crypto.randomUUID(), id, email.toLowerCase().trim(), name || '']
+          args: [crypto.randomUUID(), id, reqEmail.toLowerCase().trim(), name || '']
         });
 
         const { rows } = await db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [id] });
@@ -84,6 +85,19 @@ export default async function handler(req, res) {
 
         // Enviar boas-vindas pelo WhatsApp (não bloqueia o registro)
         if (normalizedPhone) _enviarBoasVindasWhatsApp(safeUser).catch(() => {});
+
+        // Enviar boas-vindas por e-mail (respeita opt-in; recém-criado não tem pref → default_on=1 → envia)
+        if (safeUser.email) {
+          email.sendTemplateEmail({
+            to: safeUser.email,
+            toName: safeUser.name,
+            systemKey: 'welcome',
+            vars: {
+              name: (safeUser.name || '').split(' ')[0] || '',
+              app_url: (process.env.APP_URL || 'https://app.lumersbpo.com.br')
+            }
+          }).catch(() => {});
+        }
 
         return res.status(201).json({ user: safeUser });
       } catch (err) {
@@ -104,9 +118,9 @@ export default async function handler(req, res) {
 
     // POST /api/auth/forgot
     if (action === 'forgot' && req.method === 'POST') {
-      const { email } = req.body || {};
-      if (!email) return res.status(400).json({ error: 'E-mail obrigatório' });
-      const { rows } = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [email.toLowerCase().trim()] });
+      const { email: reqEmail } = req.body || {};
+      if (!reqEmail) return res.status(400).json({ error: 'E-mail obrigatório' });
+      const { rows } = await db.execute({ sql: 'SELECT id, name, email FROM users WHERE email = ?', args: [reqEmail.toLowerCase().trim()] });
       const users = rowsToObjects(rows);
       if (!users.length) return res.status(200).json({ ok: true });
       const token = crypto.randomUUID();
@@ -115,7 +129,23 @@ export default async function handler(req, res) {
         sql: 'INSERT INTO password_resets (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)',
         args: [crypto.randomUUID(), users[0].id, token, expires]
       });
-      return res.status(200).json({ ok: true, _dev_token: token });
+
+      // Dispara e-mail de reset (best-effort, não bloqueia nem revela existência do e-mail)
+      const APP_URL = process.env.APP_URL || 'https://app.lumersbpo.com.br';
+      const userName = users[0].name || '';
+      const userEmail = users[0].email;
+      const reset_link = `${APP_URL}/#/reset/${token}`;
+      email.sendTemplateEmail({
+        to: userEmail,
+        toName: userName,
+        systemKey: 'reset_password',
+        vars: { name: userName, reset_link, app_url: APP_URL }
+      }).catch(() => {});
+
+      // Resposta idêntica exista ou não o e-mail (anti-enumeração). _dev_token só fora de produção.
+      const resp = { ok: true };
+      if (process.env.VERCEL_ENV !== 'production') resp._dev_token = token;
+      return res.status(200).json(resp);
     }
 
     // POST /api/auth/reset

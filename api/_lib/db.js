@@ -310,6 +310,99 @@ export async function initDb() {
       target_email TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     )`,
+    `CREATE TABLE IF NOT EXISTS email_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      subject TEXT DEFAULT '',
+      html TEXT DEFAULT '',
+      text TEXT DEFAULT '',
+      category TEXT DEFAULT 'geral',
+      is_system INTEGER DEFAULT 0,
+      system_key TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS email_lists (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      dynamic_filter TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS email_list_members (
+      id TEXT PRIMARY KEY,
+      list_id TEXT NOT NULL,
+      user_id TEXT DEFAULT '',
+      email TEXT NOT NULL,
+      name TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS email_campaigns (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      template_id TEXT DEFAULT '',
+      subject TEXT DEFAULT '',
+      html TEXT DEFAULT '',
+      list_id TEXT DEFAULT '',
+      trigger_type TEXT DEFAULT 'immediate',
+      scheduled_for TEXT DEFAULT '',
+      event_key TEXT DEFAULT '',
+      status TEXT DEFAULT 'draft',
+      total INTEGER DEFAULT 0,
+      sent INTEGER DEFAULT 0,
+      failed INTEGER DEFAULT 0,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS email_dispatch (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL,
+      user_id TEXT DEFAULT '',
+      to_email TEXT NOT NULL,
+      to_name TEXT DEFAULT '',
+      subject TEXT DEFAULT '',
+      html TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      attempts INTEGER DEFAULT 0,
+      scheduled_for TEXT DEFAULT '',
+      message_id TEXT DEFAULT '',
+      error TEXT DEFAULT '',
+      processing_at TEXT DEFAULT '',
+      sent_at TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS email_log (
+      id TEXT PRIMARY KEY,
+      to_email TEXT DEFAULT '',
+      to_name TEXT DEFAULT '',
+      subject TEXT DEFAULT '',
+      template_key TEXT DEFAULT '',
+      campaign_id TEXT DEFAULT '',
+      status TEXT DEFAULT 'sent',
+      message_id TEXT DEFAULT '',
+      error TEXT DEFAULT '',
+      sent_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS notification_types (
+      id TEXT PRIMARY KEY,
+      key TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      channel TEXT DEFAULT 'email',
+      default_on INTEGER DEFAULT 0,
+      active INTEGER DEFAULT 1,
+      template_key TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS user_notification_prefs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      notif_key TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1,
+      updated_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {
@@ -434,6 +527,90 @@ export async function initDb() {
 
   // Seed default system settings (INSERT OR IGNORE keeps existing values)
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('allow_registration', '0')", args: [] });
+
+  // ===== E-mail subsystem =====
+  // Indexes for dispatch queue processing and per-user notification prefs uniqueness
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_email_dispatch_status_scheduled ON email_dispatch(status, scheduled_for)");
+  await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_notif_prefs ON user_notification_prefs(user_id, notif_key)");
+
+  // Seed e-mail system settings (INSERT OR IGNORE keeps existing values)
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('email_enabled', '0')", args: [] });
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('email_from', 'Lumers Flow <no-reply@lumersbpo.com.br>')", args: [] });
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('resend_api_key', '')", args: [] });
+
+  // Seed system e-mail templates (idempotent por id fixo/system_key). HTML responsivo PT-BR.
+  const _tplReset = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 0;"><tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+      <tr><td style="background:#6366f1;padding:24px;text-align:center;"><span style="color:#ffffff;font-size:20px;font-weight:700;">Lumers Flow</span></td></tr>
+      <tr><td style="padding:32px 24px;color:#1e293b;">
+        <h1 style="margin:0 0 16px;font-size:20px;">Redefinição de senha</h1>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#475569;">Olá {{name}}, recebemos um pedido para redefinir a sua senha. Clique no botão abaixo para criar uma nova senha:</p>
+        <p style="text-align:center;margin:24px 0;"><a href="{{reset_link}}" style="display:inline-block;background:#6366f1;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:15px;font-weight:600;">Redefinir senha</a></p>
+        <p style="margin:0 0 8px;font-size:13px;line-height:1.6;color:#94a3b8;">Se o botão não funcionar, copie e cole este link no navegador:</p>
+        <p style="margin:0 0 16px;font-size:13px;word-break:break-all;"><a href="{{reset_link}}" style="color:#6366f1;">{{reset_link}}</a></p>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#94a3b8;">Se você não solicitou essa alteração, ignore este e-mail.</p>
+      </td></tr>
+      <tr><td style="padding:16px 24px;background:#f8fafc;text-align:center;color:#94a3b8;font-size:12px;">&copy; Lumers Flow — <a href="{{app_url}}" style="color:#94a3b8;">{{app_url}}</a></td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+
+  const _tplWelcome = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 0;"><tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+      <tr><td style="background:#10b981;padding:24px;text-align:center;"><span style="color:#ffffff;font-size:20px;font-weight:700;">Lumers Flow</span></td></tr>
+      <tr><td style="padding:32px 24px;color:#1e293b;">
+        <h1 style="margin:0 0 16px;font-size:20px;">Boas-vindas, {{name}}! 🎉</h1>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#475569;">A sua conta na Lumers Flow foi criada com sucesso. Agora você pode organizar as suas finanças, acompanhar metas e ter controle total do seu fluxo de caixa.</p>
+        <p style="text-align:center;margin:24px 0;"><a href="{{app_url}}" style="display:inline-block;background:#10b981;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:15px;font-weight:600;">Acessar a plataforma</a></p>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#94a3b8;">Qualquer dúvida, é só responder a este e-mail. Estamos por aqui para ajudar.</p>
+      </td></tr>
+      <tr><td style="padding:16px 24px;background:#f8fafc;text-align:center;color:#94a3b8;font-size:12px;">&copy; Lumers Flow — <a href="{{app_url}}" style="color:#94a3b8;">{{app_url}}</a></td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+
+  const _tplExpiry = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 0;"><tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+      <tr><td style="background:#f59e0b;padding:24px;text-align:center;"><span style="color:#ffffff;font-size:20px;font-weight:700;">Lumers Flow</span></td></tr>
+      <tr><td style="padding:32px 24px;color:#1e293b;">
+        <h1 style="margin:0 0 16px;font-size:20px;">O seu plano está próximo do vencimento</h1>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#475569;">Olá {{name}}, o seu plano <strong>{{plan_name}}</strong> vence em <strong>{{expiry_date}}</strong>. Para continuar aproveitando todos os recursos sem interrupção, renove antes do vencimento.</p>
+        <p style="text-align:center;margin:24px 0;"><a href="{{app_url}}" style="display:inline-block;background:#f59e0b;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:15px;font-weight:600;">Renovar plano</a></p>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#94a3b8;">Se já efetuou a renovação, desconsidere este aviso.</p>
+      </td></tr>
+      <tr><td style="padding:16px 24px;background:#f8fafc;text-align:center;color:#94a3b8;font-size:12px;">&copy; Lumers Flow — <a href="{{app_url}}" style="color:#94a3b8;">{{app_url}}</a></td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+
+  await db.execute({
+    sql: "INSERT OR IGNORE INTO email_templates (id, name, subject, html, category, is_system, system_key) VALUES (?, ?, ?, ?, 'sistema', 1, 'reset_password')",
+    args: ['tpl_sys_reset_password', 'Redefinição de senha', 'Redefina a sua senha — Lumers Flow', _tplReset],
+  });
+  await db.execute({
+    sql: "INSERT OR IGNORE INTO email_templates (id, name, subject, html, category, is_system, system_key) VALUES (?, ?, ?, ?, 'sistema', 1, 'welcome')",
+    args: ['tpl_sys_welcome', 'E-mail de boas-vindas', 'Bem-vindo(a) à Lumers Flow, {{name}}!', _tplWelcome],
+  });
+  await db.execute({
+    sql: "INSERT OR IGNORE INTO email_templates (id, name, subject, html, category, is_system, system_key) VALUES (?, ?, ?, ?, 'sistema', 1, 'plan_expiry')",
+    args: ['tpl_sys_plan_expiry', 'Lembrete de vencimento do plano', 'O seu plano {{plan_name}} vence em {{expiry_date}}', _tplExpiry],
+  });
+
+  // Seed notification types (idempotente por key). O admin gerencia a lista.
+  await db.execute({
+    sql: "INSERT OR IGNORE INTO notification_types (id, key, name, description, channel, default_on, active, template_key) VALUES (?, 'plan_expiry', 'Lembrete de vencimento do plano', 'Aviso enviado antes do vencimento do plano do usuário', 'email', 1, 1, 'plan_expiry')",
+    args: ['ntf_plan_expiry'],
+  });
+  await db.execute({
+    sql: "INSERT OR IGNORE INTO notification_types (id, key, name, description, channel, default_on, active, template_key) VALUES (?, 'welcome', 'E-mail de boas-vindas', 'E-mail enviado quando um novo usuário é criado', 'email', 1, 1, 'welcome')",
+    args: ['ntf_welcome'],
+  });
 
   _initialized = true;
 }

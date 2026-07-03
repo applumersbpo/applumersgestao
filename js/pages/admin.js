@@ -95,6 +95,7 @@ function _adminNavBar(active) {
   ];
   if (isSuperAdmin) {
     tabs.push({ id: 'system', href: '#/admin-system', lucide: 'settings',    label: 'Sistema' });
+    tabs.push({ id: 'email',  href: '#/admin-email',  lucide: 'mail',        label: 'E-mail'  });
     tabs.push({ id: 'theme',  href: '#/admin-theme',  lucide: 'palette',     label: 'Tema'    });
   }
   return `<nav class="admin-nav-tabs">${tabs.map(t => `
@@ -3502,4 +3503,886 @@ async function updateUserFee(email, value) {
   } catch(e) {
     toast('Erro ao salvar', 'error');
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Painel Admin — E-mail & Notificações
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _adminEmailSub  = 'config';
+let _adminEmailData = { templates: [], lists: [] };
+
+async function renderAdminEmail() {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading-screen"><div class="spinner"></div></div>';
+
+  const _user = pb.authStore.model;
+  const isSuperAdmin = _user?.role === 'super_admin' || _user?.email === 'applumergestao@gmail.com';
+  if (!isSuperAdmin) {
+    content.innerHTML = `
+      ${_adminNavBar('email')}
+      <div style="padding:48px;text-align:center;color:var(--text-muted)">
+        <i data-lucide="shield-off" style="width:40px;height:40px;opacity:.3;display:block;margin:0 auto 12px"></i>
+        <p>Acesso restrito a Super Admin.</p>
+      </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+
+  const subtabs = [
+    { id: 'config',        icon: 'settings',    label: 'Configuração'  },
+    { id: 'templates',     icon: 'file-text',   label: 'Templates'     },
+    { id: 'lists',         icon: 'users',       label: 'Listas'        },
+    { id: 'campaigns',     icon: 'send',        label: 'Campanhas'     },
+    { id: 'notifications', icon: 'bell',        label: 'Notificações'  },
+    { id: 'log',           icon: 'scroll-text', label: 'Log de envios' },
+  ];
+
+  content.innerHTML = `
+    ${_adminNavBar('email')}
+    <nav class="admin-nav-tabs" style="margin-bottom:16px">
+      ${subtabs.map(t => `
+        <a href="#" class="admin-nav-tab${_adminEmailSub === t.id ? ' active' : ''}"
+          onclick="event.preventDefault();_adminEmailTab('${t.id}')">
+          ${icon(t.icon, 14)}<span>${t.label}</span>
+        </a>`).join('')}
+    </nav>
+    <div id="admin-email-body"><div class="loading-screen"><div class="spinner"></div></div></div>`;
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  await _adminEmailRenderSub();
+}
+
+function _adminEmailTab(id) {
+  _adminEmailSub = id;
+  renderAdminEmail();
+}
+
+async function _adminEmailRenderSub() {
+  const body = document.getElementById('admin-email-body');
+  if (!body) return;
+  body.innerHTML = '<div class="loading-screen"><div class="spinner"></div></div>';
+  try {
+    switch (_adminEmailSub) {
+      case 'config':        await _adminEmailConfig(body);        break;
+      case 'templates':     await _adminEmailTemplates(body);     break;
+      case 'lists':         await _adminEmailLists(body);         break;
+      case 'campaigns':     await _adminEmailCampaigns(body);     break;
+      case 'notifications': await _adminEmailNotifications(body); break;
+      case 'log':           await _adminEmailLog(body);           break;
+    }
+  } catch (e) {
+    body.innerHTML = `<div class="card"><p style="color:var(--expense)">${icon('alert-triangle',14)} Erro: ${_escHtml(e.message || 'falha ao carregar')}</p></div>`;
+  }
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function _adminEmailIsSystem(v) { return v === 1 || v === '1'; }
+
+// ── A) Configuração ───────────────────────────────────────────────────────────
+
+async function _adminEmailConfig(body) {
+  const cfg = await _api('GET', '/email/config');
+  body.innerHTML = `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:16px">${icon('settings',14)} Configuração de E-mail</div>
+      <label style="display:flex;align-items:center;gap:10px;margin-bottom:16px;cursor:pointer">
+        <input type="checkbox" id="em-enabled" ${cfg.enabled ? 'checked' : ''} style="width:16px;height:16px">
+        <span style="font-size:.9rem;font-weight:600">E-mail habilitado</span>
+      </label>
+      <div class="form-group">
+        <label class="form-label">Remetente (From)</label>
+        <input id="em-from" class="form-control" value="${_escHtml(cfg.from || '')}" placeholder="Lumers Flow &lt;no-reply@lumersbpo.com.br&gt;">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Chave da API Resend</label>
+        <input id="em-key" class="form-control" type="password" autocomplete="new-password"
+          placeholder="${cfg.hasKey ? '•••• (configurada)' : 're_...'}">
+        <div style="font-size:.78rem;color:var(--text-muted);margin-top:4px">
+          ${cfg.hasKey ? 'Deixe em branco para manter a chave atual.' : 'Nenhuma chave configurada ainda.'}
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:6px">
+        <button id="em-save" class="btn btn-primary" onclick="_adminEmailSaveConfig()">${icon('save',14)} Salvar</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="margin-bottom:12px">${icon('send',14)} Enviar e-mail de teste</div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label class="form-label">Destinatário</label>
+        <input id="em-test-to" class="form-control" type="email" placeholder="voce@email.com">
+      </div>
+      <div style="display:flex;justify-content:flex-end">
+        <button id="em-test-btn" class="btn btn-ghost" onclick="_adminEmailTestSend()">${icon('mail',14)} Enviar teste</button>
+      </div>
+      <div id="em-test-result" style="font-size:.83rem;margin-top:10px;display:none"></div>
+    </div>`;
+}
+
+async function _adminEmailSaveConfig() {
+  const btn     = document.getElementById('em-save');
+  const enabled = document.getElementById('em-enabled')?.checked;
+  const from    = document.getElementById('em-from')?.value.trim();
+  const apiKey  = document.getElementById('em-key')?.value;
+  const orig    = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try {
+    const payload = { enabled, from };
+    if (typeof apiKey === 'string' && apiKey.trim() !== '') payload.apiKey = apiKey.trim();
+    await _api('POST', '/email/config', payload);
+    toast('Configuração salva!', 'success');
+    const keyEl = document.getElementById('em-key');
+    if (keyEl && payload.apiKey) { keyEl.value = ''; keyEl.placeholder = '•••• (configurada)'; }
+  } catch (e) {
+    toast('Erro: ' + (e.message || 'falha ao salvar'), 'error');
+  } finally {
+    btn.disabled = false; btn.innerHTML = orig;
+  }
+}
+
+async function _adminEmailTestSend() {
+  const to  = document.getElementById('em-test-to')?.value.trim();
+  const res = document.getElementById('em-test-result');
+  if (!to) { toast('Informe um destinatário.', 'error'); return; }
+  const btn  = document.getElementById('em-test-btn');
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = `${icon('loader',14)} Enviando...`;
+  res.style.display = 'none';
+  try {
+    await _api('POST', '/email/test-send', { to, system_key: 'welcome' });
+    res.style.display = ''; res.style.color = 'var(--income-text)';
+    res.textContent = `✅ E-mail de teste enviado para ${to}.`;
+  } catch (e) {
+    res.style.display = ''; res.style.color = 'var(--expense)';
+    res.textContent = `❌ ${e.message || 'Falha no envio'}`;
+  } finally {
+    btn.disabled = false; btn.innerHTML = orig;
+  }
+}
+
+// ── B) Templates ──────────────────────────────────────────────────────────────
+
+async function _adminEmailTemplates(body) {
+  const templates = await _api('GET', '/email/templates');
+  _adminEmailData.templates = templates;
+  const rows = templates.length ? templates.map(t => {
+    const sys = _adminEmailIsSystem(t.is_system);
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="font-weight:600;font-size:.9rem">${_escHtml(t.name)}</span>
+            ${sys ? `<span style="font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:20px;background:var(--primary-light,#DDE7D8);color:var(--primary-600)">SISTEMA</span>` : ''}
+            <span style="font-size:.72rem;color:var(--text-muted)">${_escHtml(t.category || 'geral')}</span>
+          </div>
+          <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            ${_escHtml(t.subject || '(sem assunto)')}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-sm" onclick="_adminEmailEditTemplate('${t.id}')" style="font-size:.75rem;padding:4px 10px">${icon('pencil',12)} Editar</button>
+          ${sys ? '' : `<button class="btn btn-sm" onclick="_adminEmailDeleteTemplate('${t.id}')" style="font-size:.75rem;padding:4px 10px;color:var(--expense)">${icon('trash-2',12)}</button>`}
+        </div>
+      </div>`;
+  }).join('') : '<p style="color:var(--text-muted);font-size:.85rem;padding:12px 0">Nenhum template ainda.</p>';
+
+  body.innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px">
+        <div class="card-title">${icon('file-text',14)} Templates de E-mail</div>
+        <button class="btn btn-primary btn-sm" onclick="_adminEmailEditTemplate('')" style="font-size:.8rem">${icon('plus',14)} Novo</button>
+      </div>
+      ${rows}
+    </div>`;
+}
+
+function _adminEmailEditTemplate(id) {
+  const isNew = !id;
+  const t = isNew
+    ? { name: '', category: 'geral', subject: '', html: '', text: '', is_system: 0 }
+    : (_adminEmailData.templates.find(x => x.id === id) || {});
+  const sys = _adminEmailIsSystem(t.is_system);
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:640px;width:calc(100% - 32px);max-height:92vh;overflow-y:auto">
+        <div class="modal-header">
+          <div class="modal-title">${icon('file-text',16)} ${isNew ? 'Novo template' : 'Editar template'}</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x',16)}</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+          ${sys ? `<div style="font-size:.8rem;color:var(--text-muted);background:var(--primary-light,#DDE7D8);padding:8px 10px;border-radius:8px">
+            ${icon('lock',12)} Template de sistema — nome e categoria travados. Apenas assunto e conteúdo são editáveis.</div>` : ''}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Nome *</label>
+              <input id="et-name" class="form-control" value="${_escHtml(t.name || '')}" ${sys ? 'disabled' : ''}>
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Categoria</label>
+              <input id="et-category" class="form-control" value="${_escHtml(t.category || 'geral')}" ${sys ? 'disabled' : ''}>
+            </div>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Assunto</label>
+            <input id="et-subject" class="form-control" value="${_escHtml(t.subject || '')}">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">HTML</label>
+            <textarea id="et-html" class="form-control" rows="8" style="font-family:monospace;font-size:.82rem">${_escHtml(t.html || '')}</textarea>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Texto <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+            <textarea id="et-text" class="form-control" rows="3">${_escHtml(t.text || '')}</textarea>
+          </div>
+          <div id="et-error" style="color:var(--expense);font-size:.83rem;display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+          <button id="et-submit" class="btn btn-primary" onclick="_adminEmailSaveTemplate('${id}')">${icon('save',14)} Salvar</button>
+        </div>
+      </div>
+    </div>`);
+}
+
+async function _adminEmailSaveTemplate(id) {
+  const errEl = document.getElementById('et-error');
+  const btn   = document.getElementById('et-submit');
+  errEl.style.display = 'none';
+  const t = id ? (_adminEmailData.templates.find(x => x.id === id) || {}) : {};
+  const sys = _adminEmailIsSystem(t.is_system);
+
+  const payload = {
+    subject: document.getElementById('et-subject').value,
+    html:    document.getElementById('et-html').value,
+    text:    document.getElementById('et-text').value,
+  };
+  if (id) payload.id = id;
+  if (!sys) {
+    payload.name     = document.getElementById('et-name').value.trim();
+    payload.category = document.getElementById('et-category').value.trim() || 'geral';
+    if (!payload.name) { errEl.textContent = 'Nome é obrigatório.'; errEl.style.display = ''; return; }
+  }
+
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try {
+    await _api('POST', '/email/template', payload);
+    closeModal();
+    toast('Template salvo!', 'success');
+    await _adminEmailRenderSub();
+  } catch (e) {
+    errEl.textContent = e.message || 'Erro ao salvar.'; errEl.style.display = '';
+    btn.disabled = false; btn.innerHTML = orig;
+  }
+}
+
+async function _adminEmailDeleteTemplate(id) {
+  const t = _adminEmailData.templates.find(x => x.id === id);
+  if (!t) return;
+  if (!confirm(`Excluir o template "${t.name}"? Esta ação não pode ser desfeita.`)) return;
+  try {
+    await _api('DELETE', '/email/template?id=' + encodeURIComponent(id));
+    toast('Template excluído.', 'success');
+    await _adminEmailRenderSub();
+  } catch (e) {
+    toast('Erro: ' + (e.message || 'falha ao excluir'), 'error');
+  }
+}
+
+// ── C) Listas e grupos ────────────────────────────────────────────────────────
+
+async function _adminEmailLists(body) {
+  const lists = await _api('GET', '/email/lists');
+  _adminEmailData.lists = lists;
+  const rows = lists.length ? lists.map(l => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-weight:600;font-size:.9rem">${_escHtml(l.name)}</span>
+          ${l.dynamic_filter === 'all_users' ? `<span style="font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:20px;background:var(--primary-light,#DDE7D8);color:var(--primary-600)">DINÂMICA</span>` : ''}
+        </div>
+        <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">
+          ${_escHtml(l.description || 'Sem descrição')} &nbsp;·&nbsp; ${l.member_count || 0} membro(s)
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn btn-sm" onclick="_adminEmailManageMembers('${l.id}')" style="font-size:.75rem;padding:4px 10px">${icon('users',12)} Membros</button>
+        <button class="btn btn-sm" onclick="_adminEmailEditList('${l.id}')" style="font-size:.75rem;padding:4px 10px">${icon('pencil',12)} Editar</button>
+        <button class="btn btn-sm" onclick="_adminEmailDeleteList('${l.id}')" style="font-size:.75rem;padding:4px 10px;color:var(--expense)">${icon('trash-2',12)}</button>
+      </div>
+    </div>`).join('') : '<p style="color:var(--text-muted);font-size:.85rem;padding:12px 0">Nenhuma lista ainda.</p>';
+
+  body.innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px">
+        <div class="card-title">${icon('users',14)} Listas e grupos</div>
+        <button class="btn btn-primary btn-sm" onclick="_adminEmailEditList('')" style="font-size:.8rem">${icon('plus',14)} Nova lista</button>
+      </div>
+      ${rows}
+    </div>`;
+}
+
+function _adminEmailEditList(id) {
+  const isNew = !id;
+  const l = isNew ? { name: '', description: '', dynamic_filter: '' } : (_adminEmailData.lists.find(x => x.id === id) || {});
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:460px;width:calc(100% - 32px);max-height:92vh;overflow-y:auto">
+        <div class="modal-header">
+          <div class="modal-title">${icon('users',16)} ${isNew ? 'Nova lista' : 'Editar lista'}</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x',16)}</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Nome *</label>
+            <input id="el-name" class="form-control" value="${_escHtml(l.name || '')}">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Descrição <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+            <input id="el-desc" class="form-control" value="${_escHtml(l.description || '')}">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Filtro dinâmico</label>
+            <select id="el-filter" class="form-control">
+              <option value=""          ${l.dynamic_filter !== 'all_users' ? 'selected' : ''}>Estática (membros manuais)</option>
+              <option value="all_users" ${l.dynamic_filter === 'all_users' ? 'selected' : ''}>Todos os usuários (dinâmica)</option>
+            </select>
+            <div style="font-size:.78rem;color:var(--text-muted);margin-top:4px">Listas dinâmicas incluem automaticamente todos os usuários no envio.</div>
+          </div>
+          <div id="el-error" style="color:var(--expense);font-size:.83rem;display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+          <button id="el-submit" class="btn btn-primary" onclick="_adminEmailSaveList('${id}')">${icon('save',14)} Salvar</button>
+        </div>
+      </div>
+    </div>`);
+}
+
+async function _adminEmailSaveList(id) {
+  const errEl = document.getElementById('el-error');
+  const btn   = document.getElementById('el-submit');
+  errEl.style.display = 'none';
+  const name = document.getElementById('el-name').value.trim();
+  if (!name) { errEl.textContent = 'Nome é obrigatório.'; errEl.style.display = ''; return; }
+  const payload = {
+    name,
+    description:    document.getElementById('el-desc').value.trim(),
+    dynamic_filter: document.getElementById('el-filter').value,
+  };
+  if (id) payload.id = id;
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try {
+    await _api('POST', '/email/list', payload);
+    closeModal();
+    toast('Lista salva!', 'success');
+    await _adminEmailRenderSub();
+  } catch (e) {
+    errEl.textContent = e.message || 'Erro ao salvar.'; errEl.style.display = '';
+    btn.disabled = false; btn.innerHTML = orig;
+  }
+}
+
+async function _adminEmailDeleteList(id) {
+  const l = _adminEmailData.lists.find(x => x.id === id);
+  if (!l) return;
+  if (!confirm(`Excluir a lista "${l.name}" e todos os seus membros? Esta ação não pode ser desfeita.`)) return;
+  try {
+    await _api('DELETE', '/email/list?id=' + encodeURIComponent(id));
+    toast('Lista excluída.', 'success');
+    await _adminEmailRenderSub();
+  } catch (e) {
+    toast('Erro: ' + (e.message || 'falha ao excluir'), 'error');
+  }
+}
+
+function _adminEmailManageMembers(listId) {
+  const l = _adminEmailData.lists.find(x => x.id === listId) || { name: '' };
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:560px;width:calc(100% - 32px);max-height:92vh;overflow-y:auto">
+        <div class="modal-header">
+          <div class="modal-title">${icon('users',16)} Membros — ${_escHtml(l.name)}</div>
+          <button class="btn btn-icon btn-ghost" onclick="_adminEmailCloseMembers()">${icon('x',16)}</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">E-mail</label>
+              <input id="emb-email" class="form-control" type="email" placeholder="pessoa@email.com">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Nome</label>
+              <input id="emb-name" class="form-control" placeholder="(opcional)">
+            </div>
+            <button class="btn btn-primary" onclick="_adminEmailAddMember('${listId}')" style="height:38px">${icon('plus',14)}</button>
+          </div>
+          <div>
+            <button class="btn btn-ghost btn-sm" onclick="_adminEmailAddAllUsers('${listId}')" style="font-size:.8rem">${icon('user-plus',14)} Adicionar todos os usuários</button>
+          </div>
+          <div id="emb-error" style="color:var(--expense);font-size:.83rem;display:none"></div>
+          <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase">Membros atuais</div>
+          <div id="emb-list"><div class="loading-screen" style="min-height:60px"><div class="spinner"></div></div></div>
+        </div>
+      </div>
+    </div>`);
+  _adminEmailLoadMembers(listId);
+}
+
+function _adminEmailCloseMembers() {
+  closeModal();
+  _adminEmailRenderSub();
+}
+
+async function _adminEmailLoadMembers(listId) {
+  const cont = document.getElementById('emb-list');
+  if (!cont) return;
+  try {
+    const members = await _api('GET', '/email/list-members?list_id=' + encodeURIComponent(listId));
+    cont.innerHTML = members.length ? members.map(m => `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="min-width:0">
+          <div style="font-size:.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_escHtml(m.email)}</div>
+          ${m.name ? `<div style="font-size:.76rem;color:var(--text-muted)">${_escHtml(m.name)}</div>` : ''}
+        </div>
+        <button class="btn btn-sm" onclick="_adminEmailRemoveMember('${listId}','${m.id}')" style="font-size:.75rem;padding:4px 8px;color:var(--expense)">${icon('trash-2',12)}</button>
+      </div>`).join('') : '<p style="color:var(--text-muted);font-size:.83rem;padding:8px 0">Nenhum membro nesta lista.</p>';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } catch (e) {
+    cont.innerHTML = `<p style="color:var(--expense);font-size:.83rem">Erro: ${_escHtml(e.message || 'falha')}</p>`;
+  }
+}
+
+async function _adminEmailAddMember(listId) {
+  const errEl = document.getElementById('emb-error');
+  errEl.style.display = 'none';
+  const email = document.getElementById('emb-email').value.trim();
+  const name  = document.getElementById('emb-name').value.trim();
+  if (!email) { errEl.textContent = 'E-mail é obrigatório.'; errEl.style.display = ''; return; }
+  try {
+    await _api('POST', '/email/list-members', { list_id: listId, members: [{ email, name }] });
+    document.getElementById('emb-email').value = '';
+    document.getElementById('emb-name').value  = '';
+    await _adminEmailLoadMembers(listId);
+  } catch (e) {
+    errEl.textContent = e.message || 'Erro ao adicionar.'; errEl.style.display = '';
+  }
+}
+
+async function _adminEmailAddAllUsers(listId) {
+  if (!confirm('Adicionar todos os usuários cadastrados a esta lista?')) return;
+  const errEl = document.getElementById('emb-error');
+  errEl.style.display = 'none';
+  try {
+    const r = await _api('POST', '/email/list-members', { list_id: listId, source: 'all_users' });
+    toast(`${r.inserted || 0} usuário(s) adicionado(s).`, 'success');
+    await _adminEmailLoadMembers(listId);
+  } catch (e) {
+    errEl.textContent = e.message || 'Erro ao adicionar.'; errEl.style.display = '';
+  }
+}
+
+async function _adminEmailRemoveMember(listId, memberId) {
+  try {
+    await _api('DELETE', '/email/list-member?id=' + encodeURIComponent(memberId));
+    await _adminEmailLoadMembers(listId);
+  } catch (e) {
+    toast('Erro: ' + (e.message || 'falha ao remover'), 'error');
+  }
+}
+
+// ── D) Campanhas ──────────────────────────────────────────────────────────────
+
+async function _adminEmailCampaigns(body) {
+  const [campaigns, templates, lists] = await Promise.all([
+    _api('GET', '/email/campaigns'),
+    _api('GET', '/email/templates'),
+    _api('GET', '/email/lists'),
+  ]);
+  _adminEmailData.templates = templates;
+  _adminEmailData.lists     = lists;
+
+  const tplName  = id => (templates.find(t => t.id === id) || {}).name || '—';
+  const listName = id => (lists.find(l => l.id === id) || {}).name || '—';
+  const statusColor = s => s === 'sent' || s === 'done' ? 'var(--income-text)' : s === 'running' || s === 'queued' ? 'var(--warning,#d97706)' : s === 'draft' ? 'var(--text-muted)' : 'var(--expense)';
+
+  const rows = campaigns.length ? campaigns.map(c => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-weight:600;font-size:.9rem">${_escHtml(c.name || '(sem nome)')}</span>
+          <span style="font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:20px;background:var(--border);color:${statusColor(c.status)}">${_escHtml((c.status || 'draft').toUpperCase())}</span>
+        </div>
+        <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">
+          Lista: ${_escHtml(listName(c.list_id))}${c.template_id ? ` · Template: ${_escHtml(tplName(c.template_id))}` : ''}
+          &nbsp;·&nbsp; ${c.total || 0} total / ${c.sent || 0} enviados / ${c.failed || 0} falhas
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn btn-sm" onclick="_adminEmailSendCampaign('${c.id}')" style="font-size:.75rem;padding:4px 10px;background:var(--primary-light,#DDE7D8);color:var(--primary-600);border:none">${icon('send',12)} Enviar</button>
+        <button class="btn btn-sm" onclick="_adminEmailEditCampaign('${c.id}')" style="font-size:.75rem;padding:4px 10px">${icon('pencil',12)}</button>
+        <button class="btn btn-sm" onclick="_adminEmailDeleteCampaign('${c.id}')" style="font-size:.75rem;padding:4px 10px;color:var(--expense)">${icon('trash-2',12)}</button>
+      </div>
+    </div>`).join('') : '<p style="color:var(--text-muted);font-size:.85rem;padding:12px 0">Nenhuma campanha ainda.</p>';
+
+  body.innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px">
+        <div class="card-title">${icon('send',14)} Campanhas</div>
+        <button class="btn btn-primary btn-sm" onclick="_adminEmailEditCampaign('')" style="font-size:.8rem">${icon('plus',14)} Nova campanha</button>
+      </div>
+      ${rows}
+    </div>`;
+}
+
+function _adminEmailEditCampaign(id) {
+  const isNew = !id;
+  const c = isNew
+    ? { name: '', template_id: '', subject: '', html: '', list_id: '', trigger_type: 'immediate', scheduled_for: '', event_key: '' }
+    : (_adminEmailData.campaigns?.find(x => x.id === id) || {});
+  // Campanhas não ficam em cache separado; recarrega via API caso edição direta sem cache.
+  _adminEmailRenderCampaignModal(isNew, c, id);
+}
+
+async function _adminEmailRenderCampaignModal(isNew, c, id) {
+  // Garante template/list options mesmo se veio de navegação direta.
+  if (!_adminEmailData.templates.length || !_adminEmailData.lists.length) {
+    try {
+      const [templates, lists] = await Promise.all([_api('GET', '/email/templates'), _api('GET', '/email/lists')]);
+      _adminEmailData.templates = templates; _adminEmailData.lists = lists;
+    } catch (_) {}
+  }
+  // Recarrega dados reais da campanha ao editar (fonte de verdade).
+  if (id) {
+    try {
+      const all = await _api('GET', '/email/campaigns');
+      const found = all.find(x => x.id === id);
+      if (found) c = found;
+    } catch (_) {}
+  }
+
+  const tplOpts  = _adminEmailData.templates.map(t => `<option value="${t.id}" ${c.template_id === t.id ? 'selected' : ''}>${_escHtml(t.name)}</option>`).join('');
+  const listOpts = _adminEmailData.lists.map(l => `<option value="${l.id}" ${c.list_id === l.id ? 'selected' : ''}>${_escHtml(l.name)}</option>`).join('');
+  const trig = c.trigger_type || 'immediate';
+
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:640px;width:calc(100% - 32px);max-height:92vh;overflow-y:auto">
+        <div class="modal-header">
+          <div class="modal-title">${icon('send',16)} ${isNew ? 'Nova campanha' : 'Editar campanha'}</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x',16)}</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Nome *</label>
+            <input id="ec-name" class="form-control" value="${_escHtml(c.name || '')}">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Template</label>
+            <select id="ec-template" class="form-control">
+              <option value="">— Sem template (assunto/HTML manual) —</option>
+              ${tplOpts}
+            </select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Assunto <span style="color:var(--text-muted);font-weight:400">(deixe vazio para herdar do template)</span></label>
+            <input id="ec-subject" class="form-control" value="${_escHtml(c.subject || '')}">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">HTML <span style="color:var(--text-muted);font-weight:400">(deixe vazio para herdar do template)</span></label>
+            <textarea id="ec-html" class="form-control" rows="5" style="font-family:monospace;font-size:.82rem">${_escHtml(c.html || '')}</textarea>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Lista de destino *</label>
+            <select id="ec-list" class="form-control">
+              <option value="">— Selecione —</option>
+              ${listOpts}
+            </select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Disparo</label>
+            <select id="ec-trigger" class="form-control" onchange="_adminEmailCampaignTrigger(this.value)">
+              <option value="immediate" ${trig === 'immediate' ? 'selected' : ''}>Imediato</option>
+              <option value="scheduled" ${trig === 'scheduled' ? 'selected' : ''}>Agendado</option>
+              <option value="event"     ${trig === 'event'     ? 'selected' : ''}>Por evento</option>
+            </select>
+          </div>
+          <div class="form-group" id="ec-scheduled-wrap" style="margin:0;display:${trig === 'scheduled' ? '' : 'none'}">
+            <label class="form-label">Data/hora do agendamento</label>
+            <input id="ec-scheduled" class="form-control" type="datetime-local" value="${_escHtml(_adminEmailToLocalInput(c.scheduled_for))}">
+          </div>
+          <div class="form-group" id="ec-event-wrap" style="margin:0;display:${trig === 'event' ? '' : 'none'}">
+            <label class="form-label">Chave do evento</label>
+            <input id="ec-event" class="form-control" value="${_escHtml(c.event_key || '')}" placeholder="ex: user_signup">
+          </div>
+          <div id="ec-error" style="color:var(--expense);font-size:.83rem;display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+          <button id="ec-draft" class="btn btn-ghost" onclick="_adminEmailSaveCampaign('${id}', false)">${icon('save',14)} Salvar rascunho</button>
+          <button id="ec-send" class="btn btn-primary" onclick="_adminEmailSaveCampaign('${id}', true)">${icon('send',14)} Enviar / Agendar</button>
+        </div>
+      </div>
+    </div>`);
+}
+
+function _adminEmailCampaignTrigger(value) {
+  const sw = document.getElementById('ec-scheduled-wrap');
+  const ev = document.getElementById('ec-event-wrap');
+  if (sw) sw.style.display = value === 'scheduled' ? '' : 'none';
+  if (ev) ev.style.display = value === 'event' ? '' : 'none';
+}
+
+function _adminEmailToLocalInput(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+async function _adminEmailSaveCampaign(id, alsoSend) {
+  const errEl = document.getElementById('ec-error');
+  errEl.style.display = 'none';
+  const name       = document.getElementById('ec-name').value.trim();
+  const templateId = document.getElementById('ec-template').value;
+  const subject    = document.getElementById('ec-subject').value;
+  const html       = document.getElementById('ec-html').value;
+  const listId     = document.getElementById('ec-list').value;
+  const trigger    = document.getElementById('ec-trigger').value;
+
+  const fail = msg => { errEl.textContent = msg; errEl.style.display = ''; };
+  if (!name)   return fail('Nome é obrigatório.');
+  if (!listId) return fail('Selecione uma lista de destino.');
+  if (!templateId && !subject.trim()) return fail('Informe um template ou um assunto manual.');
+
+  const payload = { name, template_id: templateId, subject, html, list_id: listId, trigger_type: trigger };
+  if (trigger === 'scheduled') {
+    const dt = document.getElementById('ec-scheduled').value;
+    if (!dt) return fail('Informe a data/hora do agendamento.');
+    payload.scheduled_for = new Date(dt).toISOString();
+  }
+  if (trigger === 'event') {
+    const ev = document.getElementById('ec-event').value.trim();
+    if (!ev) return fail('Informe a chave do evento.');
+    payload.event_key = ev;
+  }
+  if (id) payload.id = id;
+
+  const btnDraft = document.getElementById('ec-draft');
+  const btnSend  = document.getElementById('ec-send');
+  btnDraft.disabled = true; btnSend.disabled = true;
+  try {
+    const saved = await _api('POST', '/email/campaign', payload);
+    const cid = saved.id || id;
+    if (alsoSend) {
+      const r = await _api('POST', '/email/send', { campaign_id: cid });
+      toast(`${r.total || 0} e-mail(s) enfileirados.`, 'success');
+    } else {
+      toast('Rascunho salvo!', 'success');
+    }
+    closeModal();
+    await _adminEmailRenderSub();
+  } catch (e) {
+    fail(e.message || 'Erro ao salvar.');
+    btnDraft.disabled = false; btnSend.disabled = false;
+  }
+}
+
+async function _adminEmailSendCampaign(id) {
+  if (!confirm('Enfileirar o envio desta campanha para todos os destinatários da lista?')) return;
+  try {
+    const r = await _api('POST', '/email/send', { campaign_id: id });
+    toast(`${r.total || 0} e-mail(s) enfileirados.`, 'success');
+    await _adminEmailRenderSub();
+  } catch (e) {
+    toast('Erro: ' + (e.message || 'falha ao enviar'), 'error');
+  }
+}
+
+async function _adminEmailDeleteCampaign(id) {
+  if (!confirm('Excluir esta campanha? Esta ação não pode ser desfeita.')) return;
+  try {
+    await _api('DELETE', '/email/campaign?id=' + encodeURIComponent(id));
+    toast('Campanha excluída.', 'success');
+    await _adminEmailRenderSub();
+  } catch (e) {
+    toast('Erro: ' + (e.message || 'falha ao excluir'), 'error');
+  }
+}
+
+// ── E) Notificações padrão do sistema ─────────────────────────────────────────
+
+async function _adminEmailNotifications(body) {
+  const [types, templates] = await Promise.all([
+    _api('GET', '/email/notification-types'),
+    _api('GET', '/email/templates'),
+  ]);
+  _adminEmailData.notifTypes = types;
+  _adminEmailData.templates  = templates;
+
+  const rows = types.length ? types.map(n => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-weight:600;font-size:.9rem">${_escHtml(n.name)}</span>
+          <span style="font-size:.72rem;color:var(--text-muted);font-family:monospace">${_escHtml(n.key)}</span>
+          ${_adminEmailIsSystem(n.default_on) ? `<span style="font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:20px;background:var(--primary-light,#DDE7D8);color:var(--primary-600)">PADRÃO ON</span>` : ''}
+          ${_adminEmailIsSystem(n.active) ? '' : `<span style="font-size:.68rem;font-weight:700;padding:1px 6px;border-radius:20px;background:var(--border);color:var(--text-muted)">INATIVA</span>`}
+        </div>
+        <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">${_escHtml(n.description || 'Sem descrição')}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-sm" onclick="_adminEmailEditNotif('${n.id}')" style="font-size:.75rem;padding:4px 10px">${icon('pencil',12)} Editar</button>
+        <button class="btn btn-sm" onclick="_adminEmailDeleteNotif('${n.id}')" style="font-size:.75rem;padding:4px 10px;color:var(--expense)">${icon('trash-2',12)}</button>
+      </div>
+    </div>`).join('') : '<p style="color:var(--text-muted);font-size:.85rem;padding:12px 0">Nenhuma notificação definida ainda.</p>';
+
+  body.innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:12px">
+        <div class="card-title">${icon('bell',14)} Notificações padrão</div>
+        <button class="btn btn-primary btn-sm" onclick="_adminEmailEditNotif('')" style="font-size:.8rem">${icon('plus',14)} Nova</button>
+      </div>
+      <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">Defina os tipos de notificação; cada usuário liga/desliga em suas Configurações.</div>
+      ${rows}
+    </div>`;
+}
+
+function _adminEmailEditNotif(id) {
+  const isNew = !id;
+  const n = isNew
+    ? { key: '', name: '', description: '', template_key: '', default_on: 1, active: 1 }
+    : (_adminEmailData.notifTypes.find(x => x.id === id) || {});
+  const sysTemplates = (_adminEmailData.templates || []).filter(t => _adminEmailIsSystem(t.is_system) && t.system_key);
+  const tplOpts = sysTemplates.map(t => `<option value="${_escHtml(t.system_key)}" ${n.template_key === t.system_key ? 'selected' : ''}>${_escHtml(t.name)} (${_escHtml(t.system_key)})</option>`).join('');
+  const defaultOn = _adminEmailIsSystem(n.default_on);
+  const active    = n.active === undefined ? true : _adminEmailIsSystem(n.active);
+
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:480px;width:calc(100% - 32px);max-height:92vh;overflow-y:auto">
+        <div class="modal-header">
+          <div class="modal-title">${icon('bell',16)} ${isNew ? 'Nova notificação' : 'Editar notificação'}</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x',16)}</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Chave (key) *</label>
+            <input id="en-key" class="form-control" value="${_escHtml(n.key || '')}" placeholder="ex: plan_expiry" ${isNew ? '' : 'readonly'} style="font-family:monospace">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Nome *</label>
+            <input id="en-name" class="form-control" value="${_escHtml(n.name || '')}">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Descrição</label>
+            <input id="en-desc" class="form-control" value="${_escHtml(n.description || '')}">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Template do sistema</label>
+            <select id="en-template" class="form-control">
+              <option value="">— Nenhum —</option>
+              ${tplOpts}
+            </select>
+          </div>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="en-default" ${defaultOn ? 'checked' : ''} style="width:16px;height:16px">
+            <span style="font-size:.87rem">Ligada por padrão (default on)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="en-active" ${active ? 'checked' : ''} style="width:16px;height:16px">
+            <span style="font-size:.87rem">Ativa (visível para usuários)</span>
+          </label>
+          <div id="en-error" style="color:var(--expense);font-size:.83rem;display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+          <button id="en-submit" class="btn btn-primary" onclick="_adminEmailSaveNotif('${id}')">${icon('save',14)} Salvar</button>
+        </div>
+      </div>
+    </div>`);
+}
+
+async function _adminEmailSaveNotif(id) {
+  const errEl = document.getElementById('en-error');
+  const btn   = document.getElementById('en-submit');
+  errEl.style.display = 'none';
+  const key  = document.getElementById('en-key').value.trim();
+  const name = document.getElementById('en-name').value.trim();
+  if (!key)  { errEl.textContent = 'Chave é obrigatória.'; errEl.style.display = ''; return; }
+  if (!name) { errEl.textContent = 'Nome é obrigatório.';  errEl.style.display = ''; return; }
+
+  const payload = {
+    key,
+    name,
+    description:  document.getElementById('en-desc').value.trim(),
+    template_key: document.getElementById('en-template').value,
+    default_on:  document.getElementById('en-default').checked,
+    active:      document.getElementById('en-active').checked,
+  };
+  if (id) payload.id = id;
+
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try {
+    await _api('POST', '/email/notification-type', payload);
+    closeModal();
+    toast('Notificação salva!', 'success');
+    await _adminEmailRenderSub();
+  } catch (e) {
+    errEl.textContent = e.message || 'Erro ao salvar.'; errEl.style.display = '';
+    btn.disabled = false; btn.innerHTML = orig;
+  }
+}
+
+async function _adminEmailDeleteNotif(id) {
+  const n = _adminEmailData.notifTypes.find(x => x.id === id);
+  if (!n) return;
+  if (!confirm(`Excluir a notificação "${n.name}"? Esta ação não pode ser desfeita.`)) return;
+  try {
+    await _api('DELETE', '/email/notification-type?id=' + encodeURIComponent(id));
+    toast('Notificação excluída.', 'success');
+    await _adminEmailRenderSub();
+  } catch (e) {
+    toast('Erro: ' + (e.message || 'falha ao excluir'), 'error');
+  }
+}
+
+// ── F) Log de envios ──────────────────────────────────────────────────────────
+
+async function _adminEmailLog(body) {
+  const logs = await _api('GET', '/email/log?limit=100');
+  const statusColor = s => s === 'sent' ? 'var(--income-text)' : 'var(--expense)';
+  const rows = logs.length ? logs.map(l => `
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 10px;font-size:.78rem;color:var(--text-muted);white-space:nowrap">${_escHtml(l.sent_at || '')}</td>
+      <td style="padding:8px 10px;font-size:.82rem">${_escHtml(l.to_email || '')}</td>
+      <td style="padding:8px 10px;font-size:.82rem">${_escHtml(l.subject || '')}</td>
+      <td style="padding:8px 10px;font-size:.78rem;font-weight:700;color:${statusColor(l.status)}">${_escHtml(l.status || '')}</td>
+      <td style="padding:8px 10px;font-size:.78rem;color:var(--expense)">${_escHtml(l.error || '')}</td>
+    </tr>`).join('') : '<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--text-muted);font-size:.85rem">Nenhum envio registrado ainda.</td></tr>';
+
+  body.innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px">
+        <div class="card-title">${icon('scroll-text',14)} Log de envios</div>
+        <button class="btn btn-ghost btn-sm" onclick="_adminEmailRenderSub()" style="font-size:.8rem">${icon('refresh-cw',14)} Atualizar</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border);text-align:left">
+              <th style="padding:8px 10px;font-size:.72rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em">Data</th>
+              <th style="padding:8px 10px;font-size:.72rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em">Destinatário</th>
+              <th style="padding:8px 10px;font-size:.72rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em">Assunto</th>
+              <th style="padding:8px 10px;font-size:.72rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em">Status</th>
+              <th style="padding:8px 10px;font-size:.72rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em">Erro</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
 }

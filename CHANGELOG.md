@@ -5,6 +5,22 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.7.0] — 2026-07-02
+
+### Adicionado
+- **Sistema de e-mail transacional via Resend** (envio por REST API, sem SDK).
+- **Reset de senha por e-mail** com link seguro e resposta anti-enumeração.
+- **E-mail de boas-vindas no cadastro** (fire-and-forget).
+- **Notificações do sistema com opt-in do usuário** (admin define quais existem).
+- **Editor de templates de e-mail** (assunto/HTML/texto com variáveis `{{...}}`).
+- **Listas de contatos e grupos de disparo** (incl. importar todos os usuários).
+- **Campanhas com envio imediato ou agendado**, processadas por fila via cron.
+- **Lembrete mensal de vencimento de plano** (aniversário do cadastro) por e-mail.
+- **Painel admin de E-mail & Notificações** (config de remetente/chave, botão de teste, templates, listas, campanhas, tipos de notificação, log).
+- **Card de "Notificações por e-mail"** nas configurações do usuário.
+
+---
+
 ## [v1.6.2] — 2026-07-02
 
 ### Melhorado
