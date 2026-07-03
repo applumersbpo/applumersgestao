@@ -602,6 +602,76 @@ export async function initDb() {
     args: ['tpl_sys_plan_expiry', 'Lembrete de vencimento do plano', 'O seu plano {{plan_name}} vence em {{expiry_date}}', _tplExpiry],
   });
 
+  // Migration one-time (guardada por flag): os 3 templates de sistema acima já existem
+  // (INSERT OR IGNORE não atualiza linhas existentes), então este UPDATE troca o cabeçalho
+  // para exibir o LOGO real ({{logo_url}}) e usar a cor da marca ({{primary_color}}) nos CTAs.
+  // Roda uma ÚNICA vez — o flag evita clobberar edições futuras feitas pelo admin.
+  if ((await getSystemSetting('email_tpl_logo_migrated')) !== '1') {
+    const _tplResetLogo = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 0;"><tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+      <tr><td style="background:{{primary_color}};padding:24px;text-align:center;"><img src="{{logo_url}}" alt="{{app_name}}" width="160" style="max-width:160px;height:auto;display:inline-block;border:0;line-height:1;"></td></tr>
+      <tr><td style="padding:32px 24px;color:#1e293b;">
+        <h1 style="margin:0 0 16px;font-size:20px;">Redefinição de senha</h1>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#475569;">Olá {{name}}, recebemos um pedido para redefinir a sua senha. Clique no botão abaixo para criar uma nova senha:</p>
+        <p style="text-align:center;margin:24px 0;"><a href="{{reset_link}}" style="display:inline-block;background:{{primary_color}};color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:15px;font-weight:600;">Redefinir senha</a></p>
+        <p style="margin:0 0 8px;font-size:13px;line-height:1.6;color:#94a3b8;">Se o botão não funcionar, copie e cole este link no navegador:</p>
+        <p style="margin:0 0 16px;font-size:13px;word-break:break-all;"><a href="{{reset_link}}" style="color:{{primary_color}};">{{reset_link}}</a></p>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#94a3b8;">Se você não solicitou essa alteração, ignore este e-mail.</p>
+      </td></tr>
+      <tr><td style="padding:16px 24px;background:#f8fafc;text-align:center;color:#94a3b8;font-size:12px;">&copy; {{app_name}} — <a href="{{app_url}}" style="color:#94a3b8;">{{app_url}}</a></td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+
+    const _tplWelcomeLogo = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 0;"><tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+      <tr><td style="background:{{primary_color}};padding:24px;text-align:center;"><img src="{{logo_url}}" alt="{{app_name}}" width="160" style="max-width:160px;height:auto;display:inline-block;border:0;line-height:1;"></td></tr>
+      <tr><td style="padding:32px 24px;color:#1e293b;">
+        <h1 style="margin:0 0 16px;font-size:20px;">Boas-vindas, {{name}}! 🎉</h1>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#475569;">A sua conta na {{app_name}} foi criada com sucesso. Agora você pode organizar as suas finanças, acompanhar metas e ter controle total do seu fluxo de caixa.</p>
+        <p style="text-align:center;margin:24px 0;"><a href="{{app_url}}" style="display:inline-block;background:{{primary_color}};color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:15px;font-weight:600;">Acessar a plataforma</a></p>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#94a3b8;">Qualquer dúvida, é só responder a este e-mail. Estamos por aqui para ajudar.</p>
+      </td></tr>
+      <tr><td style="padding:16px 24px;background:#f8fafc;text-align:center;color:#94a3b8;font-size:12px;">&copy; {{app_name}} — <a href="{{app_url}}" style="color:#94a3b8;">{{app_url}}</a></td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+
+    const _tplExpiryLogo = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 0;"><tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+      <tr><td style="background:{{primary_color}};padding:24px;text-align:center;"><img src="{{logo_url}}" alt="{{app_name}}" width="160" style="max-width:160px;height:auto;display:inline-block;border:0;line-height:1;"></td></tr>
+      <tr><td style="padding:32px 24px;color:#1e293b;">
+        <h1 style="margin:0 0 16px;font-size:20px;">O seu plano está próximo do vencimento</h1>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#475569;">Olá {{name}}, o seu plano <strong>{{plan_name}}</strong> vence em <strong>{{expiry_date}}</strong>. Para continuar aproveitando todos os recursos sem interrupção, renove antes do vencimento.</p>
+        <p style="text-align:center;margin:24px 0;"><a href="{{app_url}}" style="display:inline-block;background:{{primary_color}};color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:15px;font-weight:600;">Renovar plano</a></p>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#94a3b8;">Se já efetuou a renovação, desconsidere este aviso.</p>
+      </td></tr>
+      <tr><td style="padding:16px 24px;background:#f8fafc;text-align:center;color:#94a3b8;font-size:12px;">&copy; {{app_name}} — <a href="{{app_url}}" style="color:#94a3b8;">{{app_url}}</a></td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+
+    await db.execute({
+      sql: "UPDATE email_templates SET html = ?, updated_at = datetime('now') WHERE id = 'tpl_sys_reset_password'",
+      args: [_tplResetLogo],
+    });
+    await db.execute({
+      sql: "UPDATE email_templates SET html = ?, updated_at = datetime('now') WHERE id = 'tpl_sys_welcome'",
+      args: [_tplWelcomeLogo],
+    });
+    await db.execute({
+      sql: "UPDATE email_templates SET html = ?, updated_at = datetime('now') WHERE id = 'tpl_sys_plan_expiry'",
+      args: [_tplExpiryLogo],
+    });
+    await setSystemSetting('email_tpl_logo_migrated', '1');
+  }
+
   // Seed notification types (idempotente por key). O admin gerencia a lista.
   await db.execute({
     sql: "INSERT OR IGNORE INTO notification_types (id, key, name, description, channel, default_on, active, template_key) VALUES (?, 'plan_expiry', 'Lembrete de vencimento do plano', 'Aviso enviado antes do vencimento do plano do usuário', 'email', 1, 1, 'plan_expiry')",

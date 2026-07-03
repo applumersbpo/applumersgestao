@@ -5,6 +5,19 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.8.0] — 2026-07-03
+
+### Adicionado
+- **Editor de templates de e-mail com preview ao vivo** (iframe) mostrando o e-mail renderizado com a marca/logotipo do sistema.
+- **Chips clicáveis das 9 variáveis disponíveis** e botão "Inserir cabeçalho com logo" no editor.
+- **Injeção automática de marca** (`logo_url`, `app_name`, `primary_color`, `year`) em todos os e-mails transacionais e de campanha.
+- **Endpoint de preview** (`POST /email/preview`) admin-only para renderizar o HTML do template.
+
+### Melhorado
+- Os 3 templates de sistema (redefinição de senha, boas-vindas, expiração de plano) agora incluem o cabeçalho com logotipo hospedado (deliverability: URL HTTPS ao invés de base64).
+
+---
+
 ## [v1.7.1] — 2026-07-03
 
 ### Corrigido

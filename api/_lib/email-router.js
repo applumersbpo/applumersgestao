@@ -435,6 +435,23 @@ export default async function emailRouter(req, res) {
       }
     }
 
+    // ───────────────────────── PREVIEW (render p/ iframe, admin-only) ─────────────────────────
+    // Guard atual já exige admin (preview não está em USER_ACTIONS).
+    if (action === 'preview' && req.method === 'POST') {
+      const brandVars = await email.getBrandVars();
+      // Vars de marca + valores de exemplo p/ placeholders comuns. Exemplos por cima da marca.
+      const vars = {
+        ...brandVars,
+        name: 'Maria Silva',
+        reset_link: `${brandVars.app_url}/#/reset/exemplo-token-123`,
+        plan_name: 'Plano Pro',
+        expiry_date: '15/08/2026',
+      };
+      const subject = email.renderTemplate((req.body && req.body.subject) || '', vars);
+      const html = email.renderTemplate((req.body && req.body.html) || '', vars);
+      return res.status(200).json({ subject, html });
+    }
+
     return res.status(404).json({ error: 'Action not found' });
   } catch (err) {
     if (err.message === 'Unauthorized') return res.status(401).json({ error: 'Unauthorized' });

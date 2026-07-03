@@ -236,6 +236,9 @@ export default async function handler(req, res) {
 
     const emailDispatches = rowsToObjects(emailCandidates);
 
+    // Vars de marca resolvidas UMA vez por tick (reaproveitadas p/ todos os destinatários).
+    const brandVars = emailDispatches.length ? await email.getBrandVars() : {};
+
     for (const d of emailDispatches) {
       // Atomic claim: only proceed if we win the race (pending only)
       const claimRes = await db.execute({
@@ -252,8 +255,8 @@ export default async function handler(req, res) {
         args: [d.campaign_id],
       });
 
-      // Per-recipient render of subject/html ({{name}}, {{app_url}})
-      const vars = { name: d.to_name || '', app_url: APP_URL };
+      // Per-recipient render: vars de marca primeiro, depois as específicas do destinatário.
+      const vars = { ...brandVars, name: d.to_name || '', app_url: APP_URL };
       const subject = email.renderTemplate(d.subject || '', vars);
       const html = email.renderTemplate(d.html || '', vars);
 

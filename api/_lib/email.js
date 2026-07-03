@@ -16,6 +16,42 @@ export async function getEmailConfig() {
   return { enabled, from, apiKey };
 }
 
+// Resolve uma URL HTTPS pública para o logo, usável em clientes de e-mail.
+// base64 (data:) NÃO renderiza em Gmail/Outlook, então cai no arquivo público.
+export function resolveLogoUrl(brand, appUrl) {
+  const logo = brand && brand.logoData;
+  if (typeof logo === 'string' && logo.startsWith('http')) return logo;
+  if (typeof logo === 'string' && logo.startsWith('data:')) return `${appUrl}/lumers-flow-logotipo.png`;
+  if (typeof logo === 'string' && logo.trim() !== '') return `${appUrl}/${logo.replace(/^\//, '')}`;
+  return `${appUrl}/lumers-flow-logotipo.png`;
+}
+
+// Lê brand_config de settings e devolve as vars de marca injetadas em toda renderização.
+// Fallback silencioso p/ {} quando ausente/erro de parse.
+export async function getBrandVars() {
+  const appUrl = process.env.APP_URL || 'https://app.lumersbpo.com.br';
+  let brand = {};
+  try {
+    const db = getDb();
+    const { rows } = await db.execute({
+      sql: "SELECT value FROM settings WHERE user_id = '__brand__' AND key = 'brand_config'",
+      args: [],
+    });
+    if (rows && rows.length && rows[0].value) {
+      brand = JSON.parse(rows[0].value) || {};
+    }
+  } catch (_) {
+    brand = {};
+  }
+  return {
+    logo_url: resolveLogoUrl(brand, appUrl),
+    app_name: brand.appName || 'Lumers Flow',
+    app_url: appUrl,
+    primary_color: brand.primary || '#3A5A40',
+    year: new Date().getFullYear(),
+  };
+}
+
 // Substitui {{chave}} por vars[chave]. Undefined/null viram ''.
 export function renderTemplate(str, vars) {
   if (!str) return '';
@@ -123,9 +159,11 @@ export async function sendTemplateEmail({ to, toName, systemKey, vars, campaignI
   if (!tpl) {
     return { ok: false, error: 'template not found' };
   }
-  const subject = renderTemplate(tpl.subject, vars);
-  const html = renderTemplate(tpl.html, vars);
-  const text = renderTemplate(tpl.text, vars);
+  // Injeta vars de marca; as vars do chamador SEMPRE vencem sobre as de marca.
+  const merged = { ...(await getBrandVars()), ...(vars || {}) };
+  const subject = renderTemplate(tpl.subject, merged);
+  const html = renderTemplate(tpl.html, merged);
+  const text = renderTemplate(tpl.text, merged);
   return sendEmail({
     to, toName, subject, html, text,
     templateKey: systemKey, campaignId,
