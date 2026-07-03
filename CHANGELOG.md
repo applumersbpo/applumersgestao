@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.8.1] — 2026-07-03
+
+### Corrigido
+- **Editor visual de templates de e-mail não carregava** ("Não foi possível carregar o editor visual"). A URL do plugin `grapesjs-preset-newsletter` (v1.0.2) apontava para um arquivo inexistente (`dist/grapesjs-preset-newsletter.min.js`, HTTP 404); corrigida para o arquivo correto (`dist/index.js`).
+
+---
+
 ## [v1.8.0] — 2026-07-03
 
 ### Adicionado

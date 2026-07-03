@@ -3954,7 +3954,7 @@ async function _adminEmailDeleteTemplate(id) {
 
 const _EM_GJS_CSS    = 'https://unpkg.com/grapesjs@0.21.13/dist/css/grapes.min.css';
 const _EM_GJS_JS     = 'https://unpkg.com/grapesjs@0.21.13/dist/grapes.min.js';
-const _EM_GJS_PRESET = 'https://unpkg.com/grapesjs-preset-newsletter@1.0.2/dist/grapesjs-preset-newsletter.min.js';
+const _EM_GJS_PRESET = 'https://unpkg.com/grapesjs-preset-newsletter@1.0.2/dist/index.js';
 
 let _emBuilder        = null;   // instância GrapesJS ativa (destruída ao voltar/salvar)
 let _emGjsLoaded      = false;  // guard: assets já carregados e funcionais?
