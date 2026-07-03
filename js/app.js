@@ -216,6 +216,10 @@ const app = {
 
   async route() {
     if (typeof destroyBulkMode === 'function' && _Bulk?.active) destroyBulkMode();
+    // Defensivo: se o usuário deixou o editor de e-mail em tela cheia aberto e
+    // navegou por hashchange (sidebar), o _adminEmailBuilderDestroy não roda —
+    // garante que o scroll-lock do body nunca fique preso entre páginas.
+    document.body.classList.remove('em-fullscreen-open');
     const hash = location.hash || '#/';
     const page = hash.replace('#/', '') || 'dashboard';
     this.currentPage = page || 'dashboard';

@@ -3717,6 +3717,18 @@ async function _adminEmailTemplates(body) {
 }
 
 function _adminEmailEditTemplate(id) {
+  // Fallback do builder: garante que o overlay full-viewport (.em-builder,
+  // z-index alto) seja desmontado antes de abrir o modal básico (z-index 200),
+  // senão o modal fica atrás/invisível.
+  // 1) Destroy: unmount do Templatical + libera o scroll-lock (em-fullscreen-open).
+  // 2) Re-render da lista: reescreve #admin-email-body.innerHTML, o que REMOVE o
+  //    nó .em-builder do DOM (só o unmount não o tira — ele segue opaco/fixed
+  //    cobrindo o modal). Assim, ao fechar o modal, o usuário volta pra lista de
+  //    templates em vez de uma tela morta. Idempotente/inofensivo sem builder:
+  //    apenas re-renderiza o sub-painel atual. Fire-and-forget: o modal é injetado
+  //    em #modal-container (separado), então não precisamos aguardar.
+  _adminEmailBuilderDestroy();
+  _adminEmailRenderSub();
   const isNew = !id;
   const t = isNew
     ? { name: '', category: 'geral', subject: '', html: '', text: '', is_system: 0 }
@@ -4054,6 +4066,11 @@ function _adminEmailOpenBuilder(id) {
       </details>
     </div>`;
 
+  // Scroll-lock: o builder vira overlay full-viewport; trava o scroll do body.
+  // A classe é removida em _adminEmailBuilderDestroy (Back/Save/troca de sub-aba)
+  // e, defensivamente, no route() do app ao navegar para outra página.
+  document.body.classList.add('em-fullscreen-open');
+
   if (typeof lucide !== 'undefined') lucide.createIcons();
   _adminEmailBuilderLoad(t);
 }
@@ -4228,6 +4245,8 @@ function _adminEmailBuilderDestroy() {
   _emBuilderSaving = false;
   _emBuilderReady = false;
   _emBuilderDirty = false;
+  // Libera o scroll-lock do overlay full-viewport (idempotente).
+  document.body.classList.remove('em-fullscreen-open');
   if (_emBuilder) { try { _emBuilder.unmount(); } catch (_) {} _emBuilder = null; }
 }
 

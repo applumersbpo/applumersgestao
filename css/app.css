@@ -1898,10 +1898,20 @@ body.impersonating .bulk-cb-wrap { display: none !important; }
 }
 
 /* ── Builder visual de templates de e-mail (Templatical SDK) ──────────────── */
-.em-builder { display: flex; flex-direction: column; gap: 12px; }
+/* Scroll-lock do body enquanto o editor está em tela cheia. */
+body.em-fullscreen-open { overflow: hidden; }
+/* Overlay full-viewport: cobre todo o app (z-index acima do imp-banner=6000,
+   abaixo do auth-screen=9999). Usa flex column para a stage preencher a altura. */
+.em-builder {
+  position: fixed; inset: 0; z-index: 6500;
+  box-sizing: border-box;
+  background: var(--bg); padding: 18px;
+  display: flex; flex-direction: column; gap: 12px; overflow: auto;
+}
 .em-builder-bar {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 1; background: var(--bg);
 }
 .em-builder-title { font-weight: 700; font-size: .95rem; display: flex; align-items: center; gap: 6px; }
 .em-builder-bar-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
@@ -1921,7 +1931,7 @@ body.impersonating .bulk-cb-wrap { display: none !important; }
   display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
 }
 .em-builder-stage {
-  position: relative; height: clamp(560px, 72vh, 900px);
+  position: relative; flex: 1 1 auto; min-height: 400px;
   border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: #fff;
 }
 .em-builder-stage #em-gjs-canvas { position: absolute; inset: 0; }

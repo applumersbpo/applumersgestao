@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.9.1] — 2026-07-03
+
+### Melhorado
+- **Editor de templates de e-mail agora abre em tela cheia** — o builder visual virou um overlay full-viewport (em vez de embutido no painel do admin), com barra de ações (Voltar/Preview/Salvar) fixa no topo e o canvas do editor preenchendo toda a altura disponível. O scroll do fundo fica travado enquanto o editor está aberto e é liberado ao sair por qualquer caminho (Voltar, Salvar, troca de sub-aba ou navegação para outra página).
+
+### Corrigido
+- Fallback do editor básico voltava a ficar oculto atrás do editor em tela cheia — o overlay full-viewport agora é removido do DOM (não só desmontado/scroll liberado) antes de abrir o modal básico, que volta a ficar visível; ao fechá-lo, o usuário retorna à lista de templates.
+
+---
+
 ## [v1.9.0] — 2026-07-03
 
 ### Melhorado
