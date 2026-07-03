@@ -1897,3 +1897,49 @@ body.impersonating .bulk-cb-wrap { display: none !important; }
   box-shadow: 0 4px 16px rgba(0,0,0,.08);
 }
 
+/* ── Builder visual de templates de e-mail (GrapesJS) ─────────────────────── */
+.em-builder { display: flex; flex-direction: column; gap: 12px; }
+.em-builder-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border);
+}
+.em-builder-title { font-weight: 700; font-size: .95rem; display: flex; align-items: center; gap: 6px; }
+.em-builder-bar-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.em-dev-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.em-dev-toggle .em-dev-btn { border: 0; border-radius: 0; background: transparent; padding: 5px 9px; }
+.em-dev-toggle .em-dev-btn.active { background: var(--primary-600); color: #fff; }
+.em-prev-dev.active { background: var(--primary-600); color: #fff; }
+.em-builder-sysbanner {
+  font-size: .8rem; color: var(--text-muted); background: var(--primary-light, #DDE7D8);
+  padding: 8px 10px; border-radius: 8px; display: flex; align-items: center; gap: 6px;
+}
+.em-builder-mobilewarn {
+  font-size: .8rem; color: var(--text); background: #FEF3C7; border: 1px solid #FDE68A;
+  padding: 8px 10px; border-radius: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.em-builder-fields {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+.em-builder-stage {
+  position: relative; height: clamp(560px, 72vh, 900px);
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: #fff;
+}
+.em-builder-stage #em-gjs-canvas { position: absolute; inset: 0; }
+.em-builder-overlay {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 4px; padding: 24px;
+  background: rgba(255,255,255,.92); z-index: 5; text-align: center;
+}
+.em-builder-textwrap {
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg-subtle);
+}
+.em-builder-textwrap > summary {
+  cursor: pointer; font-size: .82rem; font-weight: 600; color: var(--text-muted);
+  display: flex; align-items: center; gap: 6px; list-style: none;
+}
+.em-builder-textwrap > summary::-webkit-details-marker { display: none; }
+@media (max-width: 720px) {
+  .em-builder-fields { grid-template-columns: 1fr; }
+  .em-builder-bar-actions { margin-left: 0; width: 100%; }
+}
+

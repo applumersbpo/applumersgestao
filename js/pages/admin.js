@@ -3519,6 +3519,9 @@ let _etPreviewSeq   = 0;      // guarda contra respostas atrasadas (stale)
 // Variáveis disponíveis nos templates (contrato do backend /email/preview)
 const _ET_VARS = ['name','app_name','app_url','logo_url','primary_color','year','reset_link','plan_name','expiry_date'];
 
+// Snippet do cabeçalho com logo — compartilhado entre o modal antigo e o builder visual.
+const _EM_HEADER_SNIPPET = '<tr><td style="background:{{primary_color}};padding:24px;text-align:center;"><img src="{{logo_url}}" alt="{{app_name}}" width="160" style="max-width:160px;height:auto;display:inline-block;border:0;"></td></tr>';
+
 async function renderAdminEmail() {
   const content = document.getElementById('content');
   content.innerHTML = '<div class="loading-screen"><div class="spinner"></div></div>';
@@ -3561,6 +3564,11 @@ async function renderAdminEmail() {
 }
 
 function _adminEmailTab(id) {
+  // Guard: se o builder visual está ativo com alterações não salvas, confirma o
+  // descarte antes de trocar de sub-aba (evita perda silenciosa) e destrói a
+  // instância GrapesJS ao sair (evita vazamento da _emBuilder órfã).
+  if (!_adminEmailBuilderConfirmDiscard()) return;
+  _adminEmailBuilderDestroy();
   _adminEmailSub = id;
   renderAdminEmail();
 }
@@ -3692,7 +3700,7 @@ async function _adminEmailTemplates(body) {
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
-          <button class="btn btn-sm" onclick="_adminEmailEditTemplate('${t.id}')" style="font-size:.75rem;padding:4px 10px">${icon('pencil',12)} Editar</button>
+          <button class="btn btn-sm" onclick="_adminEmailOpenBuilder('${t.id}')" style="font-size:.75rem;padding:4px 10px">${icon('pencil',12)} Editar</button>
           ${sys ? '' : `<button class="btn btn-sm" onclick="_adminEmailDeleteTemplate('${t.id}')" style="font-size:.75rem;padding:4px 10px;color:var(--expense)">${icon('trash-2',12)}</button>`}
         </div>
       </div>`;
@@ -3702,7 +3710,7 @@ async function _adminEmailTemplates(body) {
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px">
         <div class="card-title">${icon('file-text',14)} Templates de E-mail</div>
-        <button class="btn btn-primary btn-sm" onclick="_adminEmailEditTemplate('')" style="font-size:.8rem">${icon('plus',14)} Novo</button>
+        <button class="btn btn-primary btn-sm" onclick="_adminEmailOpenBuilder('')" style="font-size:.8rem">${icon('plus',14)} Novo</button>
       </div>
       ${rows}
     </div>`;
@@ -3826,8 +3834,7 @@ function _adminEmailInsertVar(varName) {
 
 /** Insere um cabeçalho <tr> com logo, no cursor (ou no topo se sem foco). */
 function _adminEmailInsertHeader() {
-  const snippet = '<tr><td style="background:{{primary_color}};padding:24px;text-align:center;"><img src="{{logo_url}}" alt="{{app_name}}" width="160" style="max-width:160px;height:auto;display:inline-block;border:0;"></td></tr>';
-  _adminEmailInsertAtCursor(snippet, true);
+  _adminEmailInsertAtCursor(_EM_HEADER_SNIPPET, true);
 }
 
 /** Agenda a atualização do preview com debounce (~500ms). */
@@ -3934,6 +3941,387 @@ async function _adminEmailDeleteTemplate(id) {
   } catch (e) {
     toast('Erro: ' + (e.message || 'falha ao excluir'), 'error');
   }
+}
+
+// ── B2) Builder visual de templates (GrapesJS + preset newsletter) ────────────
+//
+// Área dedicada de edição arrastar-soltar que substitui o conteúdo do sub-painel
+// de templates. O modal antigo (_adminEmailEditTemplate) permanece como fallback
+// básico (editor de código) para offline/CDN fora e telas estreitas.
+//
+// Assets carregados LAZY (só na 1ª vez que o builder abre) via CDN unpkg com
+// versões fixas. Um guard (_emGjsLoadPromise) evita injeção dupla dos scripts.
+
+const _EM_GJS_CSS    = 'https://unpkg.com/grapesjs@0.21.13/dist/css/grapes.min.css';
+const _EM_GJS_JS     = 'https://unpkg.com/grapesjs@0.21.13/dist/grapes.min.js';
+const _EM_GJS_PRESET = 'https://unpkg.com/grapesjs-preset-newsletter@1.0.2/dist/grapesjs-preset-newsletter.min.js';
+
+let _emBuilder        = null;   // instância GrapesJS ativa (destruída ao voltar/salvar)
+let _emGjsLoaded      = false;  // guard: assets já carregados e funcionais?
+let _emGjsLoadPromise = null;   // promessa única de carregamento (anti duplo-load)
+let _emBuilderCtx     = null;   // { id, sys, t } do template em edição
+let _emBuilderSaving  = false;  // trava reentrância do save
+let _emBuilderOpening = false;  // trava duplo-init enquanto um load está em andamento
+
+// Layout inicial profissional para templates NOVOS (não começa em branco).
+const _EM_DEFAULT_TEMPLATE =
+  '<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;font-family:Arial,Helvetica,sans-serif;">' +
+    _EM_HEADER_SNIPPET +
+    '<tr><td style="padding:32px 28px 8px;"><h1 style="margin:0;font-size:22px;line-height:1.3;color:#1f2937;">Olá, {{name}}!</h1></td></tr>' +
+    '<tr><td style="padding:8px 28px 20px;font-size:15px;line-height:1.6;color:#374151;">Escreva aqui a mensagem do seu e-mail. Use os blocos à esquerda para montar o layout e arraste as variáveis da categoria &quot;Marca / Variáveis&quot;.</td></tr>' +
+    '<tr><td style="padding:0 28px 28px;"><a href="{{app_url}}" style="display:inline-block;background:{{primary_color}};color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:bold;font-size:15px;">Acessar {{app_name}}</a></td></tr>' +
+    '<tr><td style="padding:20px 28px;background:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.5;color:#9ca3af;text-align:center;">© {{year}} {{app_name}}. Todos os direitos reservados.</td></tr>' +
+  '</table>';
+
+/** Ponto de entrada do builder visual (substitui o modal antigo como entrada). */
+function _adminEmailOpenBuilder(id) {
+  // Guard anti duplo-clique: se já há um builder ativo ou um load em andamento,
+  // ignora o segundo clique (evita duplo-init — 1ª instância criada e destruída
+  // só pra criar a 2ª). O fluxo abrir → voltar → reabrir continua intacto porque
+  // ambos os flags voltam a false ao destruir/concluir o load.
+  if (_emBuilder || _emBuilderOpening) return;
+  _emBuilderOpening = true;
+
+  const isNew = !id;
+  const t = isNew
+    ? { name:'', category:'geral', subject:'', html:'', text:'', is_system:0 }
+    : (_adminEmailData.templates.find(x => x.id === id) || {});
+  const sys = _adminEmailIsSystem(t.is_system);
+  _emBuilderCtx = { id: id || '', sys, t };
+
+  const body = document.getElementById('admin-email-body');
+  if (!body) { _emBuilderOpening = false; return; }
+
+  // Destrói qualquer instância remanescente antes de montar a nova view.
+  _adminEmailBuilderDestroy();
+
+  const narrow = window.matchMedia('(max-width: 720px)').matches;
+
+  body.innerHTML = `
+    <div class="em-builder">
+      <div class="em-builder-bar">
+        <button class="btn btn-ghost btn-sm" onclick="_adminEmailBuilderBack()">${icon('arrow-left',14)} Voltar aos templates</button>
+        <div class="em-builder-title">${icon('layout-template',15)} ${isNew ? 'Novo template' : 'Editar template'}</div>
+        <div class="em-builder-bar-actions">
+          <div class="em-dev-toggle">
+            <button class="btn btn-sm em-dev-btn active" data-dev="Desktop" onclick="_adminEmailBuilderDevice('Desktop')" title="Desktop">${icon('monitor',13)}</button>
+            <button class="btn btn-sm em-dev-btn" data-dev="Mobile" onclick="_adminEmailBuilderDevice('Mobile')" title="Mobile">${icon('smartphone',13)}</button>
+          </div>
+          <button id="em-builder-preview" class="btn btn-sm" onclick="_adminEmailBuilderPreview()">${icon('eye',14)} Preview com marca</button>
+          <button id="em-builder-save" class="btn btn-primary btn-sm" onclick="_adminEmailBuilderSave()">${icon('save',14)} Salvar template</button>
+        </div>
+      </div>
+
+      ${sys ? `<div class="em-builder-sysbanner">${icon('lock',12)} Template de sistema — nome e categoria travados. Assunto e conteúdo são editáveis.</div>` : ''}
+      ${narrow ? `<div class="em-builder-mobilewarn">${icon('alert-triangle',12)} <span>O editor visual funciona melhor no desktop.</span> <button class="btn btn-sm" onclick="_adminEmailEditTemplate('${id}')">${icon('code',12)} Usar editor básico</button></div>` : ''}
+
+      <div class="em-builder-fields">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Nome ${sys ? '' : '*'}</label>
+          <input id="et-name" class="form-control" value="${_escHtml(t.name || '')}" ${sys ? 'disabled' : ''}>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Categoria</label>
+          <input id="et-category" class="form-control" value="${_escHtml(t.category || 'geral')}" ${sys ? 'disabled' : ''}>
+        </div>
+        <div class="form-group" style="margin:0;grid-column:1 / -1">
+          <label class="form-label">Assunto</label>
+          <input id="et-subject" class="form-control" value="${_escHtml(t.subject || '')}">
+        </div>
+      </div>
+
+      <div class="em-builder-stage" id="em-builder-stage">
+        <div id="em-gjs-canvas"></div>
+        <div id="em-builder-loading" class="em-builder-overlay">
+          <div class="spinner"></div>
+          <div style="margin-top:12px;font-size:.85rem;color:var(--text-muted)">Carregando editor visual...</div>
+        </div>
+        <div id="em-builder-error" class="em-builder-overlay" style="display:none">
+          <div style="text-align:center;max-width:360px">
+            ${icon('wifi-off',28)}
+            <p style="margin:12px 0;font-size:.9rem;color:var(--text)">Não foi possível carregar o editor visual. Verifique sua conexão e tente novamente.</p>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+              <button class="btn btn-primary btn-sm" onclick="_adminEmailBuilderRetry()">${icon('refresh-cw',14)} Tentar novamente</button>
+              <button class="btn btn-sm" onclick="_adminEmailEditTemplate('${id}')">${icon('code',14)} Usar editor de código (básico)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <details class="em-builder-textwrap">
+        <summary>${icon('type',13)} Texto (plain, opcional)</summary>
+        <textarea id="et-text" class="form-control" rows="3" style="margin-top:8px">${_escHtml(t.text || '')}</textarea>
+      </details>
+    </div>`;
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  _adminEmailBuilderLoad(t);
+}
+
+/** Injeta os assets do GrapesJS uma única vez. Anti duplo-load via promessa
+ *  compartilhada; tags de script que falham são removidas para permitir retry. */
+function _adminEmailLoadGjs() {
+  if (_emGjsLoaded) return Promise.resolve();
+  if (_emGjsLoadPromise) return _emGjsLoadPromise;
+
+  const loadScript = (src, id) => new Promise((res, rej) => {
+    if (document.getElementById(id)) { res(); return; }  // já carregado com sucesso
+    const s = document.createElement('script');
+    s.id = id; s.src = src; s.async = true;
+    s.onload = () => res();
+    s.onerror = () => { s.remove(); rej(new Error('Falha ao carregar ' + src)); };
+    document.head.appendChild(s);
+  });
+
+  _emGjsLoadPromise = new Promise((resolve, reject) => {
+    if (!document.getElementById('em-gjs-css')) {
+      const link = document.createElement('link');
+      link.id = 'em-gjs-css'; link.rel = 'stylesheet'; link.href = _EM_GJS_CSS;
+      document.head.appendChild(link);
+    }
+    // Core primeiro (o preset depende do global grapesjs), depois o preset.
+    loadScript(_EM_GJS_JS, 'em-gjs-core')
+      .then(() => loadScript(_EM_GJS_PRESET, 'em-gjs-preset'))
+      .then(() => { _emGjsLoaded = true; resolve(); })
+      .catch(err => { _emGjsLoadPromise = null; reject(err); });
+  });
+  return _emGjsLoadPromise;
+}
+
+/** Carrega os assets e inicializa o editor. Alterna spinner/erro conforme resultado. */
+async function _adminEmailBuilderLoad(t) {
+  const spin = document.getElementById('em-builder-loading');
+  const err  = document.getElementById('em-builder-error');
+  if (err) err.style.display = 'none';
+  if (spin) spin.style.display = '';
+  try {
+    await _adminEmailLoadGjs();
+    if (!document.getElementById('em-gjs-canvas')) return;  // usuário já saiu do builder
+    _adminEmailBuilderInit(t);
+    if (spin) spin.style.display = 'none';
+  } catch (e) {
+    if (spin) spin.style.display = 'none';
+    if (err)  err.style.display  = 'flex';
+  } finally {
+    // Libera o guard anti duplo-clique assim que o load resolve (sucesso, falha
+    // ou saída antecipada), permitindo o fluxo normal de reabrir depois.
+    _emBuilderOpening = false;
+  }
+}
+
+/** Botão "Tentar novamente" após falha de CDN. */
+function _adminEmailBuilderRetry() {
+  const t = (_emBuilderCtx && _emBuilderCtx.t) || {};
+  _adminEmailBuilderLoad(t);
+}
+
+/** Inicializa a instância GrapesJS no canvas, carrega o HTML e registra blocos. */
+function _adminEmailBuilderInit(t) {
+  if (typeof grapesjs === 'undefined') throw new Error('GrapesJS indisponível');
+
+  // O global do preset pode vir como camelCase, com hífen (bracket) ou por nome.
+  const presetPlugin = window.grapesjsPresetNewsletter
+    || window['grapesjs-preset-newsletter']
+    || 'grapesjs-preset-newsletter';
+
+  // Segurança: destrói instância anterior antes de criar nova (sem vazamento).
+  if (_emBuilder) { try { _emBuilder.destroy(); } catch (_) {} _emBuilder = null; }
+
+  _emBuilder = grapesjs.init({
+    container: '#em-gjs-canvas',
+    height: '100%',
+    width: 'auto',
+    fromElement: false,
+    storageManager: { type: 'none', autosave: false, autoload: false },
+    assetManager: { embedAsBase64: true },
+    deviceManager: {
+      devices: [
+        { name: 'Desktop', width: '' },
+        { name: 'Mobile',  width: '320px', widthMedia: '480px' },
+      ],
+    },
+    plugins: [presetPlugin],
+  });
+
+  const startHtml = (t.html && t.html.trim()) ? t.html : _EM_DEFAULT_TEMPLATE;
+  _emBuilder.setComponents(startHtml);
+  _adminEmailBuilderAddBlocks(_emBuilder);
+  _emBuilder.setDevice('Desktop');
+}
+
+/** Adiciona a categoria de blocos "Marca / Variáveis": cabeçalho, CTA e tokens. */
+function _adminEmailBuilderAddBlocks(editor) {
+  const bm  = editor.BlockManager;
+  const cat = 'Marca / Variáveis';
+
+  bm.add('em-header-logo', {
+    label: 'Cabeçalho com logo',
+    category: cat,
+    attributes: { class: 'gjs-fonts gjs-f-b1' },
+    content: '<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;">' + _EM_HEADER_SNIPPET + '</table>',
+  });
+
+  bm.add('em-cta-brand', {
+    label: 'Botão CTA da marca',
+    category: cat,
+    attributes: { class: 'gjs-fonts gjs-f-button' },
+    content: '<a href="{{app_url}}" style="display:inline-block;background:{{primary_color}};color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:bold;font-size:15px;font-family:Arial,Helvetica,sans-serif;">Acessar {{app_name}}</a>',
+  });
+
+  // Tokens {{var}} arrastáveis — texto puro, sobrevivem intactos no HTML final.
+  _ET_VARS.forEach(v => {
+    bm.add('em-var-' + v, {
+      label: '{{' + v + '}}',
+      category: cat,
+      attributes: { class: 'gjs-fonts gjs-f-text' },
+      content: { type: 'text', content: '{{' + v + '}}', style: { padding: '2px' } },
+    });
+  });
+}
+
+/** Alterna o dispositivo de visualização do canvas (Desktop / Mobile ~320px). */
+function _adminEmailBuilderDevice(dev) {
+  if (!_emBuilder) return;
+  _emBuilder.setDevice(dev);
+  document.querySelectorAll('.em-dev-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.dev === dev));
+}
+
+/** Obtém o HTML final com CSS INLINE (email-safe). Prefere o comando do preset;
+ *  cai para getHtml()+getCss() embutido em <style> se o comando não existir. */
+function _adminEmailBuilderInlinedHtml() {
+  let html = '';
+  try { html = _emBuilder.runCommand('gjs-get-inlined-html'); } catch (_) {}
+  if (!html) {
+    const css = _emBuilder.getCss() || '';
+    html = (css ? '<style>' + css + '</style>' : '') + _emBuilder.getHtml();
+  }
+  return html || '';
+}
+
+/** Destrói a instância GrapesJS e limpa o estado de save (sem listeners vazados). */
+function _adminEmailBuilderDestroy() {
+  _emBuilderSaving = false;
+  if (_emBuilder) { try { _emBuilder.destroy(); } catch (_) {} _emBuilder = null; }
+}
+
+/** Guard compartilhado (Back + troca de sub-aba): retorna true se é seguro sair
+ *  do builder. Só dispara o confirm se o builder estiver realmente ATIVO e com
+ *  alterações não salvas; com _emBuilder null (loading/init falhou) sai direto. */
+function _adminEmailBuilderConfirmDiscard() {
+  if (!_emBuilder) return true;
+  let dirty = 0;
+  try { dirty = _emBuilder.getDirtyCount(); } catch (_) {}
+  if (dirty > 0) return confirm('Você tem alterações não salvas no editor. Descartar e sair?');
+  return true;
+}
+
+/** Voltar à lista, com guard de alterações não salvas. */
+function _adminEmailBuilderBack() {
+  if (!_adminEmailBuilderConfirmDiscard()) return;
+  _adminEmailBuilderDestroy();
+  _adminEmailRenderSub();
+}
+
+/** Salva o template: monta o payload conforme o contrato e faz POST /email/template. */
+async function _adminEmailBuilderSave() {
+  if (!_emBuilder || _emBuilderSaving) return;
+  const ctx = _emBuilderCtx || {};
+
+  const payload = {
+    subject: (document.getElementById('et-subject') || {}).value || '',
+    html:    _adminEmailBuilderInlinedHtml(),
+    text:    (document.getElementById('et-text') || {}).value || '',
+  };
+  if (ctx.id) payload.id = ctx.id;
+  if (!ctx.sys) {
+    const nameEl = document.getElementById('et-name');
+    const catEl  = document.getElementById('et-category');
+    const name = (nameEl ? nameEl.value : '').trim();
+    const category = (catEl ? catEl.value : '').trim() || 'geral';
+    if (!name) {
+      toast('Nome é obrigatório.', 'error');
+      if (nameEl) nameEl.focus();
+      return;
+    }
+    payload.name = name;
+    payload.category = category;
+  }
+
+  const btn  = document.getElementById('em-builder-save');
+  const orig = btn ? btn.innerHTML : '';
+  _emBuilderSaving = true;
+  if (btn) { btn.disabled = true; btn.innerHTML = `${icon('loader',14)} Salvando...`; }
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  try {
+    await _api('POST', '/email/template', payload);
+    toast('Template salvo!', 'success');
+    _adminEmailBuilderDestroy();
+    await _adminEmailRenderSub();
+  } catch (e) {
+    // Erro: mantém o trabalho no builder, reabilita o botão.
+    toast('Erro: ' + (e.message || 'falha ao salvar'), 'error');
+    _emBuilderSaving = false;
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+}
+
+/** Preview com marca: envia o HTML inline atual para /email/preview e exibe
+ *  o resultado renderizado (logo + variáveis de exemplo) num modal isolado. */
+async function _adminEmailBuilderPreview() {
+  if (!_emBuilder) return;
+  const html    = _adminEmailBuilderInlinedHtml();
+  const subject = (document.getElementById('et-subject') || {}).value || '';
+
+  const btn  = document.getElementById('em-builder-preview');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = `${icon('loader',14)} Gerando...`; }
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  try {
+    const res = await _api('POST', '/email/preview', { html, subject });
+    _adminEmailBuilderShowPreview((res && res.subject) || subject, (res && res.html) || '');
+  } catch (e) {
+    toast('Não foi possível gerar o preview.', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+}
+
+/** Modal de preview com iframe srcdoc isolado + toggle desktop/mobile. */
+function _adminEmailBuilderShowPreview(subject, html) {
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:840px;width:calc(100% - 32px);max-height:92vh;display:flex;flex-direction:column">
+        <div class="modal-header">
+          <div class="modal-title">${icon('eye',16)} Preview com marca</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <button class="btn btn-sm em-prev-dev active" data-dev="desktop" onclick="_adminEmailPreviewDevice('desktop')">${icon('monitor',13)} Desktop</button>
+            <button class="btn btn-sm em-prev-dev" data-dev="mobile" onclick="_adminEmailPreviewDevice('mobile')">${icon('smartphone',13)} Mobile</button>
+            <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x',16)}</button>
+          </div>
+        </div>
+        <div class="modal-body" style="overflow:auto;background:var(--bg-subtle)">
+          <div style="font-weight:600;font-size:.86rem;padding:8px 10px;background:#fff;border:1px solid var(--border);border-radius:8px;margin-bottom:12px;word-break:break-word;color:var(--text)">${_escHtml(subject || '(sem assunto)')}</div>
+          <div style="display:flex;justify-content:center">
+            <iframe id="em-prev-frame" style="width:100%;max-width:100%;height:68vh;border:1px solid var(--border);border-radius:8px;background:#fff;transition:max-width .2s"></iframe>
+          </div>
+        </div>
+      </div>
+    </div>`);
+  const f = document.getElementById('em-prev-frame');
+  if (f) f.srcdoc = html;
+}
+
+/** Alterna a largura do iframe de preview (100% vs 375px). */
+function _adminEmailPreviewDevice(dev) {
+  const f = document.getElementById('em-prev-frame');
+  if (f) f.style.maxWidth = dev === 'mobile' ? '375px' : '100%';
+  document.querySelectorAll('.em-prev-dev').forEach(b =>
+    b.classList.toggle('active', b.dataset.dev === dev));
 }
 
 // ── C) Listas e grupos ────────────────────────────────────────────────────────
