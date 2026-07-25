@@ -3738,15 +3738,40 @@ async function updateUserFee(email, value) {
 let _adminEmailSub  = 'config';
 let _adminEmailData = { templates: [], lists: [] };
 
-// Editor de template: estado do preview ao vivo
-let _etPreviewTimer = null;   // timer do debounce (limpo ao reabrir o modal)
-let _etPreviewSeq   = 0;      // guarda contra respostas atrasadas (stale)
+// Editor WYSIWYG de template: modo ativo ('visual' = iframe editável, 'code' = HTML cru)
+let _etMode = 'visual';
 
 // Variáveis disponíveis nos templates (contrato do backend /email/preview)
 const _ET_VARS = ['name','app_name','app_url','logo_url','primary_color','year','reset_link','plan_name','expiry_date'];
 
-// Snippet do cabeçalho com logo — compartilhado entre o modal antigo e o builder visual.
+// Snippet do cabeçalho com logo — compartilhado entre o editor de código e o builder visual.
 const _EM_HEADER_SNIPPET = '<tr><td style="background:{{primary_color}};padding:24px;text-align:center;"><img src="{{logo_url}}" alt="{{app_name}}" width="160" style="max-width:160px;height:auto;display:inline-block;border:0;"></td></tr>';
+// Versão auto-contida do cabeçalho (bloco standalone) para inserir no editor WYSIWYG.
+const _EM_HEADER_VISUAL = '<div style="background:{{primary_color}};padding:24px;text-align:center;"><img src="{{logo_url}}" alt="{{app_name}}" width="160" style="max-width:160px;height:auto;display:inline-block;border:0;"></div>';
+
+// HTML inicial para um template NOVO no editor WYSIWYG (documento de e-mail completo,
+// com tabela responsiva + cabeçalho de marca + saudação editável).
+const _ET_STARTER_HTML = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 0;"><tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+      <tr><td style="background:{{primary_color}};padding:24px;text-align:center;">
+        <img src="{{logo_url}}" alt="{{app_name}}" width="160" style="max-width:160px;height:auto;display:inline-block;border:0;">
+      </td></tr>
+      <tr><td style="padding:28px 28px 8px;">
+        <h1 style="margin:0 0 12px;font-size:20px;color:#1f2937;">Olá, {{name}}!</h1>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#374151;">Escreva aqui a mensagem do seu e-mail. Selecione o texto para formatar ou clique em <strong>{{ }}</strong> para inserir variáveis dinâmicas.</p>
+      </td></tr>
+      <tr><td style="padding:8px 28px 28px;">
+        <a href="{{app_url}}" style="display:inline-block;background:{{primary_color}};color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;">Acessar {{app_name}}</a>
+      </td></tr>
+      <tr><td style="padding:16px 28px;background:#f8fafc;font-size:12px;color:#94a3b8;text-align:center;">© {{year}} {{app_name}}. Todos os direitos reservados.</td></tr>
+    </table>
+  </td></tr></table>
+</body>
+</html>`;
 
 async function renderAdminEmail() {
   const content = document.getElementById('content');
@@ -3928,7 +3953,7 @@ async function _adminEmailTemplates(body) {
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
-          <button class="btn btn-sm" onclick="_adminEmailOpenBuilder('${t.id}')" style="font-size:.75rem;padding:4px 10px">${icon('pencil',12)} Editar</button>
+          <button class="btn btn-sm" onclick="_adminEmailChooseEditor('${t.id}')" style="font-size:.75rem;padding:4px 10px">${icon('pencil',12)} Editar</button>
           ${sys ? '' : `<button class="btn btn-sm" onclick="_adminEmailDeleteTemplate('${t.id}')" style="font-size:.75rem;padding:4px 10px;color:var(--expense)">${icon('trash-2',12)}</button>`}
         </div>
       </div>`;
@@ -3938,23 +3963,49 @@ async function _adminEmailTemplates(body) {
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px">
         <div class="card-title">${icon('file-text',14)} Templates de E-mail</div>
-        <button class="btn btn-primary btn-sm" onclick="_adminEmailOpenBuilder('')" style="font-size:.8rem">${icon('plus',14)} Novo</button>
+        <button class="btn btn-primary btn-sm" onclick="_adminEmailChooseEditor('')" style="font-size:.8rem">${icon('plus',14)} Novo</button>
       </div>
       ${rows}
     </div>`;
 }
 
+/** Seletor de editor: o usuário escolhe entre os 2 modelos (visual/blocos ou
+ *  WYSIWYG). Chamado pelos botões "Editar"/"Novo" da lista de templates. */
+function _adminEmailChooseEditor(id) {
+  const isNew = !id;
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:540px;width:calc(100% - 32px)">
+        <div class="modal-header">
+          <div class="modal-title">${icon('layout-template',16)} ${isNew ? 'Novo template' : 'Editar template'}</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x',16)}</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:.85rem;color:var(--text-muted);margin:0 0 14px">Escolha como quer montar este e-mail. Você pode usar o modelo que preferir.</p>
+          <div class="et-editor-choice">
+            <button type="button" class="et-choice-card" onclick="closeModal();_adminEmailEditTemplate('${id}')">
+              <span class="et-choice-ic">${icon('pen-line',22)}</span>
+              <span class="et-choice-tt">Editor WYSIWYG</span>
+              <span class="et-choice-ds">Edite o texto e o HTML do e-mail direto, como num documento. Ideal para ajustar templates existentes.</span>
+            </button>
+            <button type="button" class="et-choice-card" onclick="closeModal();_adminEmailOpenBuilder('${id}')">
+              <span class="et-choice-ic">${icon('blocks',22)}</span>
+              <span class="et-choice-tt">Editor visual (blocos)</span>
+              <span class="et-choice-ds">Monte o e-mail arrastando blocos prontos (imagem, título, botão). Ideal para criar do zero.</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>`);
+}
+
+/** Editor WYSIWYG de template (modelo 2): iframe editável (designMode) que
+ *  renderiza o e-mail e permite formatar o corpo direto, com toggle para o
+ *  HTML cru. Sem dependência de CDN — sempre disponível. */
 function _adminEmailEditTemplate(id) {
-  // Fallback do builder: garante que o overlay full-viewport (.em-builder,
-  // z-index alto) seja desmontado antes de abrir o modal básico (z-index 200),
-  // senão o modal fica atrás/invisível.
-  // 1) Destroy: unmount do Templatical + libera o scroll-lock (em-fullscreen-open).
-  // 2) Re-render da lista: reescreve #admin-email-body.innerHTML, o que REMOVE o
-  //    nó .em-builder do DOM (só o unmount não o tira — ele segue opaco/fixed
-  //    cobrindo o modal). Assim, ao fechar o modal, o usuário volta pra lista de
-  //    templates em vez de uma tela morta. Idempotente/inofensivo sem builder:
-  //    apenas re-renderiza o sub-painel atual. Fire-and-forget: o modal é injetado
-  //    em #modal-container (separado), então não precisamos aguardar.
+  // Se veio como fallback do builder visual, desmonta o overlay full-viewport
+  // (.em-builder) e re-renderiza a lista antes de abrir o modal, senão o overlay
+  // opaco cobriria o modal.
   _adminEmailBuilderDestroy();
   _adminEmailRenderSub();
   const isNew = !id;
@@ -3962,179 +4013,222 @@ function _adminEmailEditTemplate(id) {
     ? { name: '', category: 'geral', subject: '', html: '', text: '', is_system: 0 }
     : (_adminEmailData.templates.find(x => x.id === id) || {});
   const sys = _adminEmailIsSystem(t.is_system);
-
-  // Reabrir o modal recomeça o preview do zero: limpa timer pendente e invalida
-  // qualquer resposta em voo (o DOM antigo é substituído, sem listeners vazados).
-  if (_etPreviewTimer) { clearTimeout(_etPreviewTimer); _etPreviewTimer = null; }
-  _etPreviewSeq++;
+  _etMode = 'visual';
 
   const chips = _ET_VARS.map(v =>
     `<button type="button" class="btn btn-sm" onclick="_adminEmailInsertVar('${v}')" title="Inserir ${'{{'}${v}${'}}'} no cursor" style="font-family:monospace;font-size:.72rem;padding:3px 8px;border-radius:20px">{{${v}}}</button>`
   ).join('');
 
+  const tb = (cmd, ic, title, arg) =>
+    `<button type="button" class="et-tbtn" title="${title}" onclick="_etExec('${cmd}'${arg !== undefined ? ",'" + arg + "'" : ''})">${icon(ic,15)}</button>`;
+
   showModal(`
     <div class="modal-backdrop">
-      <div class="modal" style="max-width:960px;width:calc(100% - 32px);max-height:92vh;overflow-y:auto">
+      <div class="modal" style="max-width:900px;width:calc(100% - 32px);max-height:94vh;overflow-y:auto">
         <div class="modal-header">
-          <div class="modal-title">${icon('file-text',16)} ${isNew ? 'Novo template' : 'Editar template'}</div>
+          <div class="modal-title">${icon('pen-line',16)} ${isNew ? 'Novo template' : 'Editar template'}</div>
           <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x',16)}</button>
         </div>
         <div class="modal-body">
           ${sys ? `<div style="font-size:.8rem;color:var(--text-muted);background:var(--primary-light,#DDE7D8);padding:8px 10px;border-radius:8px;margin-bottom:14px">
             ${icon('lock',12)} Template de sistema — nome e categoria travados. Apenas assunto e conteúdo são editáveis.</div>` : ''}
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;align-items:start">
 
-            <!-- ESQUERDA: formulário -->
-            <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                <div class="form-group" style="margin:0">
-                  <label class="form-label">Nome *</label>
-                  <input id="et-name" class="form-control" value="${_escHtml(t.name || '')}" ${sys ? 'disabled' : ''}>
-                </div>
-                <div class="form-group" style="margin:0">
-                  <label class="form-label">Categoria</label>
-                  <input id="et-category" class="form-control" value="${_escHtml(t.category || 'geral')}" ${sys ? 'disabled' : ''}>
-                </div>
-              </div>
-              <div class="form-group" style="margin:0">
-                <label class="form-label">Assunto</label>
-                <input id="et-subject" class="form-control" value="${_escHtml(t.subject || '')}">
-              </div>
-              <div class="form-group" style="margin:0">
-                <label class="form-label">HTML</label>
-                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${chips}</div>
-                <button type="button" class="btn btn-sm" onclick="_adminEmailInsertHeader()" style="font-size:.75rem;padding:5px 10px;margin-bottom:6px">${icon('image',12)} Inserir cabeçalho com logo</button>
-                <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:8px;line-height:1.4">
-                  Os chips inserem variáveis na posição do cursor. O cabeçalho é uma linha <code>&lt;tr&gt;</code> pronta — use dentro de um <code>&lt;table&gt;</code> de e-mail.
-                </div>
-                <textarea id="et-html" class="form-control" rows="12" style="font-family:monospace;font-size:.82rem">${_escHtml(t.html || '')}</textarea>
-              </div>
-              <div class="form-group" style="margin:0">
-                <label class="form-label">Texto <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
-                <textarea id="et-text" class="form-control" rows="3">${_escHtml(t.text || '')}</textarea>
-              </div>
-              <div id="et-error" style="color:var(--expense);font-size:.83rem;display:none"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Nome *</label>
+              <input id="et-name" class="form-control" value="${_escHtml(t.name || '')}" ${sys ? 'disabled' : ''}>
             </div>
-
-            <!-- DIREITA: preview ao vivo -->
-            <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
-              <label class="form-label" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                <span>${icon('eye',13)} Preview</span>
-                <span id="et-preview-status" style="display:none;font-weight:400;color:var(--expense);font-size:.75rem"></span>
-              </label>
-              <div id="et-preview-subject" style="font-weight:600;font-size:.86rem;padding:8px 10px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:8px;min-height:18px;word-break:break-word;color:var(--text)"></div>
-              <div style="position:relative">
-                <iframe id="et-preview-frame" style="width:100%;height:520px;border:1px solid var(--border);border-radius:8px;background:#fff"></iframe>
-                <div id="et-preview-spinner" class="spinner" style="display:none;position:absolute;top:12px;right:12px;width:18px;height:18px;border-width:2px"></div>
-              </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Categoria</label>
+              <input id="et-category" class="form-control" value="${_escHtml(t.category || 'geral')}" ${sys ? 'disabled' : ''}>
             </div>
-
           </div>
+          <div class="form-group" style="margin:0 0 12px">
+            <label class="form-label">Assunto</label>
+            <input id="et-subject" class="form-control" value="${_escHtml(t.subject || '')}">
+          </div>
+
+          <div class="form-group" style="margin:0">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+              <label class="form-label" style="margin:0">Corpo do e-mail</label>
+              <div class="et-mode-toggle">
+                <button type="button" class="et-mbtn active" data-mode="visual" onclick="_adminEmailToggleMode('visual')">${icon('eye',13)} Visual</button>
+                <button type="button" class="et-mbtn" data-mode="code" onclick="_adminEmailToggleMode('code')">${icon('code',13)} HTML</button>
+              </div>
+            </div>
+
+            <div id="et-toolbar" class="et-toolbar">
+              ${tb('bold','bold','Negrito')}
+              ${tb('italic','italic','Itálico')}
+              ${tb('underline','underline','Sublinhado')}
+              <span class="et-tsep"></span>
+              ${tb('formatBlock','heading-1','Título','h1')}
+              ${tb('formatBlock','heading-2','Subtítulo','h2')}
+              ${tb('formatBlock','pilcrow','Parágrafo','p')}
+              <span class="et-tsep"></span>
+              ${tb('insertUnorderedList','list','Lista')}
+              ${tb('insertOrderedList','list-ordered','Lista numerada')}
+              <span class="et-tsep"></span>
+              ${tb('justifyLeft','align-left','Alinhar à esquerda')}
+              ${tb('justifyCenter','align-center','Centralizar')}
+              <span class="et-tsep"></span>
+              <button type="button" class="et-tbtn" title="Inserir link" onclick="_etLink()">${icon('link',15)}</button>
+              <label class="et-tbtn" title="Cor do texto" style="position:relative;cursor:pointer">
+                ${icon('palette',15)}
+                <input type="color" onchange="_etExec('foreColor', this.value)" style="position:absolute;inset:0;opacity:0;cursor:pointer">
+              </label>
+              ${tb('removeFormat','eraser','Limpar formatação')}
+            </div>
+
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0">
+              <button type="button" class="btn btn-sm" onclick="_adminEmailInsertHeader()" style="font-size:.75rem;padding:4px 10px">${icon('image',12)} Cabeçalho com logo</button>
+              ${chips}
+            </div>
+            <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:8px;line-height:1.4">
+              Selecione o texto e use os botões para formatar. Os chips <code>{{ }}</code> inserem variáveis na posição do cursor. Alterne para <strong>HTML</strong> para editar o código diretamente.
+            </div>
+
+            <iframe id="et-wys" class="et-wys-frame"></iframe>
+            <textarea id="et-html" class="form-control" rows="16" style="font-family:monospace;font-size:.82rem;display:none">${_escHtml(t.html || '')}</textarea>
+          </div>
+
+          <details class="em-builder-textwrap" style="margin-top:12px">
+            <summary>${icon('type',13)} Texto (plain, opcional)</summary>
+            <textarea id="et-text" class="form-control" rows="3" style="margin-top:8px">${_escHtml(t.text || '')}</textarea>
+          </details>
+          <div id="et-error" style="color:var(--expense);font-size:.83rem;display:none;margin-top:10px"></div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+          <button class="btn" onclick="_adminEmailWysPreview()">${icon('eye',14)} Preview com marca</button>
           <button id="et-submit" class="btn btn-primary" onclick="_adminEmailSaveTemplate('${id}')">${icon('save',14)} Salvar</button>
         </div>
       </div>
     </div>`);
 
-  // Pós-inserção no DOM: liga o preview ao vivo. showModal é síncrono, então os
-  // elementos já existem. Debounce nos eventos de input do HTML e do assunto.
-  const htmlEl = document.getElementById('et-html');
-  const subEl  = document.getElementById('et-subject');
-  if (htmlEl) htmlEl.addEventListener('input', _adminEmailSchedulePreview);
-  if (subEl)  subEl.addEventListener('input', _adminEmailSchedulePreview);
-  _adminEmailUpdatePreview();  // 1ª renderização ao abrir
+  // Carrega o conteúdo no iframe editável. NOVO → HTML inicial de marca.
+  _etLoadWys((t.html && t.html.trim()) ? t.html : _ET_STARTER_HTML);
 }
 
-/** Insere texto no textarea #et-html na posição do cursor. Se o textarea não
- *  tiver foco: faz prepend (prependIfNoFocus) ou append. Depois dispara o preview. */
-function _adminEmailInsertAtCursor(text, prependIfNoFocus) {
+/** (Re)carrega o HTML no iframe WYSIWYG e liga o designMode para edição. */
+function _etLoadWys(html) {
+  const f = document.getElementById('et-wys');
+  if (!f) return;
+  const doc = f.contentDocument || (f.contentWindow && f.contentWindow.document);
+  if (!doc) return;
+  doc.open();
+  doc.write(html && html.trim() ? html : '<p></p>');
+  doc.close();
+  try { doc.designMode = 'on'; } catch (_) {}
+  try { doc.execCommand('styleWithCSS', false, true); } catch (_) {}
+}
+
+/** Lê o HTML atual do iframe WYSIWYG como documento completo. */
+function _etGetWysHtml() {
+  const f = document.getElementById('et-wys');
+  const doc = f && (f.contentDocument || (f.contentWindow && f.contentWindow.document));
+  if (!doc || !doc.documentElement) return '';
+  return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+}
+
+/** HTML canônico do editor: lê do modo ativo (visual = iframe, code = textarea). */
+function _etGetHtml() {
+  if (_etMode === 'code') {
+    const ta = document.getElementById('et-html');
+    return ta ? ta.value : '';
+  }
+  return _etGetWysHtml();
+}
+
+/** Alterna entre o modo Visual (iframe editável) e HTML (textarea de código),
+ *  sincronizando o conteúdo entre os dois. */
+function _adminEmailToggleMode(mode) {
+  if (mode === _etMode) return;
+  const frame = document.getElementById('et-wys');
+  const ta    = document.getElementById('et-html');
+  const bar   = document.getElementById('et-toolbar');
+  if (!frame || !ta) return;
+
+  if (mode === 'code') {
+    ta.value = _etGetWysHtml();          // visual → código
+    frame.style.display = 'none';
+    ta.style.display = '';
+    if (bar) bar.style.display = 'none';
+  } else {
+    _etLoadWys(ta.value);                // código → visual
+    ta.style.display = 'none';
+    frame.style.display = '';
+    if (bar) bar.style.display = '';
+  }
+  _etMode = mode;
+  document.querySelectorAll('.et-mbtn').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === mode));
+}
+
+/** Executa um comando de formatação no documento do iframe WYSIWYG. */
+function _etExec(cmd, arg) {
+  const f = document.getElementById('et-wys');
+  const doc = f && (f.contentDocument || (f.contentWindow && f.contentWindow.document));
+  if (!doc) return;
+  if (f.contentWindow) f.contentWindow.focus();
+  try { doc.execCommand(cmd, false, arg); } catch (_) {}
+}
+
+/** Insere um link no WYSIWYG a partir da seleção atual. */
+function _etLink() {
+  const url = prompt('URL do link:', 'https://');
+  if (url) _etExec('createLink', url);
+}
+
+/** Insere HTML/texto no ponto de edição do modo ativo. */
+function _etInsert(payload, kind, prependIfNoFocus) {
+  if (_etMode === 'visual') {
+    const f = document.getElementById('et-wys');
+    const doc = f && (f.contentDocument || (f.contentWindow && f.contentWindow.document));
+    if (!doc) return;
+    if (f.contentWindow) f.contentWindow.focus();
+    try { doc.execCommand(kind === 'html' ? 'insertHTML' : 'insertText', false, payload); } catch (_) {}
+    return;
+  }
+  // Modo código: insere no textarea na posição do cursor.
   const ta = document.getElementById('et-html');
   if (!ta) return;
   const focused = document.activeElement === ta && typeof ta.selectionStart === 'number';
   if (focused) {
     const start = ta.selectionStart, end = ta.selectionEnd;
-    ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
-    const pos = start + text.length;
+    ta.value = ta.value.slice(0, start) + payload + ta.value.slice(end);
+    const pos = start + payload.length;
     ta.selectionStart = ta.selectionEnd = pos;
     ta.focus();
   } else if (prependIfNoFocus) {
-    ta.value = text + ta.value;
+    ta.value = payload + ta.value;
   } else {
-    ta.value += text;
+    ta.value += payload;
   }
-  _adminEmailSchedulePreview();
 }
 
-/** Insere um token de variável (ex.: {{logo_url}}) no cursor do #et-html. */
+/** Insere um token de variável (ex.: {{logo_url}}) no ponto de edição. */
 function _adminEmailInsertVar(varName) {
-  _adminEmailInsertAtCursor('{{' + varName + '}}', false);
+  _etInsert('{{' + varName + '}}', 'text', false);
 }
 
-/** Insere um cabeçalho <tr> com logo, no cursor (ou no topo se sem foco). */
+/** Insere um cabeçalho com logo: bloco standalone no WYSIWYG, ou linha <tr> no código. */
 function _adminEmailInsertHeader() {
-  _adminEmailInsertAtCursor(_EM_HEADER_SNIPPET, true);
+  if (_etMode === 'visual') _etInsert(_EM_HEADER_VISUAL, 'html', true);
+  else                      _etInsert(_EM_HEADER_SNIPPET, 'html', true);
 }
 
-/** Agenda a atualização do preview com debounce (~500ms). */
-function _adminEmailSchedulePreview() {
-  if (_etPreviewTimer) clearTimeout(_etPreviewTimer);
-  _etPreviewTimer = setTimeout(() => {
-    _etPreviewTimer = null;
-    _adminEmailUpdatePreview();
-  }, 500);
-}
-
-function _adminEmailPreviewSpinner(on) {
-  const el = document.getElementById('et-preview-spinner');
-  if (el) el.style.display = on ? '' : 'none';
-}
-
-function _adminEmailPreviewWarn(msg) {
-  const el = document.getElementById('et-preview-status');
-  if (!el) return;
-  if (msg) { el.textContent = msg; el.style.display = ''; }
-  else { el.textContent = ''; el.style.display = 'none'; }
-}
-
-/** Renderiza o preview: chama POST /email/preview e joga o HTML no srcdoc do
- *  iframe (isolado — nunca no DOM do painel). Erros são tratados sem quebrar
- *  o editor: mostra aviso discreto e mantém o form usável. */
-async function _adminEmailUpdatePreview() {
-  const frame  = document.getElementById('et-preview-frame');
-  const subjEl = document.getElementById('et-preview-subject');
-  const htmlEl = document.getElementById('et-html');
-  const subEl  = document.getElementById('et-subject');
-  if (!frame || !htmlEl) return;  // modal fechado
-
-  const html    = htmlEl.value;
-  const subject = subEl ? subEl.value : '';
-
-  // Estado vazio: iframe neutro, sem chamar o backend.
-  if (!html.trim()) {
-    frame.srcdoc = '<!doctype html><html><body style="margin:0;font-family:system-ui,sans-serif;color:#9ca3af;height:100vh;display:flex;align-items:center;justify-content:center"><div style="text-align:center;padding:24px;font-size:14px">Digite o HTML para ver o preview.</div></body></html>';
-    if (subjEl) subjEl.textContent = subject || '(sem assunto)';
-    _adminEmailPreviewWarn('');
-    _etPreviewSeq++;  // invalida respostas de preview em voo p/ não sobrescrever o iframe neutro
-    return;
-  }
-
-  const token = ++_etPreviewSeq;  // marca esta requisição como a mais recente
-  _adminEmailPreviewSpinner(true);
+/** Preview com marca: envia o HTML atual do editor para /email/preview e mostra
+ *  o resultado renderizado (logo + variáveis de exemplo) num modal isolado. */
+async function _adminEmailWysPreview() {
+  const subject = (document.getElementById('et-subject') || {}).value || '';
+  const html = _etGetHtml();
+  if (!html.trim()) { toast('O corpo do e-mail está vazio.', 'error'); return; }
   try {
     const res = await _api('POST', '/email/preview', { html, subject });
-    if (token !== _etPreviewSeq) return;  // chegou uma resposta mais nova; descarta
-    const f = document.getElementById('et-preview-frame');
-    const s = document.getElementById('et-preview-subject');
-    if (f) f.srcdoc = (res && res.html) || '';
-    if (s) s.textContent = (res && res.subject) || subject || '(sem assunto)';
-    _adminEmailPreviewWarn('');
+    _adminEmailBuilderShowPreview((res && res.subject) || subject, (res && res.html) || '');
   } catch (e) {
-    if (token !== _etPreviewSeq) return;
-    _adminEmailPreviewWarn('Não foi possível gerar o preview.');
-  } finally {
-    if (token === _etPreviewSeq) _adminEmailPreviewSpinner(false);
+    toast('Não foi possível gerar o preview.', 'error');
   }
 }
 
@@ -4145,9 +4239,12 @@ async function _adminEmailSaveTemplate(id) {
   const t = id ? (_adminEmailData.templates.find(x => x.id === id) || {}) : {};
   const sys = _adminEmailIsSystem(t.is_system);
 
+  const html = _etGetHtml();
+  if (!html.trim()) { errEl.textContent = 'O corpo do e-mail está vazio.'; errEl.style.display = ''; return; }
+
   const payload = {
     subject: document.getElementById('et-subject').value,
-    html:    document.getElementById('et-html').value,
+    html:    html,
     text:    document.getElementById('et-text').value,
   };
   if (id) payload.id = id;

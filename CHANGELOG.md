@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.14.0] — 2026-07-25
+
+### Adicionado
+- **Editor WYSIWYG de templates de e-mail** — novo modelo de edição que renderiza o e-mail e permite formatar o corpo direto, como num documento: barra de ferramentas (negrito, itálico, sublinhado, títulos, listas, alinhamento, link, cor do texto, limpar formatação), inserção de variáveis `{{ }}` e cabeçalho com logo no ponto do cursor, e alternância **Visual ⇄ HTML** para editar o código quando quiser. Não depende de CDN externo — sempre disponível. Ideal para ajustar templates existentes (que abriam como um bloco opaco no editor de blocos).
+- **Seletor dos 2 modelos de builder** — ao clicar em **Editar**/**Novo** em Comunicação → Templates, o usuário escolhe entre o **Editor WYSIWYG** (texto/HTML) e o **Editor visual (blocos)**. Nenhum modelo substitui o outro; a escolha é de quem edita.
+
+### Melhorado
+- **Preview com marca** no editor WYSIWYG — botão que renderiza o e-mail com logo e variáveis de exemplo em um modal isolado (desktop/mobile), substituindo o preview lateral fixo por uma edição em tela cheia mais fluida.
+
+---
+
 ## [v1.13.0] — 2026-07-25
 
 ### Melhorado
