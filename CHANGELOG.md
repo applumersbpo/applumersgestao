@@ -5,6 +5,22 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.10.0] — 2026-07-25
+
+### Adicionado
+- **Logs do sistema (auditoria administrativa)** — nova tabela `system_log` e tela "Logs do sistema" (Sistema → Logs do sistema) que registra TODAS as ações de administradores: usuário criado/alterado/excluído, impersonação, teste de WhatsApp, alteração de configurações, geração do secret do cron, ciclo de vida das instâncias Evolution (criar/vincular/excluir/desvincular/definir padrão/atualizar chave) e envio de campanhas. Cada registro guarda quem fez (e-mail e perfil), a ação, o alvo, detalhes em JSON, o IP e a data/hora.
+- **Identidade preservada na exclusão de usuário** — antes de excluir um usuário (hard delete), o sistema agora captura e registra e-mail, nome e perfil da conta excluída no log. Isso resolve a lacuna em que não era possível saber QUEM havia sido excluído após a remoção.
+- **Filtros de leitura do log** — a tela de logs permite filtrar por ação, administrador (e-mail), alvo (e-mail/nome), e intervalo de datas (de/até), com paginação. O registro é best-effort: a auditoria nunca quebra a operação principal.
+
+---
+
+## [v1.9.3] — 2026-07-03
+
+### Melhorado
+- **Modelo atual da tela de login definido como padrão de fábrica** — os valores do modelo de login que estavam salvos no servidor (layout `centered`, cor do painel `#3A5A40`, fundo do formulário `#f8fff5`) passaram a ser o baseline embutido em `_BRAND_DEFAULTS`. Agora, mesmo sem config/cache, a tela de login já nasce nesse formato em vez de cair nos defaults antigos. Cache de brand incrementado (`v6` → `v7`) para invalidar dados antigos.
+
+---
+
 ## [v1.9.2] — 2026-07-03
 
 ### Corrigido

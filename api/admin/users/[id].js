@@ -1,5 +1,6 @@
 import { getDb, initDb, rowsToObjects } from '../../_lib/db.js';
 import { requireAuth, cors, isImpersonation } from '../../_lib/auth.js';
+import { logSystem } from '../../_lib/audit.js';
 import bcrypt from 'bcryptjs';
 
 export default async function handler(req, res) {
@@ -63,14 +64,44 @@ export default async function handler(req, res) {
       if (fields.length === 0) return res.status(400).json({ error: 'Nenhum campo para atualizar' });
 
       await db.execute({ sql: `UPDATE users SET ${fields.join(', ')} WHERE id = ?`, args: [...values, id] });
+
+      // Auditoria: registra quais campos foram alterados (nunca a senha em si).
+      const changed = [];
+      if (name !== undefined)  changed.push('name');
+      if (phone !== undefined) changed.push('phone');
+      if (email !== undefined) changed.push('email');
+      if (role !== undefined)  changed.push('role');
+      if (password)            changed.push('password');
+      await logSystem({
+        req, actor: user, action: 'user.update',
+        targetType: 'user', targetId: id, targetLabel: email || name || id,
+        details: { changed, role: role !== undefined ? role : undefined },
+      });
+
       return res.status(200).json({ ok: true });
     }
 
     if (req.method === 'DELETE') {
+      // Captura a identidade da vítima ANTES do hard delete — sem isso o log
+      // não consegue dizer QUEM foi excluído (a linha some do banco).
+      let victim = null;
+      try {
+        const { rows: vRows } = await db.execute({ sql: 'SELECT email, name, role FROM users WHERE id = ?', args: [id] });
+        victim = rowsToObjects(vRows)[0] || null;
+      } catch (_) {}
+
       for (const table of ['categories', 'templates', 'transactions', 'installments', 'goals', 'settings', 'user_plans', 'password_resets']) {
         await db.execute({ sql: `DELETE FROM ${table} WHERE user_id = ?`, args: [id] });
       }
       await db.execute({ sql: 'DELETE FROM users WHERE id = ?', args: [id] });
+
+      await logSystem({
+        req, actor: user, action: 'user.delete',
+        targetType: 'user', targetId: id,
+        targetLabel: (victim && (victim.email || victim.name)) || id,
+        details: victim ? { email: victim.email, name: victim.name, role: victim.role } : { note: 'identidade não recuperada' },
+      });
+
       return res.status(200).json({ ok: true });
     }
 
@@ -95,6 +126,11 @@ export default async function handler(req, res) {
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) return res.status(502).json({ error: 'Falha ao enviar', detail: data });
+        await logSystem({
+          req, actor: user, action: 'user.test_whatsapp',
+          targetType: 'user', targetId: id, targetLabel: target.name || id,
+          details: { phone: target.phone },
+        });
         return res.status(200).json({ ok: true, phone: target.phone });
       }
       return res.status(400).json({ error: 'Ação inválida' });

@@ -1310,6 +1310,17 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '') {
           ${icon('clock', 14)} Ver histórico
         </button>
       </div>
+
+      <!-- Logs do sistema (auditoria administrativa) -->
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-weight:600;font-size:.85rem">${icon('shield', 13)} Logs do sistema</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:2px">Auditoria completa das ações de administradores: usuários criados, alterados, excluídos, instâncias, configurações e mais.</div>
+        </div>
+        <button class="btn btn-outline" onclick="openSystemLogModal()" style="font-size:.83rem;white-space:nowrap">
+          ${icon('scroll-text', 14)} Ver logs
+        </button>
+      </div>
     </div>`;
 }
 
@@ -1466,6 +1477,176 @@ async function openMsgHistoryModal(page = 1) {
   } catch(e) {
     const bodyEl = document.getElementById('msg-history-body');
     if (bodyEl) bodyEl.innerHTML = `<div style="padding:24px;color:var(--expense)">Erro: ${_escHtml(e.message)}</div>`;
+  }
+}
+
+// ── Logs do sistema (auditoria administrativa) ────────────────────────────────
+
+const _SYSLOG_LABELS = {
+  'user.create':               { txt: 'Usuário criado',        color: '#16a34a', bg: '#dcfce7' },
+  'user.update':               { txt: 'Usuário alterado',      color: '#d97706', bg: '#fef3c7' },
+  'user.delete':               { txt: 'Usuário excluído',      color: '#dc2626', bg: '#fee2e2' },
+  'user.impersonate':          { txt: 'Impersonação',          color: '#7c3aed', bg: '#ede9fe' },
+  'user.test_whatsapp':        { txt: 'Teste WhatsApp',        color: '#0891b2', bg: '#cffafe' },
+  'settings.update':           { txt: 'Config. alterada',      color: '#d97706', bg: '#fef3c7' },
+  'settings.cron_secret_generate': { txt: 'Secret do cron',    color: '#d97706', bg: '#fef3c7' },
+  'evolution.instance_create': { txt: 'Instância criada',      color: '#16a34a', bg: '#dcfce7' },
+  'evolution.instance_delete': { txt: 'Instância excluída',    color: '#dc2626', bg: '#fee2e2' },
+  'evolution.instance_link':   { txt: 'Instância vinculada',   color: '#0891b2', bg: '#cffafe' },
+  'evolution.instance_unlink': { txt: 'Instância desvinculada',color: '#dc2626', bg: '#fee2e2' },
+  'evolution.set_default':     { txt: 'Instância padrão',      color: '#0891b2', bg: '#cffafe' },
+  'evolution.update_key':      { txt: 'Chave atualizada',      color: '#d97706', bg: '#fef3c7' },
+  'message.campaign_send':     { txt: 'Campanha enviada',      color: '#0891b2', bg: '#cffafe' },
+};
+
+function _syslogBadge(action) {
+  const m = _SYSLOG_LABELS[action] || { txt: action || '—', color: 'var(--text-muted)', bg: 'var(--bg-subtle)' };
+  return `<span style="font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:20px;background:${m.bg};color:${m.color};white-space:nowrap">${_escHtml(m.txt)}</span>`;
+}
+
+function openSystemLogModal() {
+  const actOptions = Object.entries(_SYSLOG_LABELS).map(([v, m]) => `<option value="${v}">${_escHtml(m.txt)}</option>`).join('');
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:1040px;width:calc(100% - 32px);max-height:92vh;display:flex;flex-direction:column">
+        <div class="modal-header" style="flex-shrink:0">
+          <div class="modal-title">${icon('shield', 16)} Logs do sistema</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
+        </div>
+        <div style="flex-shrink:0;padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Ação</label>
+            <select id="syslog-f-action" style="font-size:.8rem;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg)">
+              <option value="">Todas</option>${actOptions}
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Admin</label>
+            <input id="syslog-f-actor" type="text" placeholder="e-mail do admin" style="font-size:.8rem;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg)">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Alvo</label>
+            <input id="syslog-f-target" type="text" placeholder="e-mail/nome do alvo" style="font-size:.8rem;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg)">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">De</label>
+            <input id="syslog-f-from" type="date" style="font-size:.8rem;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg)">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Até</label>
+            <input id="syslog-f-to" type="date" style="font-size:.8rem;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg)">
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="_syslogLoad(1)" style="font-size:.8rem">${icon('search', 13)} Filtrar</button>
+          <button class="btn btn-outline btn-sm" onclick="_syslogClear()" style="font-size:.8rem">Limpar</button>
+        </div>
+        <div class="modal-body" style="overflow-y:auto;flex:1" id="syslog-body">
+          <div style="text-align:center;padding:32px;color:var(--text-muted)">
+            <div class="spinner" style="margin:0 auto 12px"></div>Carregando logs…
+          </div>
+        </div>
+      </div>
+    </div>`);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  _syslogLoad(1);
+}
+
+function _syslogClear() {
+  ['syslog-f-actor', 'syslog-f-target', 'syslog-f-from', 'syslog-f-to'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const sel = document.getElementById('syslog-f-action'); if (sel) sel.value = '';
+  _syslogLoad(1);
+}
+
+async function _syslogLoad(page = 1) {
+  const bodyEl = document.getElementById('syslog-body');
+  if (!bodyEl) return;
+  bodyEl.innerHTML = `<div style="text-align:center;padding:32px;color:var(--text-muted)"><div class="spinner" style="margin:0 auto 12px"></div>Carregando logs…</div>`;
+
+  const params = new URLSearchParams({ resource: 'system-log', page: String(page), limit: '50' });
+  const action = document.getElementById('syslog-f-action')?.value;
+  const actor  = document.getElementById('syslog-f-actor')?.value?.trim();
+  const target = document.getElementById('syslog-f-target')?.value?.trim();
+  const from   = document.getElementById('syslog-f-from')?.value;
+  const to     = document.getElementById('syslog-f-to')?.value;
+  if (action) params.set('action', action);
+  if (actor)  params.set('actor', actor);
+  if (target) params.set('target', target);
+  if (from)   params.set('date_from', from);
+  if (to)     params.set('date_to', to);
+
+  try {
+    const data = await _api('GET', `/admin/users?${params.toString()}`);
+    const logs  = data.logs  || [];
+    const total = data.total || 0;
+    const pages = Math.ceil(total / 50);
+
+    if (!logs.length) {
+      bodyEl.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-muted)">
+        ${icon('inbox', 32)}<p style="margin-top:12px">Nenhum registro encontrado para os filtros aplicados.</p></div>`;
+      if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [bodyEl] });
+      return;
+    }
+
+    const fmtDate = d => {
+      if (!d) return '—';
+      const dt = new Date(d.includes('T') || d.includes('Z') ? d : d.replace(' ', 'T') + 'Z');
+      return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    };
+    const fmtDetails = s => {
+      if (!s) return '';
+      let obj; try { obj = JSON.parse(s); } catch { return _escHtml(String(s)); }
+      if (obj && typeof obj === 'object') {
+        return Object.entries(obj).filter(([, v]) => v !== undefined && v !== '' && v !== null)
+          .map(([k, v]) => `<span style="font-size:.7rem;color:var(--text-muted)">${_escHtml(k)}: <b style="color:var(--text)">${_escHtml(Array.isArray(v) ? v.join(', ') : String(v))}</b></span>`)
+          .join('<br>');
+      }
+      return _escHtml(String(s));
+    };
+
+    bodyEl.innerHTML = `
+      <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">
+        ${total} registro${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border);text-align:left">
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap">Data/Hora</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase">Ação</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase">Administrador</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase">Alvo</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase">Detalhes</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap">IP</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${logs.map((l, idx) => `
+              <tr style="border-bottom:1px solid var(--border);${idx % 2 === 1 ? 'background:var(--bg-subtle)' : ''}">
+                <td style="padding:8px 10px;white-space:nowrap;color:var(--text-muted);font-size:.78rem">${fmtDate(l.created_at)}</td>
+                <td style="padding:8px 10px">${_syslogBadge(l.action)}</td>
+                <td style="padding:8px 10px">
+                  <div style="font-weight:600;font-size:.82rem">${_escHtml(l.actor_email || '—')}</div>
+                  ${l.actor_role ? `<div style="font-size:.72rem;color:var(--text-muted)">${_escHtml(l.actor_role)}</div>` : ''}
+                </td>
+                <td style="padding:8px 10px">
+                  <div style="font-size:.82rem">${_escHtml(l.target_label || '—')}</div>
+                  ${l.target_type ? `<div style="font-size:.72rem;color:var(--text-muted)">${_escHtml(l.target_type)}</div>` : ''}
+                </td>
+                <td style="padding:8px 10px;max-width:260px;word-break:break-word">${fmtDetails(l.details)}</td>
+                <td style="padding:8px 10px;white-space:nowrap;font-size:.75rem;color:var(--text-muted);font-family:monospace">${_escHtml(l.ip || '—')}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${pages > 1 ? `
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;flex-wrap:wrap">
+        ${page > 1 ? `<button class="btn btn-sm btn-outline" onclick="_syslogLoad(${page-1})">← Anterior</button>` : ''}
+        <span style="font-size:.82rem;color:var(--text-muted)">Página ${page} de ${pages}</span>
+        ${page < pages ? `<button class="btn btn-sm btn-outline" onclick="_syslogLoad(${page+1})">Próxima →</button>` : ''}
+      </div>` : ''}`;
+
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [bodyEl] });
+  } catch (e) {
+    bodyEl.innerHTML = `<div style="padding:24px;color:var(--expense)">Erro: ${_escHtml(e.message)}</div>`;
   }
 }
 

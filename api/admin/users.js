@@ -1,5 +1,6 @@
 import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from '../_lib/db.js';
 import { requireAuth, cors, isImpersonation, signToken } from '../_lib/auth.js';
+import { logSystem } from '../_lib/audit.js';
 import {
   evoBase, resolveKey, headers as evoHdrs, normalizeStatus, parseEvoError,
   connectionState, connectQr, deleteInstance, setSettings, setWebhook,
@@ -86,6 +87,38 @@ export default async function handler(req, res) {
       return res.status(200).json({ logs: rowsToObjects(rows), total, page, limit });
     }
 
+    // Log de auditoria administrativa (system_log) com filtros de leitura
+    if (req.query.resource === 'system-log') {
+      const page  = Math.max(1, parseInt(req.query.page  || '1',  10));
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '50', 10)));
+      const offset = (page - 1) * limit;
+
+      const where = [];
+      const args = [];
+      if (req.query.action) { where.push('action = ?'); args.push(req.query.action); }
+      if (req.query.actor)  { where.push('(actor_email LIKE ? OR actor_id LIKE ?)'); const t = `%${req.query.actor}%`; args.push(t, t); }
+      if (req.query.target) { where.push('(target_label LIKE ? OR target_id LIKE ?)'); const t = `%${req.query.target}%`; args.push(t, t); }
+      if (req.query.date_from) { where.push('created_at >= ?'); args.push(req.query.date_from); }
+      if (req.query.date_to)   { where.push('created_at <= ?'); args.push(`${req.query.date_to} 23:59:59`); }
+      const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+      const { rows: totalRows } = await db.execute({ sql: `SELECT COUNT(*) as total FROM system_log ${whereSql}`, args });
+      const total = rowsToObjects(totalRows)[0]?.total || 0;
+      const { rows } = await db.execute({
+        sql: `SELECT id, actor_id, actor_email, actor_role, action, target_type, target_id, target_label, details, ip, created_at
+              FROM system_log ${whereSql}
+              ORDER BY created_at DESC
+              LIMIT ? OFFSET ?`,
+        args: [...args, limit, offset],
+      });
+      const { rows: actRows } = await db.execute('SELECT DISTINCT action FROM system_log ORDER BY action ASC');
+      return res.status(200).json({
+        logs: rowsToObjects(rows),
+        total, page, limit,
+        actions: rowsToObjects(actRows).map(r => r.action).filter(Boolean),
+      });
+    }
+
     // Retorna a instância padrão do sistema
     if (req.query.resource === 'evolution-default-instance') {
       const { rows } = await db.execute("SELECT name, api_key FROM evolution_instances WHERE is_default = 1 LIMIT 1");
@@ -143,8 +176,16 @@ export default async function handler(req, res) {
       }
       if (req.method === 'PUT') {
         const updates = req.body || {};
+        const changed = [];
         for (const key of SYSTEM_SETTING_KEYS) {
-          if (key in updates) await setSystemSetting(key, String(updates[key]));
+          if (key in updates) { await setSystemSetting(key, String(updates[key])); changed.push(key); }
+        }
+        if (changed.length) {
+          await logSystem({
+            req, actor: user, action: 'settings.update',
+            targetType: 'system_setting', targetLabel: changed.join(', '),
+            details: { changed },
+          });
         }
         return res.status(200).json({ ok: true });
       }
@@ -344,6 +385,7 @@ export default async function handler(req, res) {
         };
         const createdKey = pickKey(data?.hash) || pickKey(data?.apikey) || pickKey(data?.instance?.apikey) || pickKey(data?.instance?.hash) || '';
         await db.execute({ sql: 'INSERT OR IGNORE INTO evolution_instances (id, name, api_key) VALUES (?, ?, ?)', args: [newId, instanceName, createdKey] });
+        await logSystem({ req, actor: user, action: 'evolution.instance_create', targetType: 'evolution_instance', targetId: newId, targetLabel: instanceName });
         return res.status(200).json({ ...data, _config });
       }
 
@@ -359,6 +401,7 @@ export default async function handler(req, res) {
         if (!ok) return res.status(400).json({ error: `Evolution retornou HTTP ${evoStatus}` });
         const newId = crypto.randomUUID();
         await db.execute({ sql: 'INSERT OR IGNORE INTO evolution_instances (id, name, api_key) VALUES (?, ?, ?)', args: [newId, instanceName, instanceKey || ''] });
+        await logSystem({ req, actor: user, action: 'evolution.instance_link', targetType: 'evolution_instance', targetId: newId, targetLabel: instanceName });
         return res.status(200).json({ ok: true });
       }
 
@@ -369,6 +412,7 @@ export default async function handler(req, res) {
         if (!evoBase()) return res.status(500).json({ error: 'Evolution API não configurada' });
         const { ok, status: evoStatus, data } = await deleteInstance(instanceName, null);
         await db.execute({ sql: 'DELETE FROM evolution_instances WHERE name = ?', args: [instanceName] });
+        await logSystem({ req, actor: user, action: 'evolution.instance_delete', targetType: 'evolution_instance', targetLabel: instanceName, details: { evoStatus } });
         const status = ok ? 200 : (evoStatus === 401 ? 502 : evoStatus);
         return res.status(status).json(data);
       }
@@ -378,6 +422,7 @@ export default async function handler(req, res) {
         const { instanceName } = req.body;
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
         await db.execute({ sql: 'DELETE FROM evolution_instances WHERE name = ?', args: [instanceName] });
+        await logSystem({ req, actor: user, action: 'evolution.instance_unlink', targetType: 'evolution_instance', targetLabel: instanceName });
         return res.status(200).json({ ok: true });
       }
 
@@ -397,6 +442,7 @@ export default async function handler(req, res) {
         } catch(e2) {
           return res.status(500).json({ error: `Q2 failed: ${e2.message} | type=${instNameType} | val=${instNameStr}` });
         }
+        await logSystem({ req, actor: user, action: 'evolution.set_default', targetType: 'evolution_instance', targetLabel: instNameStr });
         return res.status(200).json({ ok: true });
       }
 
@@ -406,6 +452,7 @@ export default async function handler(req, res) {
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
         if (!instanceKey) return res.status(400).json({ error: 'instanceKey é obrigatório' });
         await db.execute({ sql: 'UPDATE evolution_instances SET api_key = ? WHERE name = ?', args: [instanceKey, instanceName] });
+        await logSystem({ req, actor: user, action: 'evolution.update_key', targetType: 'evolution_instance', targetLabel: instanceName });
         return res.status(200).json({ ok: true });
       }
 
@@ -573,6 +620,12 @@ export default async function handler(req, res) {
           }
         }
 
+        await logSystem({
+          req, actor: user, action: 'message.campaign_send',
+          targetType: 'campaign', targetId: campaignId,
+          targetLabel: `${user_ids.length} destinatário(s)`,
+          details: { total: user_ids.length, instance: defInst.name, has_media: hasMedia },
+        });
         return res.status(200).json({ ok: true, campaign_id: campaignId, total: user_ids.length });
       }
 
@@ -596,6 +649,11 @@ export default async function handler(req, res) {
           sql: 'INSERT INTO user_plans (id, user_id, email, name, monthly_fee, active) VALUES (?, ?, ?, ?, 0, 1)',
           args: [crypto.randomUUID(), id, email.toLowerCase().trim(), name],
         });
+        await logSystem({
+          req, actor: user, action: 'user.create',
+          targetType: 'user', targetId: id, targetLabel: email.toLowerCase().trim(),
+          details: { name, phone: normalizedPhone },
+        });
         return res.status(201).json({ ok: true, id });
       }
 
@@ -604,6 +662,7 @@ export default async function handler(req, res) {
         const bytes = crypto.getRandomValues(new Uint8Array(24));
         const secret = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
         await setSystemSetting('cron_secret', secret);
+        await logSystem({ req, actor: user, action: 'settings.cron_secret_generate', targetType: 'system_setting', targetLabel: 'cron_secret' });
         return res.status(200).json({ ok: true, secret });
       }
 
@@ -640,6 +699,10 @@ export default async function handler(req, res) {
         await db.execute({
           sql: 'INSERT INTO impersonation_logs (id, admin_id, admin_email, target_id, target_email) VALUES (?, ?, ?, ?, ?)',
           args: [crypto.randomUUID(), user.sub, user.email || '', target.id, target.email || ''],
+        });
+        await logSystem({
+          req, actor: user, action: 'user.impersonate',
+          targetType: 'user', targetId: target.id, targetLabel: target.email || target.name || target.id,
         });
 
         return res.status(200).json({

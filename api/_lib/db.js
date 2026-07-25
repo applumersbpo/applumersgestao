@@ -403,6 +403,22 @@ export async function initDb() {
       enabled INTEGER DEFAULT 1,
       updated_at TEXT DEFAULT (datetime('now'))
     )`,
+    // Auditoria administrativa: registra TODAS as ações de admin/super_admin
+    // (criação/alteração/exclusão de usuários, config, instâncias etc.).
+    // Separado de email_log de propósito — domínios diferentes.
+    `CREATE TABLE IF NOT EXISTS system_log (
+      id TEXT PRIMARY KEY,
+      actor_id TEXT DEFAULT '',
+      actor_email TEXT DEFAULT '',
+      actor_role TEXT DEFAULT '',
+      action TEXT DEFAULT '',
+      target_type TEXT DEFAULT '',
+      target_id TEXT DEFAULT '',
+      target_label TEXT DEFAULT '',
+      details TEXT DEFAULT '',
+      ip TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {
