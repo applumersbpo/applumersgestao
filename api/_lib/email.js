@@ -86,8 +86,28 @@ async function logEmail({ toEmail, toName, subject, templateKey, campaignId, sta
   }
 }
 
+// Verifica se o destinatário optou por NÃO receber e-mails automáticos.
+// Só admin/super_admin conseguem desabilitar; usuário comum sempre tem flag=1.
+// Best-effort: em erro/ausência, retorna false (não bloqueia o envio).
+async function isEmailOptedOut(toEmail) {
+  if (!toEmail) return false;
+  try {
+    const db = getDb();
+    const { rows } = await db.execute({
+      sql: 'SELECT email_notifications_enabled FROM users WHERE email = ? LIMIT 1',
+      args: [String(toEmail).toLowerCase().trim()],
+    });
+    if (!rows || !rows.length) return false;
+    const v = rows[0].email_notifications_enabled;
+    return v === 0 || v === '0';
+  } catch (_) {
+    return false;
+  }
+}
+
 // Envia e-mail via Resend REST API. NUNCA lança pra fora.
-export async function sendEmail({ to, toName, subject, html, text, templateKey, campaignId }) {
+// force=true ignora o opt-out do destinatário (envio manual confirmado pelo admin).
+export async function sendEmail({ to, toName, subject, html, text, templateKey, campaignId, force }) {
   const config = await getEmailConfig();
 
   if (!config.enabled || !config.apiKey) {
@@ -96,6 +116,16 @@ export async function sendEmail({ to, toName, subject, html, text, templateKey, 
       status: 'failed', error: 'disabled/no-key',
     });
     return { ok: false, skipped: true, error: 'email disabled or no api key' };
+  }
+
+  // Opt-out de notificações: bloqueia e-mails automáticos para quem desabilitou,
+  // a menos que o admin tenha forçado o envio.
+  if (!force && await isEmailOptedOut(to)) {
+    await logEmail({
+      toEmail: to, toName, subject, templateKey, campaignId,
+      status: 'skipped', error: 'notifications disabled',
+    });
+    return { ok: false, skipped: true, optedOut: true, error: 'notifications disabled' };
   }
 
   try {
@@ -154,7 +184,8 @@ export async function getSystemTemplate(systemKey) {
 }
 
 // Renderiza um template de sistema com vars e envia.
-export async function sendTemplateEmail({ to, toName, systemKey, vars, campaignId }) {
+// force=true ignora o opt-out do destinatário (ex.: reset de senha).
+export async function sendTemplateEmail({ to, toName, systemKey, vars, campaignId, force }) {
   const tpl = await getSystemTemplate(systemKey);
   if (!tpl) {
     return { ok: false, error: 'template not found' };
@@ -166,6 +197,6 @@ export async function sendTemplateEmail({ to, toName, systemKey, vars, campaignI
   const text = renderTemplate(tpl.text, merged);
   return sendEmail({
     to, toName, subject, html, text,
-    templateKey: systemKey, campaignId,
+    templateKey: systemKey, campaignId, force,
   });
 }

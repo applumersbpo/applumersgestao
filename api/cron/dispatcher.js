@@ -226,7 +226,7 @@ export default async function handler(req, res) {
 
     const { rows: emailCandidates } = await db.execute({
       sql: `SELECT d.id, d.campaign_id, d.user_id, d.to_email, d.to_name,
-                   d.subject, d.html, d.status, d.attempts, d.scheduled_for
+                   d.subject, d.html, d.status, d.attempts, d.scheduled_for, d.force_send
             FROM email_dispatch d
             JOIN email_campaigns c ON c.id = d.campaign_id
             WHERE d.status = 'pending' AND d.scheduled_for <= ?
@@ -267,6 +267,7 @@ export default async function handler(req, res) {
         subject,
         html,
         campaignId: d.campaign_id,
+        force: d.force_send === 1 || d.force_send === '1',
       });
 
       if (r.ok) {
@@ -280,16 +281,18 @@ export default async function handler(req, res) {
         });
         emailProcessed.push({ id: d.id, result: 'sent' });
       } else if (r.skipped) {
-        // Email disabled / no api key — NEVER retry (would loop forever), fail directly
+        // Email desabilitado / sem api key / destinatário optou por não receber —
+        // NUNCA re-tentar (loop infinito), falha direto com o motivo real.
+        const skipMsg = r.optedOut ? 'notificações desabilitadas' : 'email disabled';
         await db.execute({
           sql: "UPDATE email_dispatch SET status='failed', processing_at='', error=? WHERE id=?",
-          args: ['email disabled', d.id],
+          args: [skipMsg, d.id],
         });
         await db.execute({
           sql: "UPDATE email_campaigns SET failed=failed+1 WHERE id=?",
           args: [d.campaign_id],
         });
-        emailProcessed.push({ id: d.id, result: 'failed', error: 'email disabled' });
+        emailProcessed.push({ id: d.id, result: 'failed', error: skipMsg });
       } else {
         const errMsg = r.error || 'send error';
         const attempts = (Number(d.attempts) || 0) + 1;

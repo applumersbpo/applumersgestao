@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     const db = getDb();
 
     if (req.method === 'GET') {
-      const { rows: uRows } = await db.execute({ sql: 'SELECT id,email,name,phone,role,is_admin,last_login,created_at FROM users WHERE id=?', args: [id] });
+      const { rows: uRows } = await db.execute({ sql: 'SELECT id,email,name,phone,role,is_admin,last_login,created_at,email_notifications_enabled FROM users WHERE id=?', args: [id] });
       const userObj = rowsToObjects(uRows)[0];
       if (!userObj) return res.status(404).json({ error: 'Not found' });
 
@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'PUT') {
-      const { name, email, phone, role, password } = req.body || {};
+      const { name, email, phone, role, password, email_notifications_enabled } = req.body || {};
       const fields = [];
       const values = [];
 
@@ -61,6 +61,24 @@ export default async function handler(req, res) {
         const hash = await bcrypt.hash(password, 10);
         fields.push('password_hash = ?'); values.push(hash);
       }
+
+      // Opt-out de e-mails: só admin/super_admin podem desabilitar. Descobre o
+      // perfil final do usuário (o que vem no payload vence; senão, lê o atual).
+      let optOutChanged = false;
+      if (email_notifications_enabled !== undefined) {
+        let effectiveRole = role;
+        if (effectiveRole === undefined) {
+          const { rows: rRows } = await db.execute({ sql: 'SELECT role, is_admin FROM users WHERE id=?', args: [id] });
+          const cur = rowsToObjects(rRows)[0];
+          effectiveRole = cur ? (cur.role || (cur.is_admin ? 'admin' : 'user')) : 'user';
+        }
+        const isPrivileged = effectiveRole === 'admin' || effectiveRole === 'super_admin';
+        // Usuário comum sempre recebe: força 1 independentemente do que foi enviado.
+        const flagValue = isPrivileged ? (email_notifications_enabled ? 1 : 0) : 1;
+        fields.push('email_notifications_enabled = ?'); values.push(flagValue);
+        optOutChanged = true;
+      }
+
       if (fields.length === 0) return res.status(400).json({ error: 'Nenhum campo para atualizar' });
 
       await db.execute({ sql: `UPDATE users SET ${fields.join(', ')} WHERE id = ?`, args: [...values, id] });
@@ -72,6 +90,7 @@ export default async function handler(req, res) {
       if (email !== undefined) changed.push('email');
       if (role !== undefined)  changed.push('role');
       if (password)            changed.push('password');
+      if (optOutChanged)       changed.push('email_notifications_enabled');
       await logSystem({
         req, actor: user, action: 'user.update',
         targetType: 'user', targetId: id, targetLabel: email || name || id,

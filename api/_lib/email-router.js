@@ -290,6 +290,15 @@ export default async function emailRouter(req, res) {
         recipients = rowsToObjects(mRows).map(m => ({ user_id: m.user_id || '', email: m.email, name: m.name }));
       }
 
+      // Opt-out: por padrão NÃO envia para quem desabilitou notificações.
+      // Só inclui esses destinatários se o admin confirmar (include_disabled=true),
+      // e nesse caso marca force_send=1 para o cron ignorar o opt-out.
+      const includeDisabled = b.include_disabled === true;
+      const { rows: optOutRows } = await db.execute(
+        'SELECT email FROM users WHERE email_notifications_enabled = 0'
+      );
+      const optedOut = new Set(rowsToObjects(optOutRows).map(r => (r.email || '').toLowerCase()));
+
       const isScheduled = trigger === 'scheduled';
       const nowIso = new Date().toISOString();
       const dispatchWhen = isScheduled && scheduledFor ? scheduledFor : nowIso;
@@ -306,13 +315,17 @@ export default async function emailRouter(req, res) {
 
       // 4. Materializa a fila: um email_dispatch por destinatário (envio real fica a cargo do cron).
       let total = 0;
+      let skippedDisabled = 0;
       for (const r of recipients) {
         const em = (r.email || '').trim();
         if (!em) continue;
+        const isOptedOut = optedOut.has(em.toLowerCase());
+        if (isOptedOut && !includeDisabled) { skippedDisabled++; continue; }
+        const forceSend = isOptedOut ? 1 : 0;
         await db.execute({
-          sql: `INSERT INTO email_dispatch (id, campaign_id, user_id, to_email, to_name, subject, html, status, attempts, scheduled_for)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?)`,
-          args: [crypto.randomUUID(), campaignId, r.user_id || '', em, r.name || '', subject, html, dispatchWhen],
+          sql: `INSERT INTO email_dispatch (id, campaign_id, user_id, to_email, to_name, subject, html, status, attempts, scheduled_for, force_send)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)`,
+          args: [crypto.randomUUID(), campaignId, r.user_id || '', em, r.name || '', subject, html, dispatchWhen, forceSend],
         });
         total++;
       }
@@ -323,8 +336,9 @@ export default async function emailRouter(req, res) {
         args: [total, isScheduled ? 'queued' : 'running', campaignId],
       });
 
-      // 6. Retorna — o envio real é feito pelo cron.
-      return res.status(200).json({ ok: true, campaign_id: campaignId, total });
+      // 6. Retorna — o envio real é feito pelo cron. skipped_disabled informa
+      //    quantos destinatários foram pulados por terem notificações desabilitadas.
+      return res.status(200).json({ ok: true, campaign_id: campaignId, total, skipped_disabled: skippedDisabled });
     }
 
     // ───────────────────────── TEST SEND (envio imediato) ─────────────────────────
@@ -335,7 +349,7 @@ export default async function emailRouter(req, res) {
 
       if (system_key) {
         const result = await email.sendTemplateEmail({
-          to, toName: b.to_name || '', systemKey: system_key, vars: b.vars || {},
+          to, toName: b.to_name || '', systemKey: system_key, vars: b.vars || {}, force: true,
         });
         return res.status(200).json(result);
       }
@@ -351,7 +365,7 @@ export default async function emailRouter(req, res) {
         }
       }
       const result = await email.sendEmail({
-        to, toName: b.to_name || '', subject: subject || 'Teste — Lumers Flow', html: html || '<p>Teste de envio.</p>',
+        to, toName: b.to_name || '', subject: subject || 'Teste — Lumers Flow', html: html || '<p>Teste de envio.</p>', force: true,
       });
       return res.status(200).json(result);
     }

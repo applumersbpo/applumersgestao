@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.11.0] — 2026-07-25
+
+### Adicionado
+- **Opt-out de e-mails automáticos por usuário** — na edição de usuário há agora a opção "Receber e-mails automáticos", visível somente para contas **admin** e **super admin**. Ao desmarcar, nenhum e-mail automático (boas-vindas, lembretes de vencimento, campanhas) é enviado àquele usuário. E-mails transacionais críticos (recuperação de senha e testes manuais de envio) continuam sendo enviados normalmente. Usuário comum não pode desabilitar suas notificações e sempre recebe.
+- **Override de envio confirmado pelo admin** — ao disparar uma campanha de e-mail, o painel pergunta se deseja incluir também os usuários que desabilitaram o recebimento. Confirmando, o envio é forçado a eles; caso contrário, são ignorados e o total ignorado é informado no aviso.
+
+### Técnico
+- Nova coluna `email_notifications_enabled` (padrão 1) em `users` e `force_send` (padrão 0) em `email_dispatch`. O bloqueio de opt-out é centralizado em `sendEmail()` com parâmetro `force` para bypass; a fila de campanhas propaga o override do enfileiramento até o dispatcher do cron.
+
+---
+
 ## [v1.10.0] — 2026-07-25
 
 ### Adicionado

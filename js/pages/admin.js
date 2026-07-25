@@ -2019,6 +2019,22 @@ function _renderEditUserModal(userId) {
         </select>
       </div>
 
+      ${(role==='admin' || role==='super_admin') ? `
+      <!-- NOTIFICAÇÕES -->
+      <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">
+        ${icon('bell',13)} Notificações
+      </div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <input type="checkbox" id="eu-email-notif" ${user.email_notifications_enabled === 0 || user.email_notifications_enabled === '0' ? '' : 'checked'} style="width:16px;height:16px;cursor:pointer">
+          <span style="flex:1;font-size:.87rem">Receber e-mails automáticos</span>
+        </label>
+        <div style="font-size:.75rem;color:var(--text-muted);margin-top:6px">
+          Desmarque para bloquear todo e-mail automático (boas-vindas, lembretes, campanhas). E-mails transacionais como recuperação de senha continuam sendo enviados.
+        </div>
+      </div>
+      ` : ''}
+
       ${plan ? `
       <!-- PLANO -->
       <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">
@@ -2103,6 +2119,9 @@ async function _adminSaveUserEdit(userId) {
     // Save profile
     const profileData = { name, email, phone, role };
     if (password) profileData.password = password;
+    // Opt-out de e-mails: só existe no DOM para admin/super_admin.
+    const emailNotifEl = document.getElementById('eu-email-notif');
+    if (emailNotifEl) profileData.email_notifications_enabled = emailNotifEl.checked;
     await _api('PUT', '/admin/users/' + userId, profileData);
 
     // Save plan if exists
@@ -4954,8 +4973,11 @@ async function _adminEmailSaveCampaign(id, alsoSend) {
     const saved = await _api('POST', '/email/campaign', payload);
     const cid = saved.id || id;
     if (alsoSend) {
-      const r = await _api('POST', '/email/send', { campaign_id: cid });
-      toast(`${r.total || 0} e-mail(s) enfileirados.`, 'success');
+      const includeDisabled = confirm('Incluir também usuários que DESABILITARAM o recebimento de e-mails? Clique OK para forçar o envio a eles, ou Cancelar para respeitar a preferência.');
+      const r = await _api('POST', '/email/send', { campaign_id: cid, include_disabled: includeDisabled });
+      let msg = `${r.total || 0} e-mail(s) enfileirados.`;
+      if (!includeDisabled && r.skipped_disabled) msg += ` ${r.skipped_disabled} ignorado(s) por notificações desabilitadas.`;
+      toast(msg, 'success');
     } else {
       toast('Rascunho salvo!', 'success');
     }
@@ -4969,9 +4991,12 @@ async function _adminEmailSaveCampaign(id, alsoSend) {
 
 async function _adminEmailSendCampaign(id) {
   if (!confirm('Enfileirar o envio desta campanha para todos os destinatários da lista?')) return;
+  const includeDisabled = confirm('Incluir também usuários que DESABILITARAM o recebimento de e-mails? Clique OK para forçar o envio a eles, ou Cancelar para respeitar a preferência.');
   try {
-    const r = await _api('POST', '/email/send', { campaign_id: id });
-    toast(`${r.total || 0} e-mail(s) enfileirados.`, 'success');
+    const r = await _api('POST', '/email/send', { campaign_id: id, include_disabled: includeDisabled });
+    let msg = `${r.total || 0} e-mail(s) enfileirados.`;
+    if (!includeDisabled && r.skipped_disabled) msg += ` ${r.skipped_disabled} ignorado(s) por notificações desabilitadas.`;
+    toast(msg, 'success');
     await _adminEmailRenderSub();
   } catch (e) {
     toast('Erro: ' + (e.message || 'falha ao enviar'), 'error');

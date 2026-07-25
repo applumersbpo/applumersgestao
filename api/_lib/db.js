@@ -492,6 +492,11 @@ export async function initDb() {
   if (!uColNames.includes('avatar')) {
     await db.execute("ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT ''");
   }
+  // Opt-out de e-mails automáticos. 1 = recebe (padrão). Só admin/super_admin
+  // podem ter isso desabilitado (regra aplicada na API/UI); usuário comum sempre recebe.
+  if (!uColNames.includes('email_notifications_enabled')) {
+    await db.execute("ALTER TABLE users ADD COLUMN email_notifications_enabled INTEGER DEFAULT 1");
+  }
 
   // Garante que o super admin sempre tenha role e is_admin corretos
   await db.execute({
@@ -526,6 +531,14 @@ export async function initDb() {
   }
   if (!eiColNames.includes('last_status_at')) {
     await db.execute("ALTER TABLE evolution_instances ADD COLUMN last_status_at TEXT DEFAULT ''");
+  }
+
+  // email_dispatch — force_send permite que o admin envie manualmente para
+  // usuários com notificações desabilitadas (override confirmado no painel).
+  const { rows: edCols } = await db.execute("PRAGMA table_info('email_dispatch')");
+  const edColNames = (edCols || []).map(r => r.name);
+  if ((edCols || []).length > 0 && !edColNames.includes('force_send')) {
+    await db.execute("ALTER TABLE email_dispatch ADD COLUMN force_send INTEGER DEFAULT 0");
   }
 
   // message_logs — delivery tracking columns

@@ -139,7 +139,8 @@ export default async function handler(req, res) {
         to: userEmail,
         toName: userName,
         systemKey: 'reset_password',
-        vars: { name: userName, reset_link, app_url: APP_URL }
+        vars: { name: userName, reset_link, app_url: APP_URL },
+        force: true, // reset de senha é transacional e crítico: sempre envia, ignora opt-out
       }).catch(() => {});
 
       // Resposta idêntica exista ou não o e-mail (anti-enumeração). _dev_token só fora de produção.
