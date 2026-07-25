@@ -419,6 +419,34 @@ export async function initDb() {
       ip TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     )`,
+    // Regras de notificação automática: o admin define critérios (ex.: N dias sem
+    // acessar, N dias sem lançamentos), canais (e-mail/WhatsApp) e o modelo de
+    // cada canal. O cron (dispatcher) avalia as regras ativas a cada tick.
+    `CREATE TABLE IF NOT EXISTS notification_rules (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      active INTEGER DEFAULT 1,
+      condition_type TEXT DEFAULT 'inactive_days',
+      threshold_days INTEGER DEFAULT 10,
+      channel_email INTEGER DEFAULT 1,
+      channel_whatsapp INTEGER DEFAULT 0,
+      email_template_id TEXT DEFAULT '',
+      whatsapp_text TEXT DEFAULT '',
+      cooldown_days INTEGER DEFAULT 30,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    // Registro de disparos por regra+usuário — usado para o cooldown (reenvio
+    // mínimo) e para não reprocessar o mesmo usuário a cada tick do cron.
+    `CREATE TABLE IF NOT EXISTS notification_rule_sends (
+      id TEXT PRIMARY KEY,
+      rule_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      channel TEXT DEFAULT '',
+      status TEXT DEFAULT 'sent',
+      error TEXT DEFAULT '',
+      sent_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {
@@ -561,6 +589,8 @@ export async function initDb() {
   // Indexes for dispatch queue processing and per-user notification prefs uniqueness
   await db.execute("CREATE INDEX IF NOT EXISTS idx_email_dispatch_status_scheduled ON email_dispatch(status, scheduled_for)");
   await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_notif_prefs ON user_notification_prefs(user_id, notif_key)");
+  // Cooldown de regras: busca rápida pelo último disparo de (regra, usuário).
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_notif_rule_sends ON notification_rule_sends(rule_id, user_id, sent_at)");
 
   // Seed e-mail system settings (INSERT OR IGNORE keeps existing values)
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('email_enabled', '0')", args: [] });

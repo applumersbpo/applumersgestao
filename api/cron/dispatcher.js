@@ -436,11 +436,146 @@ export default async function handler(req, res) {
       console.error('[dispatcher] plan_expiry block error', blockBErr && blockBErr.message);
     }
 
+    // ===================================================================
+    // BLOCK C — regras de notificação automática (inatividade / sem lançamentos)
+    // ===================================================================
+    // O admin define regras com critério (N dias sem acessar OU N dias sem
+    // registrar lançamentos), canais (e-mail/WhatsApp) e o modelo de cada canal.
+    // Aqui avaliamos as regras ativas, encontramos os usuários que batem no
+    // critério e disparamos — respeitando o cooldown (reenvio mínimo) e o opt-out
+    // de e-mail. Nada de schema novo além das tabelas notification_rules /
+    // notification_rule_sends.
+    let ruleSends = 0;
+    try {
+      const { rows: ruleRows } = await db.execute("SELECT * FROM notification_rules WHERE active = 1");
+      const rules = rowsToObjects(ruleRows);
+      const RULE_MAX_SENDS = 50;
+
+      // Instância WhatsApp padrão — resolvida uma vez se alguma regra usar o canal.
+      let waInstance = null;
+      const anyWa = rules.some(r => r.channel_whatsapp === 1 || r.channel_whatsapp === '1');
+      if (anyWa) {
+        const { rows: waRows } = await db.execute("SELECT name, api_key, connection_status FROM evolution_instances WHERE is_default=1 LIMIT 1");
+        waInstance = rowsToObjects(waRows)[0] || null;
+      }
+
+      const brandVarsRules = rules.length ? await email.getBrandVars() : {};
+      const oneDayAgoIso = new Date(Date.now() - 86400000).toISOString();
+
+      for (const rule of rules) {
+        if (ruleSends >= RULE_MAX_SENDS) break;
+        const threshold = Math.max(1, Number(rule.threshold_days) || 1);
+        const cooldownDays = Math.max(1, Number(rule.cooldown_days) || 30);
+        const cutoffIso = new Date(Date.now() - threshold * 86400000).toISOString();
+        const cooldownIso = new Date(Date.now() - cooldownDays * 86400000).toISOString();
+        const wantEmail = rule.channel_email === 1 || rule.channel_email === '1';
+        const wantWa = rule.channel_whatsapp === 1 || rule.channel_whatsapp === '1';
+
+        // Modelo de e-mail (subject/html) — carregado uma vez por regra.
+        let tplSubject = '', tplHtml = '';
+        if (wantEmail && rule.email_template_id) {
+          const { rows: tRows } = await db.execute({ sql: 'SELECT subject, html FROM email_templates WHERE id = ?', args: [rule.email_template_id] });
+          const tpl = rowsToObjects(tRows)[0];
+          if (tpl) { tplSubject = tpl.subject || ''; tplHtml = tpl.html || ''; }
+        }
+
+        // Usuários que batem no critério.
+        let candSql;
+        if (rule.condition_type === 'no_transactions_days') {
+          candSql = {
+            sql: `SELECT u.id AS user_id, u.name, u.email, u.phone,
+                         p.active AS plan_active, p.name AS plan_name
+                  FROM users u LEFT JOIN user_plans p ON p.user_id = u.id
+                  WHERE NOT EXISTS (SELECT 1 FROM transactions t WHERE t.user_id = u.id AND t.created_at > ?)
+                  LIMIT 500`,
+            args: [cutoffIso],
+          };
+        } else {
+          // inactive_days: última atividade = last_login (ou created_at se nunca logou)
+          candSql = {
+            sql: `SELECT u.id AS user_id, u.name, u.email, u.phone,
+                         p.active AS plan_active, p.name AS plan_name
+                  FROM users u LEFT JOIN user_plans p ON p.user_id = u.id
+                  WHERE COALESCE(NULLIF(u.last_login, ''), u.created_at) <= ?
+                  LIMIT 500`,
+            args: [cutoffIso],
+          };
+        }
+        const { rows: candRows } = await db.execute(candSql);
+        const candidates = rowsToObjects(candRows);
+
+        for (const u of candidates) {
+          if (ruleSends >= RULE_MAX_SENDS) break;
+
+          // Throttle/cooldown: pula se já houve envio bem-sucedido dentro do
+          // cooldown, OU qualquer tentativa nas últimas 24h (evita reprocessar a
+          // cada tick; falhas transitórias re-tentam no máximo 1x/dia).
+          const { rows: recentRows } = await db.execute({
+            sql: `SELECT 1 FROM notification_rule_sends
+                  WHERE rule_id = ? AND user_id = ?
+                    AND ((status = 'sent' AND sent_at >= ?) OR sent_at >= ?)
+                  LIMIT 1`,
+            args: [rule.id, u.user_id, cooldownIso, oneDayAgoIso],
+          });
+          if (rowsToObjects(recentRows).length > 0) continue;
+
+          const firstName = (u.name || '').split(' ')[0] || '';
+          let didSend = false;
+
+          // E-mail — respeita opt-out (sendEmail bloqueia quem desabilitou).
+          if (wantEmail && u.email && tplHtml) {
+            const vars = { ...brandVarsRules, name: firstName, app_url: APP_URL };
+            const subject = email.renderTemplate(tplSubject, vars);
+            const html = email.renderTemplate(tplHtml, vars);
+            const r = await email.sendEmail({
+              to: u.email, toName: u.name || '', subject, html,
+              templateKey: 'rule:' + rule.id,
+            });
+            await db.execute({
+              sql: "INSERT INTO notification_rule_sends (id, rule_id, user_id, channel, status, error) VALUES (?, ?, ?, 'email', ?, ?)",
+              args: [crypto.randomUUID(), rule.id, u.user_id, r.ok ? 'sent' : 'failed', r.ok ? '' : (r.error || '')],
+            });
+            if (r.ok) { didSend = true; ruleSends++; }
+          }
+
+          // WhatsApp — só se a instância padrão estiver conectada e o usuário tiver telefone.
+          if (wantWa && u.phone && waInstance && waInstance.connection_status === 'connected') {
+            const text = evo.applyVars(evo.applySpin(rule.whatsapp_text || ''), {
+              name: u.name, email: u.email, phone: u.phone,
+              plan_active: u.plan_active, plan_name: u.plan_name, saldo: null,
+            });
+            let waOk = false, waErr = '';
+            try {
+              const sr = await evo.sendText({ name: waInstance.name, key: waInstance.api_key || null, number: u.phone, text });
+              waOk = !!sr.ok;
+            } catch (e) { waErr = e.message || 'erro'; }
+            await db.execute({
+              sql: "INSERT INTO notification_rule_sends (id, rule_id, user_id, channel, status, error) VALUES (?, ?, ?, 'whatsapp', ?, ?)",
+              args: [crypto.randomUUID(), rule.id, u.user_id, waOk ? 'sent' : 'failed', waErr],
+            });
+            if (waOk) { didSend = true; ruleSends++; }
+          }
+
+          // Nenhum canal enviou (sem contato válido / opt-out): grava marca para
+          // não reavaliar o mesmo usuário a cada tick (retry no máx. 1x/dia).
+          if (!didSend) {
+            await db.execute({
+              sql: "INSERT INTO notification_rule_sends (id, rule_id, user_id, channel, status, error) VALUES (?, ?, ?, 'none', 'skipped', '')",
+              args: [crypto.randomUUID(), rule.id, u.user_id],
+            });
+          }
+        }
+      }
+    } catch (blockCErr) {
+      console.error('[dispatcher] notification_rules block error', blockCErr && blockCErr.message);
+    }
+
     return res.status(200).json({
       ok: true,
       whatsapp: processed.length,
       email: emailProcessed.length,
       plan_reminders: reminderCount,
+      rule_sends: ruleSends,
       processed: processed.length,
       details: processed,
     });

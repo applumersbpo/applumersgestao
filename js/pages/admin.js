@@ -3745,6 +3745,7 @@ async function renderAdminEmail() {
     { id: 'lists',         icon: 'users',       label: 'Listas'        },
     { id: 'campaigns',     icon: 'send',        label: 'Campanhas'     },
     { id: 'notifications', icon: 'bell',        label: 'Notificações'  },
+    { id: 'rules',         icon: 'zap',         label: 'Regras'        },
     { id: 'log',           icon: 'scroll-text', label: 'Log de envios' },
   ];
 
@@ -3784,6 +3785,7 @@ async function _adminEmailRenderSub() {
       case 'lists':         await _adminEmailLists(body);         break;
       case 'campaigns':     await _adminEmailCampaigns(body);     break;
       case 'notifications': await _adminEmailNotifications(body); break;
+      case 'rules':         await _adminEmailRules(body);         break;
       case 'log':           await _adminEmailLog(body);           break;
     }
   } catch (e) {
@@ -5146,6 +5148,210 @@ async function _adminEmailDeleteNotif(id) {
   try {
     await _api('DELETE', '/email/notification-type?id=' + encodeURIComponent(id));
     toast('Notificação excluída.', 'success');
+    await _adminEmailRenderSub();
+  } catch (e) {
+    toast('Erro: ' + (e.message || 'falha ao excluir'), 'error');
+  }
+}
+
+// ── E2) Regras de notificação automática ──────────────────────────────────────
+
+const _RULE_CONDITIONS = {
+  inactive_days:        'Dias sem acessar o sistema',
+  no_transactions_days: 'Dias sem registrar lançamentos',
+};
+
+async function _adminEmailRules(body) {
+  const [rules, templates] = await Promise.all([
+    _api('GET', '/email/notification-rules'),
+    _api('GET', '/email/templates'),
+  ]);
+  _adminEmailData.rules     = rules;
+  _adminEmailData.templates = templates;
+
+  const chip = (label, on) => `<span style="font-size:.68rem;font-weight:700;padding:1px 7px;border-radius:20px;background:${on ? 'var(--primary-light,#DDE7D8)' : 'var(--border)'};color:${on ? 'var(--primary-600)' : 'var(--text-muted)'}">${label}</span>`;
+
+  const rows = rules.length ? rules.map(r => {
+    const isEmail = _adminEmailIsSystem(r.channel_email);
+    const isWa    = _adminEmailIsSystem(r.channel_whatsapp);
+    const cond    = _RULE_CONDITIONS[r.condition_type] || r.condition_type;
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+          <span style="font-weight:600;font-size:.9rem">${_escHtml(r.name)}</span>
+          ${_adminEmailIsSystem(r.active) ? '' : chip('INATIVA', false)}
+        </div>
+        <div style="font-size:.8rem;color:var(--text-muted)">
+          Quando: <strong>${Number(r.threshold_days)}</strong> ${_escHtml(cond.toLowerCase())} · reenvio a cada ${Number(r.cooldown_days)} dias
+        </div>
+        <div style="display:flex;gap:5px;margin-top:6px">
+          ${chip('E-mail', isEmail)}${chip('WhatsApp', isWa)}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-sm" onclick="_adminEmailEditRule('${r.id}')" style="font-size:.75rem;padding:4px 10px">${icon('pencil',12)} Editar</button>
+        <button class="btn btn-sm" onclick="_adminEmailDeleteRule('${r.id}')" style="font-size:.75rem;padding:4px 10px;color:var(--expense)">${icon('trash-2',12)}</button>
+      </div>
+    </div>`;
+  }).join('') : '<p style="color:var(--text-muted);font-size:.85rem;padding:12px 0">Nenhuma regra criada ainda. Crie uma regra para enviar notificações automáticas com base no comportamento do usuário.</p>';
+
+  body.innerHTML = `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:12px">
+        <div class="card-title">${icon('zap',14)} Regras de notificação automática</div>
+        <button class="btn btn-primary btn-sm" onclick="_adminEmailEditRule('')" style="font-size:.8rem">${icon('plus',14)} Nova regra</button>
+      </div>
+      <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">
+        Dispare e-mail e/ou WhatsApp automaticamente quando um usuário atender a um critério — por exemplo, 10 dias sem acessar ou 3 dias sem registrar lançamentos. As regras são avaliadas periodicamente pelo sistema.
+      </div>
+      ${rows}
+    </div>`;
+}
+
+function _adminEmailEditRule(id) {
+  const isNew = !id;
+  const r = isNew
+    ? { name: '', active: 1, condition_type: 'inactive_days', threshold_days: 10, channel_email: 1, channel_whatsapp: 0, email_template_id: '', whatsapp_text: '', cooldown_days: 30 }
+    : (_adminEmailData.rules.find(x => x.id === id) || {});
+
+  const templates = _adminEmailData.templates || [];
+  const tplOpts = templates.map(t =>
+    `<option value="${t.id}" ${r.email_template_id === t.id ? 'selected' : ''}>${_escHtml(t.name)}${_adminEmailIsSystem(t.is_system) ? ' (sistema)' : ''}</option>`
+  ).join('');
+
+  const condOpts = Object.entries(_RULE_CONDITIONS).map(([k, label]) =>
+    `<option value="${k}" ${r.condition_type === k ? 'selected' : ''}>${_escHtml(label)}</option>`
+  ).join('');
+
+  const isEmail  = _adminEmailIsSystem(r.channel_email);
+  const isWa     = _adminEmailIsSystem(r.channel_whatsapp);
+  const isActive = r.active === undefined ? true : _adminEmailIsSystem(r.active);
+
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:560px;width:calc(100% - 32px);max-height:92vh;overflow-y:auto">
+        <div class="modal-header">
+          <div class="modal-title">${icon('zap',16)} ${isNew ? 'Nova regra' : 'Editar regra'}</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x',16)}</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Nome da regra *</label>
+            <input id="er-name" class="form-control" value="${_escHtml(r.name || '')}" placeholder="ex: Reengajamento — 10 dias inativo">
+          </div>
+
+          <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase">Critério</div>
+          <div style="display:grid;grid-template-columns:1fr 110px;gap:10px">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Condição</label>
+              <select id="er-condition" class="form-control">${condOpts}</select>
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Dias</label>
+              <input id="er-threshold" class="form-control" type="number" min="1" value="${Number(r.threshold_days) || 10}">
+            </div>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Reenviar no máximo a cada (dias)</label>
+            <input id="er-cooldown" class="form-control" type="number" min="1" value="${Number(r.cooldown_days) || 30}">
+            <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Evita reenviar a mesma notificação ao usuário antes deste intervalo.</div>
+          </div>
+
+          <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase">Canais e modelos</div>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="er-ch-email" ${isEmail ? 'checked' : ''} onchange="_adminEmailRuleToggleChannels()" style="width:16px;height:16px">
+            <span style="font-size:.87rem;font-weight:600">Notificar por e-mail</span>
+          </label>
+          <div id="er-email-box" class="form-group" style="margin:0;display:${isEmail ? 'block' : 'none'}">
+            <label class="form-label">Modelo de e-mail</label>
+            <select id="er-email-template" class="form-control">
+              <option value="">— Selecione um modelo —</option>
+              ${tplOpts}
+            </select>
+          </div>
+
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="er-ch-wa" ${isWa ? 'checked' : ''} onchange="_adminEmailRuleToggleChannels()" style="width:16px;height:16px">
+            <span style="font-size:.87rem;font-weight:600">Notificar por WhatsApp</span>
+          </label>
+          <div id="er-wa-box" class="form-group" style="margin:0;display:${isWa ? 'block' : 'none'}">
+            <label class="form-label">Mensagem de WhatsApp</label>
+            <textarea id="er-wa-text" class="form-control" rows="4" placeholder="Olá {nome}, sentimos a sua falta! ...">${_escHtml(r.whatsapp_text || '')}</textarea>
+            <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Variáveis: {nome}, {email}, {telefone}, {plano}, {status}. Requer uma instância padrão de WhatsApp conectada.</div>
+          </div>
+
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="er-active" ${isActive ? 'checked' : ''} style="width:16px;height:16px">
+            <span style="font-size:.87rem">Regra ativa</span>
+          </label>
+          <div id="er-error" style="color:var(--expense);font-size:.83rem;display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+          <button id="er-submit" class="btn btn-primary" onclick="_adminEmailSaveRule('${id}')">${icon('save',14)} Salvar</button>
+        </div>
+      </div>
+    </div>`);
+}
+
+function _adminEmailRuleToggleChannels() {
+  const emailBox = document.getElementById('er-email-box');
+  const waBox    = document.getElementById('er-wa-box');
+  if (emailBox) emailBox.style.display = document.getElementById('er-ch-email')?.checked ? 'block' : 'none';
+  if (waBox)    waBox.style.display    = document.getElementById('er-ch-wa')?.checked    ? 'block' : 'none';
+}
+
+async function _adminEmailSaveRule(id) {
+  const errEl = document.getElementById('er-error');
+  const btn   = document.getElementById('er-submit');
+  errEl.style.display = 'none';
+
+  const name    = document.getElementById('er-name').value.trim();
+  const chEmail = document.getElementById('er-ch-email').checked;
+  const chWa    = document.getElementById('er-ch-wa').checked;
+  const emailTemplateId = document.getElementById('er-email-template')?.value || '';
+  const waText  = document.getElementById('er-wa-text')?.value || '';
+
+  const fail = msg => { errEl.textContent = msg; errEl.style.display = ''; };
+  if (!name) return fail('Nome é obrigatório.');
+  if (!chEmail && !chWa) return fail('Selecione ao menos um canal.');
+  if (chEmail && !emailTemplateId) return fail('Selecione o modelo de e-mail.');
+  if (chWa && !waText.trim()) return fail('Escreva a mensagem de WhatsApp.');
+
+  const payload = {
+    name,
+    active:           document.getElementById('er-active').checked,
+    condition_type:   document.getElementById('er-condition').value,
+    threshold_days:   parseInt(document.getElementById('er-threshold').value, 10) || 1,
+    cooldown_days:    parseInt(document.getElementById('er-cooldown').value, 10) || 30,
+    channel_email:    chEmail,
+    channel_whatsapp: chWa,
+    email_template_id: chEmail ? emailTemplateId : '',
+    whatsapp_text:    chWa ? waText : '',
+  };
+  if (id) payload.id = id;
+
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try {
+    await _api('POST', '/email/notification-rule', payload);
+    closeModal();
+    toast('Regra salva!', 'success');
+    await _adminEmailRenderSub();
+  } catch (e) {
+    fail(e.message || 'Erro ao salvar.');
+    btn.disabled = false; btn.innerHTML = orig;
+  }
+}
+
+async function _adminEmailDeleteRule(id) {
+  const r = _adminEmailData.rules.find(x => x.id === id);
+  if (!r) return;
+  if (!confirm(`Excluir a regra "${r.name}"? Esta ação não pode ser desfeita.`)) return;
+  try {
+    await _api('DELETE', '/email/notification-rule?id=' + encodeURIComponent(id));
+    toast('Regra excluída.', 'success');
     await _adminEmailRenderSub();
   } catch (e) {
     toast('Erro: ' + (e.message || 'falha ao excluir'), 'error');

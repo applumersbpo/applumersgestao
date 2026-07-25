@@ -405,6 +405,54 @@ export default async function emailRouter(req, res) {
       }
     }
 
+    // ───────────────────────── NOTIFICATION RULES (automação) ─────────────────────────
+    if (action === 'notification-rules' && req.method === 'GET') {
+      const { rows } = await db.execute('SELECT * FROM notification_rules ORDER BY created_at DESC');
+      return res.status(200).json(rowsToObjects(rows));
+    }
+
+    if (action === 'notification-rule') {
+      if (req.method === 'POST') {
+        const b = req.body || {};
+        const validConditions = ['inactive_days', 'no_transactions_days'];
+        const condition = validConditions.includes(b.condition_type) ? b.condition_type : 'inactive_days';
+        const threshold = Math.max(1, parseInt(b.threshold_days, 10) || 1);
+        const cooldown = Math.max(1, parseInt(b.cooldown_days, 10) || 30);
+        const chEmail = b.channel_email ? 1 : 0;
+        const chWa = b.channel_whatsapp ? 1 : 0;
+        const active = b.active === undefined ? 1 : (b.active ? 1 : 0);
+        if (!b.name || !b.name.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
+        if (!chEmail && !chWa) return res.status(400).json({ error: 'Selecione ao menos um canal' });
+        if (chEmail && !b.email_template_id) return res.status(400).json({ error: 'Selecione o modelo de e-mail' });
+        if (chWa && !(b.whatsapp_text || '').trim()) return res.status(400).json({ error: 'Escreva a mensagem de WhatsApp' });
+
+        if (b.id) {
+          const { rows } = await db.execute({ sql: 'SELECT id FROM notification_rules WHERE id = ?', args: [b.id] });
+          if (!rowsToObjects(rows)[0]) return res.status(404).json({ error: 'Regra não encontrada' });
+          await db.execute({
+            sql: `UPDATE notification_rules SET name = ?, active = ?, condition_type = ?, threshold_days = ?,
+                    channel_email = ?, channel_whatsapp = ?, email_template_id = ?, whatsapp_text = ?, cooldown_days = ?
+                  WHERE id = ?`,
+            args: [b.name.trim(), active, condition, threshold, chEmail, chWa, b.email_template_id || '', b.whatsapp_text || '', cooldown, b.id],
+          });
+          return res.status(200).json({ ok: true, id: b.id });
+        }
+        const newId = crypto.randomUUID();
+        await db.execute({
+          sql: `INSERT INTO notification_rules (id, name, active, condition_type, threshold_days, channel_email, channel_whatsapp, email_template_id, whatsapp_text, cooldown_days, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [newId, b.name.trim(), active, condition, threshold, chEmail, chWa, b.email_template_id || '', b.whatsapp_text || '', cooldown, payload.sub || ''],
+        });
+        return res.status(201).json({ ok: true, id: newId });
+      }
+      if (req.method === 'DELETE') {
+        const { id } = req.query;
+        if (!id) return res.status(400).json({ error: 'id é obrigatório' });
+        await db.execute({ sql: 'DELETE FROM notification_rules WHERE id = ?', args: [id] });
+        return res.status(200).json({ ok: true });
+      }
+    }
+
     // ───────────────────────── LOG ─────────────────────────
     if (action === 'log' && req.method === 'GET') {
       const limit = Math.min(500, Math.max(1, parseInt(req.query.limit || '100', 10)));

@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.12.0] — 2026-07-25
+
+### Adicionado
+- **Regras de notificação automática (nova aba)** — em Admin → E-mail há uma nova aba "Regras" para definir disparos automáticos baseados no comportamento do usuário. Cada regra tem: nome, critério (**dias sem acessar o sistema** ou **dias sem registrar lançamentos**) com o número de dias, canais (**e-mail** e/ou **WhatsApp**), o modelo de e-mail a usar e/ou a mensagem de WhatsApp (com variáveis {nome}, {email}, {plano}...), além de um intervalo mínimo de reenvio (cooldown). Exemplos: "10 dias sem acessar → e-mail modelo X" e "3 dias sem lançamentos → WhatsApp + e-mail".
+- **Avaliação periódica pelo cron** — o dispatcher passou a avaliar as regras ativas a cada execução, encontrar os usuários que batem no critério e disparar pelos canais escolhidos, respeitando o opt-out de e-mail e o cooldown por usuário (com throttle de no máximo 1 tentativa/dia em caso de falha transitória).
+
+### Técnico
+- Novas tabelas `notification_rules` (definição das regras) e `notification_rule_sends` (histórico de disparos, base do cooldown/throttle). Novos endpoints `GET /email/notification-rules` e `POST|DELETE /email/notification-rule` (dentro do roteador de e-mail — sem novas serverless functions). Envio de WhatsApp usa a instância Evolution padrão conectada.
+
+---
+
 ## [v1.11.0] — 2026-07-25
 
 ### Adicionado
