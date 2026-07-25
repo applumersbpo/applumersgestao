@@ -1,7 +1,7 @@
 // js/brand.js — Lumers Flow — Gerenciador de Identidade Visual
 
 // Bump this version whenever brand defaults change — forces cache bust for all users
-const _BRAND_CACHE_KEY = 'lf_brand_cache_v6';
+const _BRAND_CACHE_KEY = 'lf_brand_cache_v7';
 
 const _BRAND_DEFAULTS = {
   appName:       'Lumers Flow',
@@ -48,9 +48,9 @@ const _BRAND_DEFAULTS = {
   logoData:      'lumers-flow-logotipo.png',
   faviconData:   'favicon-lumers-flow.png',
   // Login screen customization
-  loginLayout:       'split',
-  loginPanelBg:      '',
-  loginFormBg:       '',
+  loginLayout:       'centered',
+  loginPanelBg:      '#3A5A40',
+  loginFormBg:       '#f8fff5',
   loginPanelBgImage: '',
   loginBrandEyebrow: '',
   loginBrandHeading: '',
@@ -81,6 +81,7 @@ let _brand = { ..._BRAND_DEFAULTS };
     localStorage.removeItem('lf_brand_cache_v3');
     localStorage.removeItem('lf_brand_cache_v4');
     localStorage.removeItem('lf_brand_cache_v5');
+    localStorage.removeItem('lf_brand_cache_v6');
     const cached = localStorage.getItem(_BRAND_CACHE_KEY);
     if (cached) {
       const cfg = _normalizeBrand(JSON.parse(cached));
