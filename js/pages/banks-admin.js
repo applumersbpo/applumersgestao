@@ -3,6 +3,7 @@ async function renderBanksAdmin() {
   const banks = await db.banks.toArray();
 
   content.innerHTML = `
+    ${typeof _adminNavBar === 'function' ? _adminNavBar('banks') : ''}
     <div class="section-header" style="margin-bottom:20px">
       <div class="section-title">Bancos (Admin)</div>
       <div style="display:flex;gap:8px">

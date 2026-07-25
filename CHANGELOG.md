@@ -5,6 +5,21 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.13.0] — 2026-07-25
+
+### Melhorado
+- **Menu lateral reorganizado por intenção de uso** — os itens foram reagrupados em **Financeiro** (Dashboard, Receitas, Despesas, Carteiras, Metas), **Análise** (Relatórios, Fluxo Anual), **Patrimônio**, **Dados** (Categorias, Importar) e **Minha Conta** (Editar Perfil). O grupo "Operação" foi dividido e "Editar Perfil" saiu de "Administração".
+- **Acesso admin unificado** — em vez de vários links soltos na sidebar (Admin, Usuários, Sistema, Bancos), agora há uma entrada única **"Painel Admin"** (só para administradores); toda a navegação administrativa vive nas abas internas do painel.
+
+### Adicionado
+- **Aba "Bancos" no painel admin** — a gestão de bancos, que só existia na sidebar, passou a ser uma aba do painel.
+- **Aba "Logs"** — novo espaço que consolida o **Histórico de disparos** (mensagens WhatsApp/e-mail) e os **Logs do sistema** (auditoria administrativa), antes espalhados como botões dentro de "Sistema".
+
+### Alterado
+- Abas do painel admin reordenadas: **Visão Geral › Usuários › Planos › Bancos › Comunicação › Tema › Sistema › Logs**. A aba "Dashboard" virou "Visão Geral" e "E-mail" virou "Comunicação".
+
+---
+
 ## [v1.12.0] — 2026-07-25
 
 ### Adicionado

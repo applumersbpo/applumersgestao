@@ -89,14 +89,16 @@ function _adminNavBar(active) {
   const _user = pb.authStore.model;
   const isSuperAdmin = _user?.role === 'super_admin' || _user?.email === 'applumergestao@gmail.com';
   const tabs = [
-    { id: 'dashboard', href: '#/admin',        lucide: 'layout-dashboard', label: 'Dashboard' },
-    { id: 'users',     href: '#/admin-users',  lucide: 'users',            label: 'Usuários'  },
-    { id: 'plans',     href: '#/admin-plans',  lucide: 'credit-card',      label: 'Planos'    },
+    { id: 'dashboard', href: '#/admin',        lucide: 'layout-dashboard', label: 'Visão Geral' },
+    { id: 'users',     href: '#/admin-users',  lucide: 'users',            label: 'Usuários'    },
+    { id: 'plans',     href: '#/admin-plans',  lucide: 'credit-card',      label: 'Planos'      },
+    { id: 'banks',     href: '#/banks',        lucide: 'landmark',         label: 'Bancos'      },
   ];
   if (isSuperAdmin) {
-    tabs.push({ id: 'system', href: '#/admin-system', lucide: 'settings',    label: 'Sistema' });
-    tabs.push({ id: 'email',  href: '#/admin-email',  lucide: 'mail',        label: 'E-mail'  });
-    tabs.push({ id: 'theme',  href: '#/admin-theme',  lucide: 'palette',     label: 'Tema'    });
+    tabs.push({ id: 'email',  href: '#/admin-email',  lucide: 'megaphone',  label: 'Comunicação' });
+    tabs.push({ id: 'theme',  href: '#/admin-theme',  lucide: 'palette',    label: 'Tema'    });
+    tabs.push({ id: 'system', href: '#/admin-system', lucide: 'settings',   label: 'Sistema' });
+    tabs.push({ id: 'logs',   href: '#/admin-logs',   lucide: 'scroll-text',label: 'Logs'    });
   }
   return `<nav class="admin-nav-tabs">${tabs.map(t => `
     <a href="${t.href}" class="admin-nav-tab${active === t.id ? ' active' : ''}" onclick="event.preventDefault();location.hash='${t.href.slice(1)}'">
@@ -1299,29 +1301,53 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '') {
         </button>
         <div id="cron-secret-feedback" style="font-size:.78rem;margin-top:8px;display:none"></div>
       </div>
-
-      <!-- Histórico de mensagens -->
-      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-        <div>
-          <div style="font-weight:600;font-size:.85rem">${icon('history', 13)} Histórico de disparos</div>
-          <div style="font-size:.75rem;color:var(--text-muted);margin-top:2px">Registro completo de todas as mensagens enviadas pelo sistema.</div>
-        </div>
-        <button class="btn btn-outline" onclick="openMsgHistoryModal()" style="font-size:.83rem;white-space:nowrap">
-          ${icon('clock', 14)} Ver histórico
-        </button>
-      </div>
-
-      <!-- Logs do sistema (auditoria administrativa) -->
-      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-        <div>
-          <div style="font-weight:600;font-size:.85rem">${icon('shield', 13)} Logs do sistema</div>
-          <div style="font-size:.75rem;color:var(--text-muted);margin-top:2px">Auditoria completa das ações de administradores: usuários criados, alterados, excluídos, instâncias, configurações e mais.</div>
-        </div>
-        <button class="btn btn-outline" onclick="openSystemLogModal()" style="font-size:.83rem;white-space:nowrap">
-          ${icon('scroll-text', 14)} Ver logs
-        </button>
-      </div>
     </div>`;
+}
+
+// ── Render Admin Logs ─────────────────────────────────────────────────────────
+// Consolida os visualizadores de log num só lugar (aba "Logs" do painel):
+//   • Histórico de disparos (mensagens WhatsApp/e-mail enviadas)
+//   • Logs do sistema (auditoria administrativa)
+
+async function renderAdminLogs() {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading-screen"><div class="spinner"></div></div>';
+
+  const _user = pb.authStore.model;
+  const isSuperAdmin = _user?.role === 'super_admin' || _user?.email === 'applumergestao@gmail.com';
+  if (!isSuperAdmin) {
+    content.innerHTML = `
+      ${_adminNavBar('logs')}
+      <div style="padding:48px;text-align:center;color:var(--text-muted)">
+        <i data-lucide="shield-off" style="width:40px;height:40px;opacity:.3;display:block;margin:0 auto 12px"></i>
+        <p>Acesso restrito a Super Admin.</p>
+      </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+
+  content.innerHTML = `
+    ${_adminNavBar('logs')}
+    <div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div>
+        <div class="card-title" style="margin-bottom:2px">${icon('history', 14)} Histórico de disparos</div>
+        <div style="font-size:.8rem;color:var(--text-muted)">Registro completo de todas as mensagens (WhatsApp/e-mail) enviadas pelo sistema.</div>
+      </div>
+      <button class="btn btn-outline" onclick="openMsgHistoryModal()" style="font-size:.83rem;white-space:nowrap">
+        ${icon('clock', 14)} Ver histórico
+      </button>
+    </div>
+    <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div>
+        <div class="card-title" style="margin-bottom:2px">${icon('shield', 14)} Logs do sistema</div>
+        <div style="font-size:.8rem;color:var(--text-muted)">Auditoria completa das ações de administradores: usuários criados, alterados, excluídos, instâncias, configurações e mais.</div>
+      </div>
+      <button class="btn btn-outline" onclick="openSystemLogModal()" style="font-size:.83rem;white-space:nowrap">
+        ${icon('scroll-text', 14)} Ver logs
+      </button>
+    </div>`;
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 // ── Cron externo — copiar URL / gerar secret ─────────────────────────────────

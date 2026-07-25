@@ -175,16 +175,11 @@ const app = {
     if (el && user) el.textContent = user.name || user.email;
 
     const isAdmin = user?.email === 'applumergestao@gmail.com' || !!user?.is_admin || user?.role === 'admin' || user?.role === 'super_admin';
+    // Sidebar: entrada única "Painel Admin" (as demais áreas ficam nas abas internas do painel)
     const adminLink = document.getElementById('admin-nav-link');
     if (adminLink) adminLink.style.display = isAdmin ? '' : 'none';
-    const banksLink = document.getElementById('banks-admin-link');
-    if (banksLink) banksLink.style.display = isAdmin ? '' : 'none';
-    const adminUsersLink = document.getElementById('admin-users-link');
-    if (adminUsersLink) adminUsersLink.style.display = isAdmin ? '' : 'none';
-
-    const isSuperAdmin2 = user?.role === 'super_admin' || user?.email === 'applumergestao@gmail.com';
-    const adminSystemLink = document.getElementById('admin-system-link');
-    if (adminSystemLink) adminSystemLink.style.display = isSuperAdmin2 ? '' : 'none';
+    const adminSectionLabel = document.getElementById('admin-section-label');
+    if (adminSectionLabel) adminSectionLabel.style.display = isAdmin ? '' : 'none';
 
     // Sidebar profile
     const profileName   = document.getElementById('sidebar-profile-name');
@@ -259,6 +254,7 @@ case 'accounts':   await renderAccounts();       break;
         case 'admin-email':  await renderAdminEmail();  break;
         case 'admin-theme':  await renderAdminTheme();  break;
         case 'admin-plans':  await renderAdminPlans();  break;
+        case 'admin-logs':   await renderAdminLogs();   break;
         default:           await renderDashboard(m, y);
       }
       if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -280,8 +276,13 @@ case 'accounts':   await renderAccounts();       break;
 
 
   updateNav() {
+    // Subpáginas do painel admin mantêm o item único "Painel Admin" destacado
+    const adminPages = ['admin', 'admin-users', 'admin-system', 'admin-email', 'admin-theme', 'admin-plans', 'admin-logs', 'banks'];
+    const inAdmin = adminPages.includes(this.currentPage);
     document.querySelectorAll('[data-page]').forEach(el => {
-      el.classList.toggle('active', el.dataset.page === this.currentPage);
+      const isActive = el.dataset.page === this.currentPage
+        || (inAdmin && el.dataset.page === 'admin');
+      el.classList.toggle('active', isActive);
     });
   },
 
@@ -302,12 +303,13 @@ case 'accounts':   await renderAccounts();       break;
       wealth:       'Meu Patrimônio',
 import:     'Importar Dados',
       settings:   'Configurações',
-      admin:        'Admin — Dashboard',
+      admin:        'Painel Admin — Visão Geral',
       'admin-users':  'Usuários',
       'admin-system': 'Configurações do Sistema',
-      'admin-email':  'E-mail & Notificações',
+      'admin-email':  'Comunicação',
       'admin-theme':  'Tema & Identidade Visual',
       'admin-plans':  'Planos de Assinatura',
+      'admin-logs':   'Logs do Sistema',
     };
     document.getElementById('pageTitle').textContent = titles[this.currentPage] || 'Dashboard';
   },

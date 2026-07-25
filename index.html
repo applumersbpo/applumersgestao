@@ -166,7 +166,7 @@
       </div>
 
       <nav class="sidebar-nav">
-        <div class="sidebar-section-label">Operação</div>
+        <div class="sidebar-section-label">Financeiro</div>
 
         <a href="#/" class="nav-item" data-page="dashboard">
           <i data-lucide="layout-dashboard" style="width:16px;height:16px"></i>
@@ -180,14 +180,17 @@
           <i data-lucide="trending-down" style="width:16px;height:16px"></i>
           Despesas
         </a>
-        <a href="#/goals" class="nav-item" data-page="goals">
-          <i data-lucide="target" style="width:16px;height:16px"></i>
-          Metas
-        </a>
         <a href="#/accounts" class="nav-item" data-page="accounts">
           <i data-lucide="wallet" style="width:16px;height:16px"></i>
           Carteiras
         </a>
+        <a href="#/goals" class="nav-item" data-page="goals">
+          <i data-lucide="target" style="width:16px;height:16px"></i>
+          Metas
+        </a>
+
+        <div class="sidebar-section-label" style="margin-top:8px">Análise</div>
+
         <a href="#/reports" class="nav-item" data-page="reports">
           <i data-lucide="bar-chart-2" style="width:16px;height:16px"></i>
           Relatórios
@@ -212,7 +215,7 @@
           Meu Patrimônio
         </a>
 
-        <div class="sidebar-section-label" style="margin-top:8px">Administração</div>
+        <div class="sidebar-section-label" style="margin-top:8px">Dados</div>
 
         <a href="#/categories" class="nav-item" data-page="categories">
           <i data-lucide="tags" style="width:16px;height:16px"></i>
@@ -222,27 +225,19 @@
           <i data-lucide="download" style="width:16px;height:16px"></i>
           Importar
         </a>
+
+        <div class="sidebar-section-label" style="margin-top:8px">Minha Conta</div>
+
         <a href="#/settings" class="nav-item" data-page="settings">
           <i data-lucide="user-circle-2" style="width:16px;height:16px"></i>
           Editar Perfil
         </a>
 
         <!-- Apenas admin -->
+        <div class="sidebar-section-label" id="admin-section-label" style="margin-top:8px;display:none">Administração</div>
         <a href="#/admin" class="nav-item" data-page="admin" id="admin-nav-link" style="display:none">
-          <i data-lucide="layout-dashboard" style="width:16px;height:16px"></i>
-          Admin
-        </a>
-        <a href="#/admin-users" class="nav-item" data-page="admin-users" id="admin-users-link" style="display:none">
-          <i data-lucide="users" style="width:16px;height:16px"></i>
-          <span>Usuários</span>
-        </a>
-        <a href="#/admin-system" class="nav-item" data-page="admin-system" id="admin-system-link" style="display:none">
-          <i data-lucide="settings" style="width:16px;height:16px"></i>
-          <span>Sistema</span>
-        </a>
-        <a href="#/banks" class="nav-item" data-page="banks" id="banks-admin-link" style="display:none">
-          <i data-lucide="landmark" style="width:16px;height:16px"></i>
-          Bancos (Admin)
+          <i data-lucide="shield-check" style="width:16px;height:16px"></i>
+          Painel Admin
         </a>
       </nav>
 
@@ -265,7 +260,7 @@
             <span style="font-weight:600">Borgescley Soluções Digitais</span>
           </a>
         </div>
-        <div class="sidebar-version">v1.12.0</div>
+        <div class="sidebar-version">v1.13.0</div>
       </div>
     </aside>
 
