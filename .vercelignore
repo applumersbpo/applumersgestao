@@ -1,2 +1,20 @@
 Lumers_Flow.zip
 *.zip
+
+# Diretórios locais/temporários que não devem ir para o deploy
+.overclock-app
+.qa-tmp
+.claude
+.git
+node_modules
+*.db-shm
+*.db-wal
+
+# Arquivos locais de trabalho/credenciais
+.env.production
+arq-evolution.txt
+install-email.txt
+melhorias.docx
+usability-findings.md
+exemplo.jpg
+lumers-atualizacao.png
