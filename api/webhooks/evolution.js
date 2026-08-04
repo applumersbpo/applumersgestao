@@ -98,7 +98,7 @@ export default async function handler(req, res) {
               'Content-Type': 'application/json',
               ...(n8nSecret ? { 'x-n8n-secret': n8nSecret } : {}),
             },
-            body: JSON.stringify({ event: 'MESSAGES_UPSERT', instance: instanceName, message: msg }),
+            body: JSON.stringify({ event: 'messages.upsert', instance: instanceName, data: msg }),
           }).catch((e) => console.error('[webhook/evolution] fan-out n8n falhou', e?.message));
         }
       }

@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.15.1] — 2026-08-04
+
+### Corrigido
+- **Formato do fan-out para o n8n** — o repasse de mensagens recebidas passa a usar o formato nativo da Evolution (`event: "messages.upsert"`, payload em `data`), compatível com o fluxo do n8n que interpreta os gastos.
+
+### Adicionado
+- **Ops `sendMessage` e `getAudioBase64` no `/api/n8n`** — o fluxo do n8n responde ao usuário e baixa áudios **através do app**, que usa a **instância padrão definida no painel**. Assim o n8n não precisa mais conhecer instância/apikey da Evolution (credenciais permanecem no servidor).
+
+---
+
 ## [v1.15.0] — 2026-08-04
 
 ### Adicionado

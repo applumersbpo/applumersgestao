@@ -1,5 +1,6 @@
 import { getDb, initDb, rowsToObjects, getSystemSetting } from './_lib/db.js';
 import { cors } from './_lib/auth.js';
+import { sendText, evoBase, resolveKey, headers } from './_lib/evolution.js';
 
 const N8N_SECRET = process.env.N8N_SECRET || 'lumers-n8n-2025';
 
@@ -19,6 +20,43 @@ export default async function handler(req, res) {
 
     const { op, phone, userId, record } = req.body || {};
     const db = getDb();
+
+    // Resolve a instância padrão do painel (nome + apikey). Mantém a Evolution
+    // server-side: o n8n nunca precisa saber instância/apikey.
+    async function getDefaultInstance() {
+      const { rows } = await db.execute(
+        "SELECT name, api_key FROM evolution_instances WHERE is_default = 1 LIMIT 1"
+      );
+      return rowsToObjects(rows)[0] || null;
+    }
+
+    // Enviar resposta de texto via instância padrão do painel
+    if (op === 'sendMessage') {
+      const { text } = req.body || {};
+      if (!phone || !text) return res.status(400).json({ error: 'phone and text required' });
+      const inst = await getDefaultInstance();
+      if (!inst) return res.status(400).json({ error: 'Nenhuma instância padrão definida' });
+      const r = await sendText({ name: inst.name, key: inst.api_key || null, number: phone, text });
+      return res.status(200).json({ ok: true, status: r.status });
+    }
+
+    // Baixar áudio (base64) de uma mensagem via instância padrão do painel
+    if (op === 'getAudioBase64') {
+      const { messageKey } = req.body || {};
+      if (!messageKey) return res.status(400).json({ error: 'messageKey required' });
+      const inst = await getDefaultInstance();
+      if (!inst) return res.status(400).json({ error: 'Nenhuma instância padrão definida' });
+      const base = evoBase();
+      const k = await resolveKey(inst.api_key || null);
+      const r = await fetch(`${base}/chat/getBase64FromMediaMessage/${encodeURIComponent(inst.name)}`, {
+        method: 'POST',
+        headers: headers(k),
+        body: JSON.stringify({ message: { key: messageKey }, convertToMp4: false }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return res.status(502).json({ error: 'Evolution getBase64 falhou', detail: data });
+      return res.status(200).json({ base64: data.base64 || data.media || '' });
+    }
 
     // Buscar usuário pelo número de WhatsApp
     if (op === 'userByPhone') {
