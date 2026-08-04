@@ -6,9 +6,26 @@ import {
   connectionState, connectQr, deleteInstance, setSettings, setWebhook,
   createInstance, deriveWebhookUrl,
 } from '../_lib/evolution.js';
+import { groqChat, geminiGenerate } from '../_lib/ai.js';
 import bcrypt from 'bcryptjs';
 
 const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret', 'n8n_webhook_url', 'n8n_secret', 'ai_enabled', 'ai_groq_key', 'ai_groq_model', 'ai_gemini_key', 'ai_gemini_model'];
+
+// Normaliza um telefone BR para o formato canônico: 55 + DDD(2) + 9 + 8 dígitos (celular).
+// Insere o 9º dígito quando ausente (regra padrão: local de 10 dígitos cujo assinante
+// começa em 6-9 é celular sem o 9). Retorna '' se não houver telefone; null se inválido.
+function canonicalBrazilPhone(raw) {
+  const d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  let local = d;
+  if (local.length > 11 && local.startsWith('55')) local = local.slice(2);
+  if (local.length < 10 || local.length > 11) return null; // fora do padrão BR
+  const ddd = local.slice(0, 2);
+  let rest = local.slice(2);
+  if (rest.length === 10) rest = rest.slice(-9); // proteção
+  if (rest.length === 8 && /^[6-9]/.test(rest)) rest = '9' + rest; // celular sem o 9
+  return '55' + ddd + rest;
+}
 
 // Global-key headers (create/delete/QR require admin key, not per-instance key)
 const _evoGlobalHdrs = async () => {
@@ -301,6 +318,26 @@ export default async function handler(req, res) {
     // ── POST /api/admin/users  →  bulk actions
     if (req.method === 'POST') {
       const { action } = req.body || {};
+
+      // Testa as chaves de IA (Groq e/ou Gemini) com uma chamada mínima real.
+      // Usa as chaves enviadas no corpo (permite testar antes de salvar).
+      if (action === 'test-ai-connection') {
+        const { groq_key, groq_model, gemini_key, gemini_model } = req.body || {};
+        const result = { groq: null, gemini: null };
+        if (groq_key) {
+          try {
+            const out = await groqChat({ key: groq_key, model: groq_model || 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: 'Responda apenas com a palavra: ok' }], temperature: 0 });
+            result.groq = { ok: true, sample: (out || '').trim().slice(0, 40) };
+          } catch (e) { result.groq = { ok: false, error: String(e?.message || e).slice(0, 200) }; }
+        }
+        if (gemini_key) {
+          try {
+            const out = await geminiGenerate({ key: gemini_key, model: gemini_model || 'gemini-2.0-flash', parts: [{ text: 'Responda apenas com a palavra: ok' }] });
+            result.gemini = { ok: true, sample: (out || '').trim().slice(0, 40) };
+          } catch (e) { result.gemini = { ok: false, error: String(e?.message || e).slice(0, 200) }; }
+        }
+        return res.status(200).json(result);
+      }
 
       if (action === 'test-evolution-key') {
         const base = evoBase();
@@ -634,8 +671,12 @@ export default async function handler(req, res) {
         const { email, password, name, phone: rawPhone } = req.body;
         if (!email || !password || !name) return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios' });
         if (password.length < 8) return res.status(400).json({ error: 'Senha mínima: 8 caracteres' });
-        const phone = rawPhone ? rawPhone.replace(/\D/g, '') : '';
-        const normalizedPhone = phone ? (phone.startsWith('55') ? phone : '55' + phone) : '';
+        // Normaliza p/ formato canônico: 55 + DDD(2) + 9 + 8 dígitos (celular).
+        // Insere o 9º dígito quando o número vem sem ele (regra padrão BR).
+        const normalizedPhone = canonicalBrazilPhone(rawPhone);
+        if (rawPhone && rawPhone.replace(/\D/g, '').length && !normalizedPhone) {
+          return res.status(400).json({ error: 'Telefone inválido. Use DDD + número (ex.: 11 91234-5678).' });
+        }
         const { rows: existing } = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [email.toLowerCase().trim()] });
         if (rowsToObjects(existing).length > 0) return res.status(400).json({ error: 'E-mail já cadastrado' });
         const hash = await bcrypt.hash(password, 10);

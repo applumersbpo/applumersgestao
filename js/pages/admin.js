@@ -1430,9 +1430,12 @@ function _renderAiSection(cfg = {}) {
           style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:6px">
       </div>
 
-      <div style="display:flex;gap:8px;margin-top:16px">
+      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="_aiSaveConfig()" id="ai-save-btn" style="font-size:.85rem;white-space:nowrap">
           ${icon('save', 14)} Salvar configuração de IA
+        </button>
+        <button class="btn btn-secondary" onclick="_aiTestConnection()" id="ai-test-btn" style="font-size:.85rem;white-space:nowrap">
+          ${icon('plug', 14)} Testar conexão
         </button>
       </div>
       <div id="ai-feedback" style="font-size:.78rem;margin-top:10px"></div>
@@ -1477,6 +1480,53 @@ async function _aiSaveConfig() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = icon('save', 14) + ' Salvar configuração de IA';
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
+  }
+}
+
+async function _aiTestConnection() {
+  const btn = document.getElementById('ai-test-btn');
+  const fb  = document.getElementById('ai-feedback');
+  const groqKey     = (document.getElementById('ai-groq-key')?.value || '').trim();
+  const groqModel   = (document.getElementById('ai-groq-model')?.value || '').trim() || 'llama-3.3-70b-versatile';
+  const geminiKey   = (document.getElementById('ai-gemini-key')?.value || '').trim();
+  const geminiModel = (document.getElementById('ai-gemini-model')?.value || '').trim() || 'gemini-2.0-flash';
+
+  if (!groqKey && !geminiKey) {
+    toast('Informe ao menos uma chave (Groq ou Gemini) para testar.', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = icon('loader', 14) + ' Testando…';
+  if (fb) fb.innerHTML = '';
+  try {
+    const res = await _api('POST', '/admin/users', {
+      action: 'test-ai-connection',
+      groq_key: groqKey,
+      groq_model: groqModel,
+      gemini_key: geminiKey,
+      gemini_model: geminiModel,
+    });
+    const rows = [];
+    const line = (label, r) => {
+      if (!r) return `<div style="color:var(--text-muted)">• ${label}: não testado (sem chave)</div>`;
+      if (r.ok) return `<div style="color:var(--income-text,#16a34a)">✓ ${label}: conectado${r.sample ? ` — resposta: "${_escHtml(r.sample)}"` : ''}</div>`;
+      return `<div style="color:#dc2626">✗ ${label}: falhou — ${_escHtml(r.error || 'erro desconhecido')}</div>`;
+    };
+    rows.push(line('Groq (texto)', res.groq));
+    rows.push(line('Gemini (áudio/imagem)', res.gemini));
+    const allTestedOk = [res.groq, res.gemini].filter(Boolean).every(r => r.ok);
+    if (fb) {
+      fb.innerHTML = `<div style="background:${allTestedOk ? 'var(--income-light,#dcfce7)' : '#fef2f2'};
+        border-radius:var(--r-md);padding:8px 12px;line-height:1.7">${rows.join('')}</div>`;
+    }
+  } catch(e) {
+    if (fb) fb.innerHTML = `<div style="background:#fee2e2;border-radius:var(--r-md);
+      padding:6px 10px;color:#dc2626">Erro ao testar: ${_escHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = icon('plug', 14) + ' Testar conexão';
     if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
   }
 }

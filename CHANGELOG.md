@@ -5,6 +5,18 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.16.1] — 2026-08-04
+
+### Adicionado
+- **Botão "Testar conexão" na seção de IA** — valida as chaves Groq e Gemini com uma chamada mínima real (antes mesmo de salvar), mostrando por provedor se conectou (com amostra da resposta) ou o erro exato. Facilita diagnosticar chave inválida antes de ativar o assistente.
+- **Ação `test-ai-connection` em `/api/admin/users`** — endpoint de teste que exercita Groq (`groqChat`) e/ou Gemini (`geminiGenerate`) com as chaves enviadas no corpo.
+
+### Corrigido
+- **Assistente não reconhecia número já cadastrado** — a busca do usuário pelo telefone agora tolera variações do número BR: com/sem código do país `55` e com/sem o **9º dígito** do celular. A coluna `phone` é normalizada na consulta (remove espaços, parênteses, hífen, `+`), então casa mesmo com números salvos formatados.
+- **Validação de telefone no cadastro** — ao criar usuário, o número é normalizado para o formato canônico `55 + DDD + 9 + 8 dígitos`, inserindo o 9º dígito quando ausente, e cadastros com telefone fora do padrão BR são rejeitados.
+
+---
+
 ## [v1.16.0] — 2026-08-04
 
 ### Adicionado

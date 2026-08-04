@@ -26,11 +26,49 @@ async function getMediaBase64(instanceName, key, messageKey) {
   return data.base64 || data.media || '';
 }
 
+// Gera as variações plausíveis de um número BR para casar com o que está salvo,
+// tolerando: código do país 55 presente/ausente e o 9º dígito do celular presente/ausente.
+// Ex.: WhatsApp manda "5511912345678"; o cadastro pode estar como "551112345678",
+// "11912345678", "1112345678", etc. Retorna todos os formatos só-dígitos possíveis.
+function brazilPhoneVariants(raw) {
+  const d = String(raw || '').replace(/\D/g, '');
+  const set = new Set();
+  if (!d) return [];
+  set.add(d);
+  // remove o código do país 55 quando presente
+  let local = d;
+  if (local.length > 11 && local.startsWith('55')) local = local.slice(2);
+  set.add(local);
+  if (local.length >= 10) {
+    const ddd = local.slice(0, 2);
+    const rest = local.slice(2); // 8 (sem 9) ou 9 (com 9) dígitos
+    let with9, without9;
+    if (rest.length === 9 && rest[0] === '9') {
+      with9 = rest; without9 = rest.slice(1);
+    } else if (rest.length === 8) {
+      without9 = rest; with9 = '9' + rest;
+    } else {
+      with9 = rest; without9 = rest;
+    }
+    for (const r of [with9, without9]) {
+      set.add(ddd + r);
+      set.add('55' + ddd + r);
+    }
+  }
+  return [...set].filter(Boolean);
+}
+
 async function userByPhone(phone) {
   const db = getDb();
+  const variants = brazilPhoneVariants(phone);
+  if (!variants.length) return null;
+  // Normaliza a coluna phone no SQL (remove espaço, parênteses, hífen, +, ponto)
+  // para casar mesmo com números salvos formatados.
+  const norm = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'(',''),')',''),'-',''),'+',''),'.','')";
+  const placeholders = variants.map(() => '?').join(',');
   const { rows } = await db.execute({
-    sql: 'SELECT id, email, name, phone, role, is_admin FROM users WHERE phone = ?',
-    args: [phone],
+    sql: `SELECT id, email, name, phone, role, is_admin FROM users WHERE ${norm} IN (${placeholders})`,
+    args: variants,
   });
   return rowsToObjects(rows)[0] || null;
 }
