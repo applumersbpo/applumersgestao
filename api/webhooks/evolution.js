@@ -2,11 +2,11 @@ import { getDb, initDb, getSystemSetting } from '../_lib/db.js';
 import { normalizeStatus } from '../_lib/evolution.js';
 
 export default async function handler(req, res) {
-  // Respond 200 immediately so Evolution doesn't retry on slow processing
-  res.status(200).json({ ok: true });
+  if (req.method !== 'POST') return res.status(200).json({ ok: true });
 
-  if (req.method !== 'POST') return;
-
+  // Nota: respondemos 200 só ao FINAL do processamento. Em serverless (Vercel),
+  // trabalho assíncrono disparado após enviar a resposta pode ser congelado antes
+  // de concluir — o que fazia o fan-out (fetch externo para o n8n) nunca completar.
   try {
     await initDb();
     const db = getDb();
@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     // CONNECTION_UPDATE: persist connection status to DB
     if (event === 'CONNECTION_UPDATE') {
       const instanceName = body.instance || body.instanceName || body.sender || '';
-      if (!instanceName) return;
+      if (!instanceName) return res.status(200).json({ ok: true });
       const data = body.data || body;
       const rawState = data.state || data.status || data.instance?.state || '';
       if (rawState) {
@@ -29,20 +29,20 @@ export default async function handler(req, res) {
           args: [normalized, instanceName],
         });
       }
-      return;
+      return res.status(200).json({ ok: true });
     }
 
     // QRCODE_UPDATED: persist QR code to DB
     if (event === 'QRCODE_UPDATED') {
       const instanceName = body.instance || body.instanceName || body.sender || '';
-      if (!instanceName) return;
+      if (!instanceName) return res.status(200).json({ ok: true });
       const data = body.data || body;
       const qrCode = data.qrcode?.base64 || data.base64 || data.qr || '';
       await db.execute({
         sql: "UPDATE evolution_instances SET qr=?, last_status_at=datetime('now') WHERE name=?",
         args: [qrCode, instanceName],
       });
-      return;
+      return res.status(200).json({ ok: true });
     }
 
     // MESSAGES_UPDATE: update delivery status of sent messages
@@ -58,7 +58,7 @@ export default async function handler(req, res) {
           args: [deliveryStatus.toUpperCase(), msgId],
         }).catch(() => {});
       }
-      return;
+      return res.status(200).json({ ok: true });
     }
 
     // MESSAGES_UPSERT: track delivery status for fromMe messages e faz fan-out
@@ -106,4 +106,6 @@ export default async function handler(req, res) {
   } catch (err) {
     console.error('[webhook/evolution]', err);
   }
+  // Responde 200 ao final — garante que o fan-out (fetch ao n8n) já concluiu.
+  if (!res.headersSent) res.status(200).json({ ok: true });
 }

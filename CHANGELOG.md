@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.15.3] — 2026-08-04
+
+### Corrigido
+- **Fan-out para o n8n não completava** — o webhook da Evolution respondia `200` antes de processar; em serverless (Vercel) o trabalho assíncrono após a resposta era congelado, então o `fetch` externo para o n8n nunca chegava. Agora a resposta `200` é enviada **após** concluir o processamento (incluindo o repasse), garantindo a entrega ao n8n.
+
+---
+
 ## [v1.15.2] — 2026-08-04
 
 ### Adicionado
