@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.15.2] — 2026-08-04
+
+### Adicionado
+- **Op `setConfig` no `/api/n8n`** — permite gravar as chaves da integração (`n8n_webhook_url`, `n8n_secret`) de forma restrita, autenticada pelo secret, para provisionar a configuração sem depender do login de admin.
+
+---
+
 ## [v1.15.1] — 2026-08-04
 
 ### Corrigido

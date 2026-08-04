@@ -1,4 +1,4 @@
-import { getDb, initDb, rowsToObjects, getSystemSetting } from './_lib/db.js';
+import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from './_lib/db.js';
 import { cors } from './_lib/auth.js';
 import { sendText, evoBase, resolveKey, headers } from './_lib/evolution.js';
 
@@ -28,6 +28,15 @@ export default async function handler(req, res) {
         "SELECT name, api_key FROM evolution_instances WHERE is_default = 1 LIMIT 1"
       );
       return rowsToObjects(rows)[0] || null;
+    }
+
+    // Configurar as chaves da integração n8n (restrito a essas duas chaves)
+    if (op === 'setConfig') {
+      const { key, value } = req.body || {};
+      const ALLOWED = ['n8n_webhook_url', 'n8n_secret'];
+      if (!ALLOWED.includes(key)) return res.status(400).json({ error: 'key não permitida' });
+      await setSystemSetting(key, value == null ? '' : String(value));
+      return res.status(200).json({ ok: true, key });
     }
 
     // Enviar resposta de texto via instância padrão do painel
