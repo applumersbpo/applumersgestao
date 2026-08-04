@@ -1,6 +1,6 @@
 import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from './_lib/db.js';
 import { cors } from './_lib/auth.js';
-import { sendText, evoBase, resolveKey, headers } from './_lib/evolution.js';
+import { sendText, evoBase, resolveKey, headers, setWebhook, deriveWebhookUrl } from './_lib/evolution.js';
 
 const N8N_SECRET = process.env.N8N_SECRET || 'lumers-n8n-2025';
 
@@ -25,9 +25,46 @@ export default async function handler(req, res) {
     // server-side: o n8n nunca precisa saber instância/apikey.
     async function getDefaultInstance() {
       const { rows } = await db.execute(
-        "SELECT name, api_key FROM evolution_instances WHERE is_default = 1 LIMIT 1"
+        "SELECT name, api_key, connection_status FROM evolution_instances WHERE is_default = 1 LIMIT 1"
       );
       return rowsToObjects(rows)[0] || null;
+    }
+
+    // Diagnóstico da ligação Evolution -> app (webhook da instância padrão).
+    // Com { fix: true } reaplica o webhook no caminho-base com byEvents:false.
+    if (op === 'evoWiring') {
+      const inst = await getDefaultInstance();
+      if (!inst) return res.status(400).json({ error: 'Nenhuma instância padrão definida' });
+      const base = evoBase();
+      const k = await resolveKey(inst.api_key || null);
+      let currentWebhook = null;
+      try {
+        const wr = await fetch(`${base}/webhook/find/${encodeURIComponent(inst.name)}`, { headers: headers(k) });
+        currentWebhook = await wr.json().catch(() => ({ _status: wr.status }));
+      } catch (e) { currentWebhook = { _error: String(e?.message || e) }; }
+
+      let applied = null;
+      if (req.body?.fix) {
+        const webhookUrl = deriveWebhookUrl(req);
+        const cfg = {
+          url: webhookUrl,
+          byEvents: false,
+          base64: true,
+          events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+        };
+        try {
+          const sr = await setWebhook(inst.name, inst.api_key || null, cfg);
+          applied = { ok: sr.ok, status: sr.status, form: sr.form, url: webhookUrl };
+        } catch (e) { applied = { ok: false, error: String(e?.message || e) }; }
+      }
+
+      return res.status(200).json({
+        name: inst.name,
+        connection_status: inst.connection_status || null,
+        evoBase: base,
+        currentWebhook,
+        applied,
+      });
     }
 
     // Configurar as chaves da integração n8n (restrito a essas duas chaves)

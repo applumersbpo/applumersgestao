@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.15.4] — 2026-08-04
+
+### Adicionado
+- **Op `evoWiring` no `/api/n8n`** — diagnóstico (e reparo opcional) da ligação Evolution → app: inspeciona o webhook registrado na instância padrão e, com `fix`, reaplica o webhook no caminho-base com `byEvents:false` para garantir a entrega dos eventos de mensagem ao app.
+
+---
+
 ## [v1.15.3] — 2026-08-04
 
 ### Corrigido
