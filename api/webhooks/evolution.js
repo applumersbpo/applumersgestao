@@ -1,4 +1,4 @@
-import { getDb, initDb } from '../_lib/db.js';
+import { getDb, initDb, getSystemSetting } from '../_lib/db.js';
 import { normalizeStatus } from '../_lib/evolution.js';
 
 export default async function handler(req, res) {
@@ -61,20 +61,46 @@ export default async function handler(req, res) {
       return;
     }
 
-    // MESSAGES_UPSERT: track delivery status for fromMe messages (ignore groups)
+    // MESSAGES_UPSERT: track delivery status for fromMe messages e faz fan-out
+    // das mensagens RECEBIDAS (não-fromMe, não-grupo) para o n8n, quando configurado.
     if (event === 'MESSAGES_UPSERT') {
       const msgs = body.data || [];
       const msgList = Array.isArray(msgs) ? msgs : [msgs];
+
+      // Lê a config do n8n uma vez (só se houver alguma mensagem recebida a repassar)
+      const hasIncoming = msgList.some(
+        (m) => m && !m.key?.fromMe && !(m.key?.remoteJid || '').includes('@g.us'),
+      );
+      const n8nUrl    = hasIncoming ? await getSystemSetting('n8n_webhook_url').catch(() => null) : null;
+      const n8nSecret = n8nUrl ? await getSystemSetting('n8n_secret').catch(() => null) : null;
+      const instanceName = body.instance || body.instanceName || body.sender || '';
+
       for (const msg of msgList) {
-        if (!msg.key?.fromMe) continue;
         if ((msg.key?.remoteJid || '').includes('@g.us')) continue;
-        const msgId = msg.key?.id || '';
-        const deliveryStatus = msg.status || '';
-        if (!msgId || !deliveryStatus) continue;
-        await db.execute({
-          sql: "UPDATE message_logs SET delivery_status=? WHERE message_id=? AND message_id!=''",
-          args: [deliveryStatus.toUpperCase(), msgId],
-        }).catch(() => {});
+
+        // fromMe: rastreia status de entrega das mensagens enviadas pelo sistema
+        if (msg.key?.fromMe) {
+          const msgId = msg.key?.id || '';
+          const deliveryStatus = msg.status || '';
+          if (!msgId || !deliveryStatus) continue;
+          await db.execute({
+            sql: "UPDATE message_logs SET delivery_status=? WHERE message_id=? AND message_id!=''",
+            args: [deliveryStatus.toUpperCase(), msgId],
+          }).catch(() => {});
+          continue;
+        }
+
+        // Recebida: repassa para o n8n (registro automático de gastos)
+        if (n8nUrl) {
+          await fetch(n8nUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(n8nSecret ? { 'x-n8n-secret': n8nSecret } : {}),
+            },
+            body: JSON.stringify({ event: 'MESSAGES_UPSERT', instance: instanceName, message: msg }),
+          }).catch((e) => console.error('[webhook/evolution] fan-out n8n falhou', e?.message));
+        }
       }
     }
   } catch (err) {

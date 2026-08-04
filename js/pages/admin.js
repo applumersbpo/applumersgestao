@@ -1067,6 +1067,8 @@ async function renderAdminSystem() {
     const allowReg     = sysCfg.allow_registration === '1';
     const evoGlobalKey = sysCfg.evolution_global_key || '';
     const cronSecret   = sysCfg.cron_secret || '';
+    const n8nUrl       = sysCfg.n8n_webhook_url || '';
+    const n8nSecret    = sysCfg.n8n_secret || '';
 
     content.innerHTML = `
       ${_adminNavBar('system')}
@@ -1095,7 +1097,7 @@ async function renderAdminSystem() {
         </div>
         <div id="toggle-reg-feedback" style="font-size:.8rem;margin-top:10px;display:none"></div>
       </div>
-      ${await _renderEvolutionSection(evoGlobalKey, cronSecret)}`;
+      ${await _renderEvolutionSection(evoGlobalKey, cronSecret, n8nUrl, n8nSecret)}`;
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
   } catch(e) {
@@ -1143,7 +1145,7 @@ async function renderAdminTheme() {
 
 // ── Evolution API Instance Management ────────────────────────────────────────
 
-async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '') {
+async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUrl = '', n8nSecret = '') {
   let instances = [];
   try { instances = await _api('GET', '/admin/users?resource=evolution-instances'); } catch {}
   const statusColor  = s => (s === 'connected' || s === 'open') ? 'var(--income-text,#16a34a)' : s === 'connecting' ? 'var(--warning,#d97706)' : 'var(--expense,#dc2626)';
@@ -1300,6 +1302,53 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '') {
           ${icon('refresh-cw', 13)} Gerar/Regenerar secret
         </button>
         <div id="cron-secret-feedback" style="font-size:.78rem;margin-top:8px;display:none"></div>
+      </div>
+
+      <!-- Integração n8n (registro automático via WhatsApp) -->
+      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('workflow', 13)} Integração n8n — registro automático via WhatsApp</div>
+        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
+          Quando o usuário envia uma mensagem no WhatsApp, o sistema repassa a mensagem para o <strong>webhook do n8n</strong>.
+          O fluxo do n8n interpreta e chama de volta o endpoint abaixo para registrar o lançamento.
+          Deixe a URL em branco para desativar o repasse.
+        </div>
+
+        <label class="form-label" style="font-size:.78rem">URL do webhook do n8n</label>
+        <input id="n8n-url-input" type="text" class="form-input"
+          placeholder="https://seu-n8n.com/webhook/lumers-whatsapp"
+          value="${_escHtml(n8nUrl)}"
+          style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:10px">
+
+        <label class="form-label" style="font-size:.78rem">Secret (header <code>x-n8n-secret</code>)</label>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <input id="n8n-secret-input" type="password" class="form-input"
+            placeholder="Secret compartilhado com o n8n"
+            value="${_escHtml(n8nSecret)}"
+            style="flex:1;font-size:.85rem;font-family:monospace">
+          <button class="btn btn-outline" onclick="_n8nGenSecret()" style="font-size:.83rem;white-space:nowrap;flex-shrink:0">
+            ${icon('refresh-cw', 13)} Gerar
+          </button>
+          <button class="btn btn-primary" onclick="_n8nSaveConfig()" id="n8n-save-btn" style="font-size:.83rem;white-space:nowrap;flex-shrink:0">
+            ${icon('save', 14)} Salvar
+          </button>
+        </div>
+        <div id="n8n-feedback" style="font-size:.78rem;margin-bottom:12px"></div>
+
+        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:6px">
+          Endpoint de callback (cole no nó HTTP do n8n para registrar transações):
+        </div>
+        <div style="display:flex;gap:8px">
+          <input id="n8n-callback-input" type="text" class="form-input" readonly
+            value="${location.origin}/api/n8n"
+            style="flex:1;font-size:.8rem;font-family:monospace;background:var(--bg-subtle);color:var(--text-primary)">
+          <button class="btn btn-outline" onclick="_n8nCopyCallback()" style="font-size:.83rem;white-space:nowrap;flex-shrink:0">
+            ${icon('copy', 14)} Copiar
+          </button>
+        </div>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:8px;line-height:1.5">
+          Operações aceitas (POST com header <code>x-n8n-secret</code>):
+          <code>userByPhone</code>, <code>addTransaction</code>, <code>addInstallment</code>.
+        </div>
       </div>
     </div>`;
 }
@@ -1734,6 +1783,71 @@ async function _evoSaveGlobalKey() {
   } catch(e) {
     if (fb) fb.innerHTML = `<div style="background:#fee2e2;border-radius:var(--r-md);
       padding:6px 10px;font-size:.8rem;color:#dc2626">Erro: ${_escHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = icon('save', 14) + ' Salvar';
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
+  }
+}
+
+// ── Integração n8n ────────────────────────────────────────────────────────────
+
+function _n8nGenSecret() {
+  const el = document.getElementById('n8n-secret-input');
+  if (!el) return;
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  el.value = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  el.type = 'text';
+}
+
+async function _n8nCopyCallback() {
+  const input = document.getElementById('n8n-callback-input');
+  if (!input?.value) return;
+  try {
+    await navigator.clipboard.writeText(input.value);
+    toast('URL de callback copiada', 'success');
+  } catch {
+    input.select();
+    document.execCommand('copy');
+    toast('URL de callback copiada', 'success');
+  }
+}
+
+async function _n8nSaveConfig() {
+  const urlEl    = document.getElementById('n8n-url-input');
+  const secretEl = document.getElementById('n8n-secret-input');
+  const btn      = document.getElementById('n8n-save-btn');
+  const fb        = document.getElementById('n8n-feedback');
+  const url    = (urlEl?.value || '').trim();
+  const secret = (secretEl?.value || '').trim();
+
+  if (url && !/^https?:\/\//i.test(url)) {
+    toast('A URL do webhook deve começar com http:// ou https://', 'error');
+    return;
+  }
+  if (url && !secret) {
+    toast('Defina um secret para proteger o repasse ao n8n', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = icon('loader', 14) + ' Salvando…';
+  try {
+    await _api('PUT', '/admin/users?resource=system-settings', {
+      n8n_webhook_url: url,
+      n8n_secret: secret,
+    });
+    if (fb) {
+      fb.innerHTML = `<div style="background:var(--income-light,#dcfce7);border-radius:var(--r-md);
+        padding:6px 10px;color:var(--income-text,#16a34a)">
+        ✓ Integração n8n salva.${url ? '' : ' Repasse desativado (URL vazia).'}
+      </div>`;
+      setTimeout(() => { if (fb) fb.innerHTML = ''; }, 3500);
+    }
+    toast('Integração n8n salva', 'success');
+  } catch(e) {
+    if (fb) fb.innerHTML = `<div style="background:#fee2e2;border-radius:var(--r-md);
+      padding:6px 10px;color:#dc2626">Erro: ${_escHtml(e.message)}</div>`;
   } finally {
     btn.disabled = false;
     btn.innerHTML = icon('save', 14) + ' Salvar';

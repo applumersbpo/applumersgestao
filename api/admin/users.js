@@ -8,7 +8,7 @@ import {
 } from '../_lib/evolution.js';
 import bcrypt from 'bcryptjs';
 
-const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret'];
+const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret', 'n8n_webhook_url', 'n8n_secret'];
 
 // Global-key headers (create/delete/QR require admin key, not per-instance key)
 const _evoGlobalHdrs = async () => {

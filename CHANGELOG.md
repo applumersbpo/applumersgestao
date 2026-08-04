@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.15.0] — 2026-08-04
+
+### Adicionado
+- **Integração n8n — registro automático de gastos via WhatsApp** — reativada e configurável pelo painel (Sistema → WhatsApp → Integração n8n). É possível definir a **URL do webhook do n8n** e um **secret compartilhado** (`x-n8n-secret`), com botão para gerar o secret e copiar o endpoint de callback (`/api/n8n`) para colar no fluxo do n8n.
+- **Fan-out de mensagens recebidas** — o webhook interno da Evolution passa a repassar mensagens **recebidas** dos usuários (ignorando grupos e mensagens enviadas pelo próprio sistema) para o webhook do n8n configurado, mantendo intacto o rastreamento de conexão/QR/entrega. Deixar a URL em branco desativa o repasse.
+
+### Melhorado
+- **Autenticação do endpoint `/api/n8n`** — além do secret de ambiente/fallback, o endpoint passa a aceitar o secret definido no painel, permitindo alinhar as credenciais do fluxo n8n sem redeploy.
+
+---
+
 ## [v1.14.0] — 2026-07-25
 
 ### Adicionado

@@ -1,4 +1,4 @@
-import { getDb, initDb, rowsToObjects } from './_lib/db.js';
+import { getDb, initDb, rowsToObjects, getSystemSetting } from './_lib/db.js';
 import { cors } from './_lib/auth.js';
 
 const N8N_SECRET = process.env.N8N_SECRET || 'lumers-n8n-2025';
@@ -8,12 +8,15 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // Validate secret
-  const secret = req.headers['x-n8n-secret'];
-  if (secret !== N8N_SECRET) return res.status(401).json({ error: 'Unauthorized' });
-
   try {
     await initDb();
+
+    // Validate secret — aceita o secret do env/fallback OU o configurado no painel
+    const provided  = req.headers['x-n8n-secret'];
+    const dbSecret  = await getSystemSetting('n8n_secret').catch(() => null);
+    const isValid   = provided && (provided === N8N_SECRET || (dbSecret && provided === dbSecret));
+    if (!isValid) return res.status(401).json({ error: 'Unauthorized' });
+
     const { op, phone, userId, record } = req.body || {};
     const db = getDb();
 
