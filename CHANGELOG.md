@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.16.2] — 2026-08-04
+
+### Corrigido
+- **Assistente não entendia áudios do WhatsApp** — o mime type dos áudios de voz vem como `audio/ogg; codecs=opus`, e o Gemini rejeitava o parâmetro `; codecs=opus`, fazendo a transcrição falhar. Agora o mime é sanitizado (só o tipo base, ex.: `audio/ogg`) antes de enviar ao Gemini — vale também para prints/imagens.
+
+---
+
 ## [v1.16.1] — 2026-08-04
 
 ### Adicionado
