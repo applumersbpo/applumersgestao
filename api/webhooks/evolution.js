@@ -1,5 +1,6 @@
 import { getDb, initDb, getSystemSetting } from '../_lib/db.js';
 import { normalizeStatus } from '../_lib/evolution.js';
+import { handleAssistantMessage } from '../_lib/assistant.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).json({ ok: true });
@@ -67,11 +68,14 @@ export default async function handler(req, res) {
       const msgs = body.data || [];
       const msgList = Array.isArray(msgs) ? msgs : [msgs];
 
-      // Lê a config do n8n uma vez (só se houver alguma mensagem recebida a repassar)
+      // Config lida uma vez, só se houver mensagem recebida a processar.
+      // Quando ai_enabled=1, o "cérebro" roda no próprio app (assistente multimodal
+      // com nível de acesso); caso contrário, mantém o fan-out para o n8n.
       const hasIncoming = msgList.some(
         (m) => m && !m.key?.fromMe && !(m.key?.remoteJid || '').includes('@g.us'),
       );
-      const n8nUrl    = hasIncoming ? await getSystemSetting('n8n_webhook_url').catch(() => null) : null;
+      const aiEnabled = hasIncoming ? ((await getSystemSetting('ai_enabled').catch(() => null)) === '1') : false;
+      const n8nUrl    = (hasIncoming && !aiEnabled) ? await getSystemSetting('n8n_webhook_url').catch(() => null) : null;
       const n8nSecret = n8nUrl ? await getSystemSetting('n8n_secret').catch(() => null) : null;
       const instanceName = body.instance || body.instanceName || body.sender || '';
 
@@ -90,8 +94,10 @@ export default async function handler(req, res) {
           continue;
         }
 
-        // Recebida: repassa para o n8n (registro automático de gastos)
-        if (n8nUrl) {
+        // Recebida: assistente de IA no app (preferencial) ou fan-out para o n8n.
+        if (aiEnabled) {
+          await handleAssistantMessage(msg, instanceName).catch((e) => console.error('[webhook/evolution] assistente falhou', e?.message));
+        } else if (n8nUrl) {
           await fetch(n8nUrl, {
             method: 'POST',
             headers: {

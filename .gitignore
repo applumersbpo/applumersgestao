@@ -18,3 +18,9 @@ documentacao.txt
 node_modules/
 package-lock.json
 .env*.local
+
+# Credencial de deploy (token Vercel) — NUNCA commitar
+.vercel-deploy.env
+
+# Credencial de acesso ao n8n (API key) — NUNCA commitar
+.n8n-connection.env

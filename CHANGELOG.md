@@ -5,6 +5,20 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.16.0] — 2026-08-04
+
+### Adicionado
+- **Assistente de IA no WhatsApp (cérebro no app)** — o app passa a interpretar as mensagens recebidas por conta própria, com reconhecimento do **nível de acesso** (usuário comum vê só a própria conta; admin/super_admin acessam dados de todos) e do **nome do usuário** pelo número cadastrado. Registra lançamentos (receitas/despesas) por **texto, áudio e print**, **pergunta** quando está em dúvida se é receita ou despesa (conversa multi-turno) e responde consultas de saldo/resumo. Vídeo não é suportado (resposta orientando o usuário).
+- **Seção "Assistente de IA" no painel (Sistema)** — gestão das chaves e modelos: **Groq** para texto/raciocínio e **Gemini** para áudio e imagens/prints, com liga/desliga. Enquanto ativa, o repasse ao n8n é ignorado.
+- **`api/_lib/ai.js`** — cliente de IA: Groq (chat/JSON) e Gemini (multimodal: transcrição de áudio e leitura de imagem).
+- **`api/_lib/assistant.js`** — orquestrador do assistente: lookup por telefone, controle de acesso por role, roteamento texto/áudio/imagem, registro de lançamento e estado de conversa.
+- **Tabela `wa_conversations`** — estado de conversa por telefone (contexto pendente para o multi-turno + histórico curto).
+
+### Melhorado
+- **Webhook da Evolution** — quando a IA está ligada (`ai_enabled=1`), processa a mensagem no app; senão, mantém o fan-out para o n8n (compatibilidade).
+
+---
+
 ## [v1.15.4] — 2026-08-04
 
 ### Adicionado

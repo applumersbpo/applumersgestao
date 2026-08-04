@@ -1069,6 +1069,13 @@ async function renderAdminSystem() {
     const cronSecret   = sysCfg.cron_secret || '';
     const n8nUrl       = sysCfg.n8n_webhook_url || '';
     const n8nSecret    = sysCfg.n8n_secret || '';
+    const aiCfg        = {
+      enabled:      sysCfg.ai_enabled === '1',
+      groqKey:      sysCfg.ai_groq_key || '',
+      groqModel:    sysCfg.ai_groq_model || 'llama-3.3-70b-versatile',
+      geminiKey:    sysCfg.ai_gemini_key || '',
+      geminiModel:  sysCfg.ai_gemini_model || 'gemini-2.0-flash',
+    };
 
     content.innerHTML = `
       ${_adminNavBar('system')}
@@ -1097,7 +1104,8 @@ async function renderAdminSystem() {
         </div>
         <div id="toggle-reg-feedback" style="font-size:.8rem;margin-top:10px;display:none"></div>
       </div>
-      ${await _renderEvolutionSection(evoGlobalKey, cronSecret, n8nUrl, n8nSecret)}`;
+      ${await _renderEvolutionSection(evoGlobalKey, cronSecret, n8nUrl, n8nSecret)}
+      ${_renderAiSection(aiCfg)}`;
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
   } catch(e) {
@@ -1351,6 +1359,126 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUr
         </div>
       </div>
     </div>`;
+}
+
+// ── Render seção do Assistente de IA no WhatsApp ──────────────────────────────
+// Quando ligado, o "cérebro" roda no próprio app: entende nível de acesso, nome do
+// usuário (pelo número), registra lançamentos por texto/áudio/print, pergunta quando
+// não sabe se é receita ou despesa. Groq = texto/raciocínio, Gemini = áudio + imagem.
+function _renderAiSection(cfg = {}) {
+  const enabled = !!cfg.enabled;
+  return `
+    <div class="card" style="margin-bottom:20px" id="ai-section">
+      <div class="card-title" style="margin-bottom:4px">${icon('sparkles', 14)} Assistente de IA no WhatsApp</div>
+      <p style="font-size:.78rem;color:var(--text-muted);margin:0 0 16px;line-height:1.5">
+        Quando ligado, o assistente responde no WhatsApp entendendo o <strong>nível de acesso</strong> e o <strong>nome</strong>
+        do usuário (pelo número cadastrado), registra lançamentos por <strong>texto, áudio e print</strong>, e pergunta quando
+        estiver em dúvida se é receita ou despesa. Usuário comum acessa só a própria conta; administrador acessa todos.
+        Com a IA ligada, o repasse ao n8n é ignorado.
+      </p>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px">
+        <div>
+          <div style="font-weight:600;font-size:.9rem">Ativar assistente de IA</div>
+          <div style="font-size:.8rem;color:var(--text-muted);margin-top:2px">
+            Exige as chaves configuradas abaixo. Groq para texto/raciocínio, Gemini para áudio e imagens.
+          </div>
+        </div>
+        <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer;flex-shrink:0">
+          <input type="checkbox" id="ai-enabled-toggle" ${enabled ? 'checked' : ''}
+            style="width:0;height:0;opacity:0;position:absolute"
+            onchange="(function(c){var t=document.getElementById('ai-enabled-track'),k=document.getElementById('ai-enabled-knob');if(t)t.style.background=c?'var(--primary-600)':'var(--border)';if(k)k.style.left=c?'23px':'3px';})(this.checked)">
+          <div id="ai-enabled-track" style="
+            width:46px;height:26px;border-radius:13px;transition:background .2s;
+            background:${enabled ? 'var(--primary-600)' : 'var(--border)'};position:relative">
+            <div style="position:absolute;top:3px;left:${enabled ? '23px' : '3px'};
+              width:20px;height:20px;border-radius:50%;background:#fff;
+              box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s" id="ai-enabled-knob"></div>
+          </div>
+        </label>
+      </div>
+
+      <!-- Groq (texto/raciocínio) -->
+      <div style="border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('brain', 13)} Groq — texto e raciocínio</div>
+        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px">
+          Chave da API Groq (console.groq.com). Usada para entender pedidos e classificar receita/despesa.
+        </div>
+        <label class="form-label" style="font-size:.78rem">Chave da API Groq</label>
+        <input id="ai-groq-key" type="password" class="form-input"
+          placeholder="gsk_…" value="${_escHtml(cfg.groqKey || '')}"
+          style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:10px">
+        <label class="form-label" style="font-size:.78rem">Modelo Groq</label>
+        <input id="ai-groq-model" type="text" class="form-input"
+          placeholder="llama-3.3-70b-versatile" value="${_escHtml(cfg.groqModel || '')}"
+          style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:6px">
+      </div>
+
+      <!-- Gemini (áudio + imagem) -->
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px">
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('image', 13)} Gemini — áudio e imagens/prints</div>
+        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px">
+          Chave da API Gemini (aistudio.google.com). Usada para transcrever áudios e interpretar prints.
+        </div>
+        <label class="form-label" style="font-size:.78rem">Chave da API Gemini</label>
+        <input id="ai-gemini-key" type="password" class="form-input"
+          placeholder="AIza…" value="${_escHtml(cfg.geminiKey || '')}"
+          style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:10px">
+        <label class="form-label" style="font-size:.78rem">Modelo Gemini</label>
+        <input id="ai-gemini-model" type="text" class="form-input"
+          placeholder="gemini-2.0-flash" value="${_escHtml(cfg.geminiModel || '')}"
+          style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:6px">
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn btn-primary" onclick="_aiSaveConfig()" id="ai-save-btn" style="font-size:.85rem;white-space:nowrap">
+          ${icon('save', 14)} Salvar configuração de IA
+        </button>
+      </div>
+      <div id="ai-feedback" style="font-size:.78rem;margin-top:10px"></div>
+    </div>`;
+}
+
+async function _aiSaveConfig() {
+  const btn = document.getElementById('ai-save-btn');
+  const fb  = document.getElementById('ai-feedback');
+  const enabled     = document.getElementById('ai-enabled-toggle')?.checked ? '1' : '0';
+  const groqKey     = (document.getElementById('ai-groq-key')?.value || '').trim();
+  const groqModel   = (document.getElementById('ai-groq-model')?.value || '').trim() || 'llama-3.3-70b-versatile';
+  const geminiKey   = (document.getElementById('ai-gemini-key')?.value || '').trim();
+  const geminiModel = (document.getElementById('ai-gemini-model')?.value || '').trim() || 'gemini-2.0-flash';
+
+  if (enabled === '1' && !groqKey) {
+    toast('Para ativar a IA, informe ao menos a chave da Groq (texto).', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = icon('loader', 14) + ' Salvando…';
+  try {
+    await _api('PUT', '/admin/users?resource=system-settings', {
+      ai_enabled: enabled,
+      ai_groq_key: groqKey,
+      ai_groq_model: groqModel,
+      ai_gemini_key: geminiKey,
+      ai_gemini_model: geminiModel,
+    });
+    if (fb) {
+      fb.innerHTML = `<div style="background:var(--income-light,#dcfce7);border-radius:var(--r-md);
+        padding:6px 10px;color:var(--income-text,#16a34a)">
+        ✓ Configuração de IA salva.${enabled === '1' ? ' Assistente ATIVO no WhatsApp.' : ' Assistente desativado.'}
+      </div>`;
+      setTimeout(() => { if (fb) fb.innerHTML = ''; }, 3500);
+    }
+    toast('Configuração de IA salva', 'success');
+  } catch(e) {
+    if (fb) fb.innerHTML = `<div style="background:#fee2e2;border-radius:var(--r-md);
+      padding:6px 10px;color:#dc2626">Erro: ${_escHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = icon('save', 14) + ' Salvar configuração de IA';
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
+  }
 }
 
 // ── Render Admin Logs ─────────────────────────────────────────────────────────

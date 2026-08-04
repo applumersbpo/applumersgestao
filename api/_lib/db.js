@@ -447,6 +447,16 @@ export async function initDb() {
       error TEXT DEFAULT '',
       sent_at TEXT DEFAULT (datetime('now'))
     )`,
+    // Estado de conversa do assistente de WhatsApp por telefone. Guarda o contexto
+    // pendente (ex.: um lançamento aguardando o usuário dizer se é receita ou despesa)
+    // e um histórico curto de turnos para dar memória de curto prazo ao assistente.
+    `CREATE TABLE IF NOT EXISTS wa_conversations (
+      phone TEXT PRIMARY KEY,
+      user_id TEXT DEFAULT '',
+      pending TEXT DEFAULT '',
+      history TEXT DEFAULT '',
+      updated_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {
@@ -591,6 +601,16 @@ export async function initDb() {
   await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_notif_prefs ON user_notification_prefs(user_id, notif_key)");
   // Cooldown de regras: busca rápida pelo último disparo de (regra, usuário).
   await db.execute("CREATE INDEX IF NOT EXISTS idx_notif_rule_sends ON notification_rule_sends(rule_id, user_id, sent_at)");
+
+  // ===== Assistente de IA no WhatsApp =====
+  // Seeds idempotentes (INSERT OR IGNORE preserva valores já configurados no painel).
+  // ai_enabled liga/desliga o assistente. As chaves ficam vazias até o admin colar
+  // no painel. Modelos default: Groq para texto/raciocínio, Gemini para áudio/imagem.
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_enabled', '0')", args: [] });
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_groq_key', '')", args: [] });
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_groq_model', 'llama-3.3-70b-versatile')", args: [] });
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_gemini_key', '')", args: [] });
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_gemini_model', 'gemini-2.0-flash')", args: [] });
 
   // Seed e-mail system settings (INSERT OR IGNORE keeps existing values)
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('email_enabled', '0')", args: [] });
