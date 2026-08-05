@@ -1,5 +1,5 @@
 import { getDb, rowsToObjects } from './db.js';
-import { getAiConfig, groqChat, groqTranscribeAudio, geminiTranscribeAudio, geminiReadImage } from './ai.js';
+import { getAiConfig, groqChat, groqTranscribeAudio, groqReadImage, geminiTranscribeAudio, geminiReadImage } from './ai.js';
 import { sendText, evoBase, resolveKey, headers } from './evolution.js';
 
 // ── Helpers de infraestrutura ────────────────────────────────────────────────
@@ -288,9 +288,15 @@ export async function handleAssistantMessage(msg, instanceName) {
           : await geminiTranscribeAudio({ key: cfg.geminiKey, model: cfg.geminiModel, base64: b64, mime });
       }
     } else if (m.imageMessage) {
-      if (!cfg.geminiKey) { await reply('Recebi seu print, mas a interpretação de imagens ainda não está configurada. Pode me mandar os dados por texto? 🙂'); return { handled: true, reason: 'no_gemini' }; }
+      // Print/imagem é lido pelo Groq (visão, cota própria). Fallback para o Gemini.
+      if (!cfg.groqKey && !cfg.geminiKey) { await reply('Recebi seu print, mas a interpretação de imagens ainda não está configurada. Pode me mandar os dados por texto? 🙂'); return { handled: true, reason: 'no_image_provider' }; }
       const b64 = await getMediaBase64(inst.name, inst.api_key, msg.key);
-      if (b64) imageContext = await geminiReadImage({ key: cfg.geminiKey, model: cfg.geminiModel, base64: b64, mime: m.imageMessage.mimetype || 'image/jpeg' });
+      const mime = m.imageMessage.mimetype || 'image/jpeg';
+      if (b64) {
+        imageContext = cfg.groqKey
+          ? await groqReadImage({ key: cfg.groqKey, base64: b64, mime })
+          : await geminiReadImage({ key: cfg.geminiKey, model: cfg.geminiModel, base64: b64, mime });
+      }
       userText = m.imageMessage.caption || '';
     }
   } catch (e) {

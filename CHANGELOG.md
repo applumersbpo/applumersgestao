@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.17.1] — 2026-08-04
+
+### Melhorado
+- **Leitura de prints/imagens agora via Groq (visão)** — os prints passam a ser interpretados pelo modelo de visão `meta-llama/llama-4-scout-17b-16e-instruct` da Groq (cota própria, separada do Gemini), resolvendo as falhas de cota (HTTP 429) do Gemini também nas imagens. O Gemini permanece como fallback. Com isso, tanto áudio quanto imagem rodam pela chave Groq.
+
+---
+
 ## [v1.17.0] — 2026-08-04
 
 ### Adicionado

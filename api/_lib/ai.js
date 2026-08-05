@@ -81,6 +81,23 @@ export async function groqTranscribeAudio({ key, model = 'whisper-large-v3-turbo
   return (text || '').trim();
 }
 
+// Interpreta imagem/print (base64) via Groq (modelo de visão Llama 4).
+// Cota própria do Groq, separada do Gemini. Usa o endpoint chat/completions
+// com conteúdo multimodal (image_url em data URL).
+export async function groqReadImage({ key, model = 'meta-llama/llama-4-scout-17b-16e-instruct', base64, mime = 'image/jpeg', prompt }) {
+  const type = cleanMime(mime, 'image/jpeg');
+  const content = [
+    {
+      type: 'text',
+      text:
+        prompt ||
+        'Este é um print enviado por um usuário de um app financeiro. Extraia de forma objetiva: valor(es) em reais, nome/descrição do gasto ou recebimento, data (se houver) e se aparenta ser RECEITA ou DESPESA. Se não for um comprovante/financeiro, descreva brevemente o que é. Responda em português, curto.',
+    },
+    { type: 'image_url', image_url: { url: `data:${type};base64,${base64}` } },
+  ];
+  return groqChat({ key, model, messages: [{ role: 'user', content }], temperature: 0.2 });
+}
+
 // Transcreve áudio (base64) para texto PT-BR via Gemini.
 export async function geminiTranscribeAudio({ key, model, base64, mime = 'audio/ogg' }) {
   return geminiGenerate({
