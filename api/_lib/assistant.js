@@ -830,6 +830,18 @@ async function createImprovement(user, phone, text) {
   return id;
 }
 
+async function notifyAdminsNewImprovement(inst, user, phone, ideaText) {
+  const admins = await listAdminPhones();
+  const who = user.name || user.email || phone || 'Usuário';
+  const contact = user.email ? `\n✉️ ${user.email}` : '';
+  const text = `💡 *Nova sugestão de melhoria*\n\n👤 ${who}${contact}\n📱 ${phone || '—'}\n\nSugestão:\n"${String(ideaText || '').slice(0, 1000)}"`;
+  for (const a of admins) {
+    try { await sendText({ name: inst.name, key: inst.api_key || null, number: a.phone, text }); }
+    catch (e) { console.error('[assistant] notificar admin de melhoria falhou', e?.message); }
+  }
+  return admins.length;
+}
+
 // ── Textos de ajuda / menu ───────────────────────────────────────────────────
 
 const HELP_OVERVIEW = `🤖 *Assistente Lumers Flow — Ajuda*
@@ -1036,6 +1048,7 @@ async function handleWaCommands({ user, isAdmin, phone, userText, inType, reply,
     const idea = raw.replace(/^\/melhorias?\s*/i, '').trim();
     if (idea) {
       await createImprovement(user, phone, idea);
+      await notifyAdminsNewImprovement(inst, user, phone, idea);
       const out = `💡 Recebi sua sugestão, ${firstName(user.name)}! Ela foi registrada e será analisada pela equipe. Você recebe um retorno por aqui quando ela for avaliada. Obrigado! 🙌`;
       await reply(out);
       await saveConversation(phone, user.id, null, conv.history || []);
@@ -1060,6 +1073,7 @@ async function handleWaCommands({ user, isAdmin, phone, userText, inType, reply,
   // Continuação de modos pendentes
   if (conv.pending?.type === 'improvement') {
     await createImprovement(user, phone, raw);
+    await notifyAdminsNewImprovement(inst, user, phone, raw);
     const out = `💡 Recebi sua sugestão, ${firstName(user.name)}! Ela foi registrada e será analisada pela equipe. Você recebe um retorno por aqui quando ela for avaliada. Obrigado! 🙌`;
     await reply(out);
     await saveConversation(phone, user.id, null, conv.history || []);

@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.30.0] — 2026-08-05
+
+### Adicionado
+- **Notificação aos admins quando um usuário envia uma sugestão de melhoria** — sempre que qualquer usuário envia uma melhoria pelo WhatsApp (comando `/melhorias` ou no modo pendente), todos os administradores com telefone cadastrado recebem uma mensagem informando quem enviou (nome/e-mail/telefone) e o conteúdo da sugestão.
+
+---
+
 ## [v1.29.1] — 2026-08-05
 
 ### Corrigido
