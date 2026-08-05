@@ -188,7 +188,7 @@ function brl(v) {
 
 // ── Registro de lançamento ───────────────────────────────────────────────────
 
-async function insertTransaction(userId, { name, amount, type, kind, accountId }) {
+async function insertTransaction(userId, { name, amount, type, kind, accountId, categoryId }) {
   const db = getDb();
   const id = crypto.randomUUID();
   const now = new Date();
@@ -196,8 +196,8 @@ async function insertTransaction(userId, { name, amount, type, kind, accountId }
   const today = iso.slice(0, 10);
   await db.execute({
     sql: `INSERT INTO transactions (id, user_id, name, amount, transaction_type, kind, status, due_date, paid_date, cash_date, month, year, notes, category_id, template_id, account_id, source, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, 'Registrado via WhatsApp', '', '', ?, 'whatsapp', ?)`,
-    args: [id, userId, name || 'Lançamento', Number(amount) || 0, type === 'income' ? 'income' : 'expense', kind === 'fixed' ? 'fixed' : 'variable', today, today, today, now.getMonth() + 1, now.getFullYear(), accountId || '', iso],
+          VALUES (?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, 'Registrado via WhatsApp', ?, '', ?, 'whatsapp', ?)`,
+    args: [id, userId, name || 'Lançamento', Number(amount) || 0, type === 'income' ? 'income' : 'expense', kind === 'fixed' ? 'fixed' : 'variable', today, today, today, now.getMonth() + 1, now.getFullYear(), categoryId || '', accountId || '', iso],
   });
   return id;
 }
@@ -232,6 +232,130 @@ function findAccountByName(accounts, name) {
     const bn = String(a.bank_name || '').toLowerCase();
     return an === n || bn === n || (an && (an.includes(n) || n.includes(an))) || (bn && (bn.includes(n) || n.includes(bn)));
   }) || null;
+}
+
+// ── Categorias do usuário ─────────────────────────────────────────────────────
+
+async function getUserCategories(userId) {
+  const db = getDb();
+  const { rows } = await db.execute({ sql: 'SELECT id, name, type, icon FROM categories WHERE user_id=?', args: [userId] });
+  return rowsToObjects(rows);
+}
+
+// Casa o nome citado ("mercado", "salário") com uma categoria existente.
+function findCategoryByName(categories, name) {
+  if (!name) return null;
+  const n = String(name).trim().toLowerCase();
+  if (!n) return null;
+  return categories.find((c) => {
+    const cn = String(c.name || '').toLowerCase();
+    return cn === n || (cn && (cn.includes(n) || n.includes(cn)));
+  }) || null;
+}
+
+// ── Fluxo conversacional de lançamento (conta → categoria → registrar) ─────────
+// O usuário precisa dizer em qual banco/conta registrar. Sem conta cadastrada,
+// oferecemos criar na hora. A categoria é opcional (melhora os relatórios).
+
+function _txVerb(tx) { return tx.type === 'income' ? 'a receita' : 'a despesa'; }
+function _txSummary(tx) { return `${_txVerb(tx)} "${tx.name}" de ${brl(tx.amount)}`; }
+
+// Decide o próximo passo do fluxo. Se todos os dados necessários já existem,
+// registra e retorna { pending: null }. Caso contrário, faz UMA pergunta.
+async function nextTxStep(user, tx, accounts, categories) {
+  // 1) Conta/banco — obrigatório
+  if (!tx.accountId) {
+    if (!accounts.length) {
+      const out = `📌 Você ainda não tem nenhum *banco/conta* cadastrado. Para registrar ${_txSummary(tx)}, me diga o *nome do banco* (ex.: Nubank, Itaú, PicPay) que eu crio a conta e já registro tudo. 😊\n\n_(ou responda *cancelar* para desistir)_`;
+      return { answer: out, pending: { type: 'tx_flow', step: 'account_create', tx } };
+    }
+    const list = accounts.map((a, i) => `*${i + 1}* — ${a.name}${a.bank_name ? ` (${a.bank_name})` : ''}`).join('\n');
+    const out = `Em qual *banco/conta* devo registrar ${_txSummary(tx)}?\n\n${list}\n\nResponda com o *número* ou o *nome*. Para um banco novo, envie *novo Nome* (ex.: novo PicPay).`;
+    return { answer: out, pending: { type: 'tx_flow', step: 'account', tx, accounts } };
+  }
+
+  // 2) Categoria — opcional (só pergunta se não identificou e existem categorias do tipo)
+  if (!tx.categoryId && !tx.categorySkipped) {
+    const cats = (categories || []).filter((c) => !c.type || c.type === tx.type);
+    if (cats.length) {
+      const list = cats.map((c, i) => `*${i + 1}* — ${c.icon ? c.icon + ' ' : ''}${c.name}`).join('\n');
+      const out = `Não identifiquei a *categoria*. Quer classificar ${_txVerb(tx)} para melhorar seus relatórios?\n\n${list}\n\nResponda com o *número*/*nome*, ou *pular*.`;
+      return { answer: out, pending: { type: 'tx_flow', step: 'category', tx, accounts, categories: cats } };
+    }
+  }
+
+  // 3) Tudo resolvido — registra
+  await insertTransaction(user.id, {
+    name: tx.name, amount: tx.amount, type: tx.type, kind: tx.kind,
+    accountId: tx.accountId, categoryId: tx.categoryId,
+  });
+  const acc = (accounts || []).find((a) => a.id === tx.accountId);
+  const accNote = acc ? ` na conta ${acc.name}` : '';
+  const catNote = tx.categoryName ? ` · ${tx.categoryName}` : '';
+  const out = `Pronto, ${firstName(user.name)}! Registrei ${_txSummary(tx)}${accNote}${catNote}. ✅`;
+  return { answer: out, pending: null };
+}
+
+// Processa a resposta do usuário em cada passo do fluxo de lançamento.
+async function runTxFlow(user, pending, raw) {
+  const text = String(raw || '').trim();
+  const low = text.toLowerCase();
+  const tx = pending.tx || {};
+
+  if (/^(cancela|cancelar|deixa|para|parar|desisto|desistir)$/i.test(low)) {
+    return { answer: 'Ok, cancelei o registro. 🙂', pending: null };
+  }
+
+  if (pending.step === 'account_create') {
+    if (!text) return { answer: 'Me diga o *nome do banco* para eu criar a conta (ex.: Nubank).', pending };
+    const accId = await insertAccount(user.id, { name: text, bank_name: text, initial_balance: 0, type: 'checking' });
+    tx.accountId = accId;
+    const accounts = await getUserAccounts(user.id);
+    return await nextTxStep(user, tx, accounts, await getUserCategories(user.id));
+  }
+
+  if (pending.step === 'account') {
+    let accounts = pending.accounts || await getUserAccounts(user.id);
+    const mNew = text.match(/^novo\s+(.+)/i);
+    if (mNew) {
+      const bankName = mNew[1].trim();
+      const accId = await insertAccount(user.id, { name: bankName, bank_name: bankName, initial_balance: 0, type: 'checking' });
+      tx.accountId = accId;
+      accounts = await getUserAccounts(user.id);
+      return await nextTxStep(user, tx, accounts, await getUserCategories(user.id));
+    }
+    let acc = null;
+    const num = parseInt(low, 10);
+    if (!isNaN(num) && num >= 1 && num <= accounts.length) acc = accounts[num - 1];
+    if (!acc) acc = findAccountByName(accounts, text);
+    if (!acc) {
+      const list = accounts.map((a, i) => `*${i + 1}* — ${a.name}${a.bank_name ? ` (${a.bank_name})` : ''}`).join('\n');
+      return { answer: `Não identifiquei a conta. Escolha pelo *número* ou *nome*:\n\n${list}\n\nOu envie *novo Nome* para criar uma.`, pending };
+    }
+    tx.accountId = acc.id;
+    return await nextTxStep(user, tx, accounts, await getUserCategories(user.id));
+  }
+
+  if (pending.step === 'category') {
+    const cats = pending.categories || [];
+    const accounts = pending.accounts || await getUserAccounts(user.id);
+    if (/^(pular|pula|sem|nenhuma|nao|não|skip)$/i.test(low)) {
+      tx.categorySkipped = true;
+      return await nextTxStep(user, tx, accounts, cats);
+    }
+    let cat = null;
+    const num = parseInt(low, 10);
+    if (!isNaN(num) && num >= 1 && num <= cats.length) cat = cats[num - 1];
+    if (!cat) cat = findCategoryByName(cats, text);
+    if (!cat) {
+      const list = cats.map((c, i) => `*${i + 1}* — ${c.name}`).join('\n');
+      return { answer: `Não identifiquei a categoria. Escolha pelo *número*/*nome* ou envie *pular*:\n\n${list}`, pending };
+    }
+    tx.categoryId = cat.id; tx.categoryName = cat.name;
+    return await nextTxStep(user, tx, accounts, cats);
+  }
+
+  return { answer: 'Vamos recomeçar: me diga o lançamento (ex.: "gastei 30 com almoço").', pending: null };
 }
 
 // ── Gestão de usuários do sistema (somente admin) ────────────────────────────
@@ -918,6 +1042,15 @@ async function handleWaCommands({ user, isAdmin, phone, userText, inType, reply,
     return { handled: true, reason: 'system_menu_step' };
   }
 
+  // Continuação do fluxo de lançamento (escolha de banco/conta e categoria)
+  if (conv.pending?.type === 'tx_flow') {
+    const r = await runTxFlow(user, conv.pending, raw);
+    await reply(r.answer);
+    await saveConversation(phone, user.id, r.pending, conv.history || []);
+    await logInteraction({ phone, user, inType, inText: raw, outText: r.answer, action: 'tx_flow_step' });
+    return { handled: true, reason: 'tx_flow_step' };
+  }
+
   return { handled: false };
 }
 
@@ -954,13 +1087,13 @@ O QUE VOCÊ PODE FAZER:
 
 REGRAS DE CLASSIFICAÇÃO (siga com atenção):
 - CRIAR CONTA/CARTEIRA: se o usuário pedir para "criar/cadastrar/adicionar/abrir" uma "conta", "carteira", "banco" (ex.: Nubank, Itaú, PicPay) — mesmo mencionando um saldo — use action "create_account" e preencha "account" com { name, bank_name, initial_balance, type }. NUNCA registre isso como receita. Se o nome for de um banco conhecido, use-o também em bank_name. type: "checking" (conta corrente, padrão), "savings" (poupança) ou "wallet" (carteira/dinheiro).
-- REGISTRAR LANÇAMENTO: use action "register" com type "income" (receita/entrada) ou "expense" (despesa/saída). Se o usuário citar uma conta ("no Nubank", "pelo Itaú"), preencha transaction.account_name com esse nome. Se ele indicar que é fixo/recorrente ou variável/avulso, preencha transaction.kind ("fixed" ou "variable"); na dúvida deixe null.
+- REGISTRAR LANÇAMENTO: use action "register" com type "income" (receita/entrada) ou "expense" (despesa/saída). Se o usuário citar uma conta ("no Nubank", "pelo Itaú"), preencha transaction.account_name com esse nome. Se ele indicar que é fixo/recorrente ou variável/avulso, preencha transaction.kind ("fixed" ou "variable"); na dúvida deixe null. Se der para inferir a categoria pelo contexto (ex.: "almoço" → Alimentação; "salário" → Salário; "uber" → Transporte), preencha transaction.category_name; na dúvida deixe null. NÃO pergunte sobre banco/conta nem categoria no "reply": o próprio sistema conduz essas perguntas depois.
 - Se o usuário quer registrar um valor mas NÃO está claro se é RECEITA ou DESPESA (e não é criação de conta), use action "clarify" e pergunte gentilmente.
 
 Responda SEMPRE em JSON válido com este formato exato:
 {
   "action": "register" | "create_account" | "manage_user" | "clarify" | "query" | "answer",
-  "transaction": { "name": "string curta do lançamento", "amount": number, "type": "income" | "expense" | null, "kind": "fixed" | "variable" | null, "account_name": "string" | null },
+  "transaction": { "name": "string curta do lançamento", "amount": number, "type": "income" | "expense" | null, "kind": "fixed" | "variable" | null, "account_name": "string" | null, "category_name": "string" | null },
   "account": { "name": "string", "bank_name": "string", "initial_balance": number, "type": "checking" | "savings" | "wallet" | null },
   "user_op": { "op": "create" | "edit" | "delete" | null, "name": "string" | null, "email": "string" | null, "password": "string" | null, "phone": "string" | null, "target": "string" | null, "generate_password": boolean },
   "query_scope": "self" | "all_users",
@@ -1183,10 +1316,18 @@ export async function handleAssistantMessage(msg, instanceName) {
         newPending = { type: 'transaction', name, amount: 0 };
         answer = 'Entendi o lançamento, mas não peguei o valor. Qual é o valor?';
       } else {
+        // Fluxo guiado: resolve banco/conta (pergunta ou cria) e categoria (opcional)
         const acc = findAccountByName(accounts, t.account_name);
-        await insertTransaction(user.id, { name, amount, type, kind: t.kind, accountId: acc?.id });
-        const accNote = acc ? ` na conta ${acc.name}` : '';
-        answer = intent.reply || `Pronto, ${firstName(user.name)}! Registrei ${type === 'income' ? 'a receita' : 'a despesa'} "${name}" de ${brl(amount)}${accNote}. ✅`;
+        const categories = await getUserCategories(user.id);
+        const cat = findCategoryByName(categories.filter((c) => !c.type || c.type === type), t.category_name);
+        const tx = {
+          name, amount, type, kind: t.kind || null,
+          accountId: acc?.id || null,
+          categoryId: cat?.id || null, categoryName: cat?.name || null,
+        };
+        const step = await nextTxStep(user, tx, accounts, categories);
+        answer = step.answer;
+        newPending = step.pending;
       }
     } else if (intent.action === 'query') {
       const scope = intent.query_scope === 'all_users' && isAdmin ? 'all_users' : 'self';

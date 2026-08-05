@@ -5,6 +5,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.29.0] — 2026-08-05
+
+### Melhorado
+- **Registro de lançamento no WhatsApp agora pergunta o banco/conta** — ao registrar uma receita/despesa, se o usuário não indicar a conta, o assistente pergunta em qual banco registrar (lista as contas cadastradas; aceita número, nome ou `novo <Banco>`). Se o usuário **não tiver nenhuma conta cadastrada**, o assistente informa e sugere criar a conta na hora — basta enviar o nome do banco que ele cria a conta e já registra tudo.
+- **Categoria opcional no lançamento** — quando a categoria não é identificada automaticamente, o assistente oferece as categorias do usuário (número/nome) para classificar e melhorar os relatórios, com opção de `pular`. Quando dá para inferir (ex.: "almoço" → Alimentação), classifica sozinho sem perguntar.
+
+---
+
 ## [v1.28.1] — 2026-08-05
 
 ### Corrigido
