@@ -5,6 +5,20 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.18.0] — 2026-08-04
+
+### Adicionado
+- **Modal de exclusão no padrão Lumers Flow** — o `confirm()` nativo do navegador foi substituído por um modal estilizado em todas as listas de lançamentos (Despesas, Receitas, Transações, Dia a Dia, Contas a Pagar). Para itens de **parcelamento** ou **recorrência**, o modal pergunta se deseja "Excluir apenas esta" ou "Excluir todo o parcelamento/recorrência".
+- **Exclusão que realmente persiste em parcelamentos/recorrências** — excluir "apenas esta" marca o mês como pulado no pai (`skip_months`), evitando que a ocorrência seja recriada pela regeneração automática; "excluir todo o parcelamento" remove o pai e todas as parcelas geradas.
+- **Seletor de mês/ano** — o mês exibido no topo agora é clicável e abre um seletor rápido para saltar para qualquer mês/ano, com botão "Ir para o mês atual".
+- **Assistente WhatsApp cria contas/carteiras** — pedidos como "cadastre a carteira Nubank com saldo de R$200" passam a criar uma conta com saldo inicial (não mais um lançamento de receita). O assistente também conhece as contas já cadastradas e atribui lançamentos à conta citada ("no Nubank").
+- **Gestão de usuários pelo assistente (apenas admin)** — administradores podem criar, editar e excluir usuários do sistema via WhatsApp. O assistente coleta os dados necessários (nome, e-mail, senha e telefone opcional) de forma conversacional, insistindo até completar, gera senha quando solicitado e pede confirmação antes de excluir.
+
+### Corrigido
+- **Exclusão de despesas/receitas que "não apagavam"** — ocorrências de parcelamentos e recorrências voltavam ao recarregar por serem regeneradas a partir do registro-pai; agora a exclusão é respeitada.
+
+---
+
 ## [v1.17.1] — 2026-08-04
 
 ### Melhorado

@@ -147,11 +147,11 @@ function bindIncomeActions() {
       openIncomeModal(t.month, t.year, t);
     }
     if (action === 'delete') {
-      if (!confirm('Excluir esta receita?')) return;
-      await db.transactions.delete(id);
-      _incCache.txs = _incCache.txs.filter(t => t.id !== id);
-      toast('Receita excluída');
-      _incFilterRender();
+      const t = _incCache.txs.find(x => x.id === id) || await db.transactions.get(id);
+      confirmDeleteTx(t, () => {
+        _incCache.txs = _incCache.txs.filter(x => x.id !== id);
+        _incFilterRender();
+      });
     }
   });
 

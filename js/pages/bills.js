@@ -100,10 +100,8 @@ function bindBillActions() {
         const t = await db.transactions.get(id);
         openBillModal(t.month, t.year, t);
       } else if (action === 'delete') {
-        if (!confirm('Excluir esta conta?')) return;
-        await db.transactions.delete(id);
-        toast('Conta excluída');
-        app.render();
+        const t = await db.transactions.get(id);
+        if (t) confirmDeleteTx(t, () => app.render());
       }
     } else {
       const t = await db.transactions.get(item.dataset.id);

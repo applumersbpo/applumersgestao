@@ -109,10 +109,8 @@ function bindDailyActions() {
         const t = await db.transactions.get(id);
         if (t) openDailyModal(t);
       } else if (action === 'delete') {
-        if (!confirm('Excluir este gasto?')) return;
-        await db.transactions.delete(id);
-        toast('Gasto excluído');
-        renderDaily();
+        const t = await db.transactions.get(id);
+        if (t) confirmDeleteTx(t, () => renderDaily());
       }
     } else {
       const t = await db.transactions.get(item.dataset.id);

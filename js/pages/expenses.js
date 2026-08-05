@@ -149,11 +149,11 @@ function bindExpenseActions(month, year) {
         const t = await db.transactions.get(id);
         if (t) openExpenseModal(t.month, t.year, t);
       } else if (action === 'delete') {
-        if (!confirm('Excluir este gasto?')) return;
-        await db.transactions.delete(id);
-        _expCache.txs = _expCache.txs.filter(t => t.id !== id);
-        toast('Gasto excluído');
-        _expFilterRender();
+        const t = _expCache.txs.find(x => x.id === id) || await db.transactions.get(id);
+        confirmDeleteTx(t, () => {
+          _expCache.txs = _expCache.txs.filter(x => x.id !== id);
+          _expFilterRender();
+        });
       }
     } else {
       const t = await db.transactions.get(item.dataset.id);

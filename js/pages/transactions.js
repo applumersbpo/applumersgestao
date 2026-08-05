@@ -55,7 +55,8 @@ document.addEventListener('click', async e => {
     const t = await db.transactions.get(btn.dataset.id); openTransactionModal(t);
   }
   if (btn.dataset.action === 'delete-tx') {
-    const id = btn.dataset.id; if (!confirm('Excluir lançamento?')) return; await db.transactions.delete(id); toast('Excluído'); renderTransactions();
+    const t = await db.transactions.get(btn.dataset.id);
+    if (t) confirmDeleteTx(t, () => renderTransactions());
   }
 });
 

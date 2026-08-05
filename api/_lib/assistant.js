@@ -1,6 +1,7 @@
 import { getDb, rowsToObjects } from './db.js';
 import { getAiConfig, groqChat, groqTranscribeAudio, groqReadImage, geminiTranscribeAudio, geminiReadImage } from './ai.js';
 import { sendText, evoBase, resolveKey, headers } from './evolution.js';
+import bcrypt from 'bcryptjs';
 
 // ── Helpers de infraestrutura ────────────────────────────────────────────────
 
@@ -186,29 +187,237 @@ function brl(v) {
 
 // ── Registro de lançamento ───────────────────────────────────────────────────
 
-async function insertTransaction(userId, { name, amount, type }) {
+async function insertTransaction(userId, { name, amount, type, kind, accountId }) {
   const db = getDb();
   const id = crypto.randomUUID();
   const now = new Date();
   const iso = now.toISOString();
   const today = iso.slice(0, 10);
   await db.execute({
-    sql: `INSERT INTO transactions (id, user_id, name, amount, transaction_type, kind, status, due_date, paid_date, month, year, notes, category_id, template_id, source, created_at)
-          VALUES (?, ?, ?, ?, ?, 'variable', 'paid', ?, ?, ?, ?, 'Registrado via WhatsApp', '', '', 'whatsapp', ?)`,
-    args: [id, userId, name || 'Lançamento', Number(amount) || 0, type === 'income' ? 'income' : 'expense', today, today, now.getMonth() + 1, now.getFullYear(), iso],
+    sql: `INSERT INTO transactions (id, user_id, name, amount, transaction_type, kind, status, due_date, paid_date, cash_date, month, year, notes, category_id, template_id, account_id, source, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, 'Registrado via WhatsApp', '', '', ?, 'whatsapp', ?)`,
+    args: [id, userId, name || 'Lançamento', Number(amount) || 0, type === 'income' ? 'income' : 'expense', kind === 'fixed' ? 'fixed' : 'variable', today, today, today, now.getMonth() + 1, now.getFullYear(), accountId || '', iso],
   });
   return id;
 }
 
+// Cria uma conta/carteira do usuário. O saldo informado vira o saldo inicial
+// (initial_balance), NUNCA uma receita/lançamento.
+async function insertAccount(userId, { name, bank_name, initial_balance, type }) {
+  const db = getDb();
+  const id = crypto.randomUUID();
+  const today = new Date().toISOString().slice(0, 10);
+  await db.execute({
+    sql: `INSERT INTO accounts (id, user_id, name, bank_name, type, currency, initial_balance, initial_balance_date, notes, created_at)
+          VALUES (?, ?, ?, ?, ?, 'BRL', ?, ?, 'Criada via WhatsApp', datetime('now'))`,
+    args: [id, userId, name || 'Conta', bank_name || '', type || 'checking', Number(initial_balance) || 0, today],
+  });
+  return id;
+}
+
+async function getUserAccounts(userId) {
+  const db = getDb();
+  const { rows } = await db.execute({ sql: 'SELECT id, name, bank_name, initial_balance FROM accounts WHERE user_id=?', args: [userId] });
+  return rowsToObjects(rows);
+}
+
+// Casa o nome citado pelo usuário ("no Nubank") com uma conta existente.
+function findAccountByName(accounts, name) {
+  if (!name) return null;
+  const n = String(name).trim().toLowerCase();
+  if (!n) return null;
+  return accounts.find((a) => {
+    const an = String(a.name || '').toLowerCase();
+    const bn = String(a.bank_name || '').toLowerCase();
+    return an === n || bn === n || (an && (an.includes(n) || n.includes(an))) || (bn && (bn.includes(n) || n.includes(bn)));
+  }) || null;
+}
+
+// ── Gestão de usuários do sistema (somente admin) ────────────────────────────
+
+// Normaliza telefone BR p/ o formato canônico: 55 + DDD(2) + 9 + 8 dígitos.
+// Retorna '' se vazio; null se inválido; caso contrário o número canônico.
+function canonicalBrazilPhone(raw) {
+  const d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  let local = d;
+  if (local.length > 11 && local.startsWith('55')) local = local.slice(2);
+  if (local.length < 10 || local.length > 11) return null;
+  const ddd = local.slice(0, 2);
+  let rest = local.slice(2);
+  if (rest.length === 10) rest = rest.slice(-9);
+  if (rest.length === 8 && /^[6-9]/.test(rest)) rest = '9' + rest;
+  return '55' + ddd + rest;
+}
+
+function randomPassword() {
+  const bytes = crypto.getRandomValues(new Uint8Array(9));
+  return 'Lf' + Array.from(bytes).map((b) => b.toString(36)).join('').slice(0, 8);
+}
+
+function isValidEmail(e) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim());
+}
+
+// Cria um usuário do sistema (mesma lógica do painel admin). Retorna {ok, id?, error?}.
+async function createSystemUser({ name, email, password, phone }) {
+  const db = getDb();
+  const mail = String(email || '').toLowerCase().trim();
+  if (!name || !mail || !password) return { ok: false, error: 'faltam dados obrigatórios' };
+  if (!isValidEmail(mail)) return { ok: false, error: 'e-mail inválido' };
+  if (String(password).length < 8) return { ok: false, error: 'senha mínima de 8 caracteres' };
+  const normalizedPhone = canonicalBrazilPhone(phone);
+  if (phone && String(phone).replace(/\D/g, '').length && normalizedPhone === null) {
+    return { ok: false, error: 'telefone inválido' };
+  }
+  const { rows: existing } = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [mail] });
+  if (rowsToObjects(existing).length > 0) return { ok: false, error: 'e-mail já cadastrado' };
+  const hash = await bcrypt.hash(String(password), 10);
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.execute({
+    sql: 'INSERT INTO users (id, email, password_hash, name, phone, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    args: [id, mail, hash, name, normalizedPhone || '', now],
+  });
+  await db.execute({
+    sql: 'INSERT INTO user_plans (id, user_id, email, name, monthly_fee, active) VALUES (?, ?, ?, ?, 0, 1)',
+    args: [crypto.randomUUID(), id, mail, name],
+  });
+  return { ok: true, id };
+}
+
+// Localiza um usuário-alvo por e-mail (exato) ou nome (parcial). Ignora admins? Não —
+// admin pode gerenciar qualquer conta comum; evitamos alvejar a si mesmo em delete.
+async function findSystemUser(query) {
+  const db = getDb();
+  const q = String(query || '').trim();
+  if (!q) return null;
+  if (isValidEmail(q)) {
+    const { rows } = await db.execute({ sql: 'SELECT id, name, email, phone, is_admin FROM users WHERE email = ?', args: [q.toLowerCase()] });
+    return rowsToObjects(rows)[0] || null;
+  }
+  const { rows } = await db.execute({ sql: 'SELECT id, name, email, phone, is_admin FROM users WHERE LOWER(name) LIKE ? LIMIT 2', args: [`%${q.toLowerCase()}%`] });
+  const found = rowsToObjects(rows);
+  return found.length === 1 ? found[0] : null; // ambíguo → null (pede e-mail)
+}
+
+async function updateSystemUser(id, { name, phone, password }) {
+  const db = getDb();
+  const sets = [];
+  const args = [];
+  if (name) { sets.push('name = ?'); args.push(name); }
+  if (phone !== undefined && phone !== null && phone !== '') {
+    const np = canonicalBrazilPhone(phone);
+    if (np === null) return { ok: false, error: 'telefone inválido' };
+    sets.push('phone = ?'); args.push(np);
+  }
+  if (password) {
+    if (String(password).length < 8) return { ok: false, error: 'senha mínima de 8 caracteres' };
+    sets.push('password_hash = ?'); args.push(await bcrypt.hash(String(password), 10));
+  }
+  if (!sets.length) return { ok: false, error: 'nada para atualizar' };
+  args.push(id);
+  await db.execute({ sql: `UPDATE users SET ${sets.join(', ')} WHERE id = ?`, args });
+  return { ok: true };
+}
+
+async function deleteSystemUser(id) {
+  const db = getDb();
+  await db.execute({ sql: 'DELETE FROM users WHERE id = ?', args: [id] });
+  await db.execute({ sql: 'DELETE FROM user_plans WHERE user_id = ?', args: [id] });
+  return { ok: true };
+}
+
+// Executa a operação de gestão de usuário conforme a coleta multi-turno.
+// Retorna { answer, pending } — pending mantém a coleta em andamento.
+async function runManageUser(adminUser, userOp, pending) {
+  const op = userOp.op || pending?.op || 'create';
+
+  if (op === 'create') {
+    const f = { ...(pending?.fields || {}) };
+    for (const k of ['name', 'email', 'password', 'phone']) {
+      if (userOp[k] != null && String(userOp[k]).trim() !== '') f[k] = String(userOp[k]).trim();
+    }
+    if ((userOp.generate_password || pending?.generate) && !f.password) f.password = randomPassword();
+
+    const missing = [];
+    if (!f.name) missing.push('nome completo');
+    if (!f.email) missing.push('e-mail');
+    if (!f.password) missing.push('senha (mín. 8 caracteres) — ou diga "gerar senha"');
+    if (missing.length) {
+      return {
+        pending: { type: 'admin_user', op: 'create', fields: f, generate: !!(userOp.generate_password || pending?.generate) },
+        answer: `Certo! Para criar o usuário, ainda preciso de: ${missing.join(', ')}. Pode me enviar?${!f.phone && !missing.includes('e-mail') ? ' (o telefone é opcional)' : ''}`,
+      };
+    }
+    const r = await createSystemUser(f);
+    if (!r.ok) {
+      // Mantém o que já foi coletado e pede a correção do dado problemático.
+      const clearPwd = /senha/.test(r.error);
+      const nf = { ...f };
+      if (/e-mail já/.test(r.error) || /e-mail inválido/.test(r.error)) nf.email = undefined;
+      if (clearPwd) nf.password = undefined;
+      if (/telefone/.test(r.error)) nf.phone = undefined;
+      return {
+        pending: { type: 'admin_user', op: 'create', fields: nf },
+        answer: `Não consegui concluir: ${r.error}. Pode me reenviar esse dado corrigido?`,
+      };
+    }
+    const pwdNote = pending?.generate || userOp.generate_password ? `\nSenha gerada: *${f.password}* (peça ao usuário para trocá-la depois).` : '';
+    return { pending: null, answer: `Pronto! Usuário *${f.name}* (${f.email}) criado com sucesso. ✅${pwdNote}` };
+  }
+
+  if (op === 'edit') {
+    const target = await findSystemUser(userOp.target || pending?.target);
+    if (!target) {
+      return { pending: { type: 'admin_user', op: 'edit', changes: { name: userOp.name, phone: userOp.phone, password: userOp.password } },
+        answer: 'Qual usuário você quer editar? Me diga o e-mail dele (mais preciso) ou o nome exato.' };
+    }
+    const changes = { ...(pending?.changes || {}) };
+    for (const k of ['name', 'phone', 'password']) if (userOp[k] != null && String(userOp[k]).trim() !== '') changes[k] = String(userOp[k]).trim();
+    if (!changes.name && !changes.phone && !changes.password) {
+      return { pending: { type: 'admin_user', op: 'edit', target: target.email }, answer: `Encontrei ${target.name} (${target.email}). O que deseja alterar? (nome, telefone ou senha)` };
+    }
+    const r = await updateSystemUser(target.id, changes);
+    if (!r.ok) return { pending: { type: 'admin_user', op: 'edit', target: target.email }, answer: `Não consegui atualizar: ${r.error}. Pode reenviar?` };
+    return { pending: null, answer: `Feito! Dados de ${target.name} (${target.email}) atualizados. ✅` };
+  }
+
+  if (op === 'delete') {
+    const target = await findSystemUser(userOp.target || pending?.target);
+    if (!target) {
+      return { pending: { type: 'admin_user', op: 'delete' }, answer: 'Qual usuário você quer excluir? Me envie o e-mail dele para eu confirmar.' };
+    }
+    if (target.id === adminUser.id) {
+      return { pending: null, answer: 'Por segurança, não posso excluir a sua própria conta de administrador. 🙂' };
+    }
+    // Confirmação explícita antes de excluir.
+    if (!pending || pending.op !== 'delete_confirm' || pending.target !== target.email) {
+      return { pending: { type: 'admin_user', op: 'delete_confirm', target: target.email },
+        answer: `⚠️ Confirmar exclusão de *${target.name}* (${target.email})? Isso remove o usuário e todos os dados dele. Responda "sim" para confirmar ou "não" para cancelar.` };
+    }
+    const r = await deleteSystemUser(target.id);
+    return { pending: null, answer: r.ok ? `Usuário ${target.name} (${target.email}) excluído. ✅` : 'Não consegui excluir agora. Tente de novo.' };
+  }
+
+  return { pending: null, answer: 'Não entendi a operação de usuário. Você quer criar, editar ou excluir?' };
+}
+
 // ── Núcleo: classificação de intenção via Groq ───────────────────────────────
 
-function buildSystemPrompt(user) {
+function buildSystemPrompt(user, accounts = []) {
   const isAdmin = user.is_admin === 1 || user.role === 'admin' || user.role === 'super_admin';
-  return `Você é o assistente financeiro do Lumers Flow no WhatsApp. Fale sempre em português do Brasil, de forma breve, cordial e objetiva.
+  const accList = accounts.length
+    ? accounts.map((a) => `- ${a.name}${a.bank_name ? ` (${a.bank_name})` : ''}`).join('\n')
+    : '- (nenhuma conta/carteira cadastrada ainda)';
+  return `Você é o assistente financeiro do Lumers Flow no WhatsApp. Fale sempre em português do Brasil, de forma breve, cordial e objetiva. Seu objetivo é simplificar ao máximo a gestão financeira do usuário — faça as operações por ele e só pergunte quando for realmente necessário.
 
 USUÁRIO ATUAL:
 - Nome: ${user.name || 'Sem nome'}
 - Nível de acesso: ${isAdmin ? 'ADMINISTRADOR (pode consultar dados de todos os usuários)' : 'USUÁRIO COMUM (só pode acessar a própria conta)'}
+
+CONTAS/CARTEIRAS JÁ CADASTRADAS DO USUÁRIO:
+${accList}
 
 REGRAS DE ACESSO:
 - Usuário comum: NUNCA revele dados de outros usuários. query_scope sempre "self".
@@ -216,21 +425,32 @@ REGRAS DE ACESSO:
 
 O QUE VOCÊ PODE FAZER:
 1. Registrar lançamentos (receitas e despesas) a partir de texto, áudio (já transcrito) ou print (já descrito).
-2. Responder consultas sobre saldo, receitas, despesas e resumos.
-3. Conversar e orientar sobre o uso.
+2. Criar contas/carteiras bancárias (ex.: "cadastre a carteira Nubank com saldo de R$200"). Um SALDO informado ao criar uma conta é o SALDO INICIAL da conta — NÃO é uma receita/lançamento.
+3. Responder consultas sobre saldo, receitas, despesas e resumos.
+4. Conversar e orientar sobre o uso.${isAdmin ? `
+5. GESTÃO DE USUÁRIOS DO SISTEMA (apenas admin): criar, editar e excluir contas de usuários do Lumers Flow. Use action "manage_user" e preencha "user_op".
+   - Criar: op="create". Colete nome completo, e-mail e senha (mín. 8 caracteres); telefone é opcional. Se o admin disser "gere/gerar senha", marque generate_password=true. NÃO invente dados: extraia só o que o admin informar; os dados que faltarem serão pedidos automaticamente.
+   - Editar: op="edit", "target" = e-mail ou nome do usuário; preencha os campos a alterar (name, phone, password).
+   - Excluir: op="delete", "target" = e-mail ou nome do usuário.
+   Não confunda "usuário do sistema" com "conta/carteira bancária" (create_account).` : ''}
 
-REGRA IMPORTANTE DE CLASSIFICAÇÃO:
-- Se o usuário quer registrar um valor mas NÃO está claro se é RECEITA (entrada) ou DESPESA (saída), use action "clarify" e pergunte gentilmente.
-- Se estiver claro, use action "register" com type "income" ou "expense".
+REGRAS DE CLASSIFICAÇÃO (siga com atenção):
+- CRIAR CONTA/CARTEIRA: se o usuário pedir para "criar/cadastrar/adicionar/abrir" uma "conta", "carteira", "banco" (ex.: Nubank, Itaú, PicPay) — mesmo mencionando um saldo — use action "create_account" e preencha "account" com { name, bank_name, initial_balance, type }. NUNCA registre isso como receita. Se o nome for de um banco conhecido, use-o também em bank_name. type: "checking" (conta corrente, padrão), "savings" (poupança) ou "wallet" (carteira/dinheiro).
+- REGISTRAR LANÇAMENTO: use action "register" com type "income" (receita/entrada) ou "expense" (despesa/saída). Se o usuário citar uma conta ("no Nubank", "pelo Itaú"), preencha transaction.account_name com esse nome. Se ele indicar que é fixo/recorrente ou variável/avulso, preencha transaction.kind ("fixed" ou "variable"); na dúvida deixe null.
+- Se o usuário quer registrar um valor mas NÃO está claro se é RECEITA ou DESPESA (e não é criação de conta), use action "clarify" e pergunte gentilmente.
 
 Responda SEMPRE em JSON válido com este formato exato:
 {
-  "action": "register" | "clarify" | "query" | "answer",
-  "transaction": { "name": "string curta do lançamento", "amount": number, "type": "income" | "expense" | null },
+  "action": "register" | "create_account" | "manage_user" | "clarify" | "query" | "answer",
+  "transaction": { "name": "string curta do lançamento", "amount": number, "type": "income" | "expense" | null, "kind": "fixed" | "variable" | null, "account_name": "string" | null },
+  "account": { "name": "string", "bank_name": "string", "initial_balance": number, "type": "checking" | "savings" | "wallet" | null },
+  "user_op": { "op": "create" | "edit" | "delete" | null, "name": "string" | null, "email": "string" | null, "password": "string" | null, "phone": "string" | null, "target": "string" | null, "generate_password": boolean },
   "query_scope": "self" | "all_users",
   "reply": "texto para enviar ao usuário no WhatsApp"
 }
-- Em "register": preencha transaction completo e um "reply" confirmando.
+- Em "register": preencha transaction e um "reply" confirmando.
+- Em "create_account": preencha account e um "reply" confirmando a criação.
+- Em "manage_user" (apenas admin): preencha user_op; o sistema conduz a coleta e responde.
 - Em "clarify": "reply" deve ser a pergunta (ex.: isso é uma receita ou uma despesa?).
 - Em "query": defina query_scope; "reply" pode ficar vazio (será preenchido depois com os dados).
 - Em "answer": "reply" com a resposta.`;
@@ -327,7 +547,14 @@ export async function handleAssistantMessage(msg, instanceName) {
   if (imageContext) combined += `\n\n[Conteúdo extraído do print enviado]: ${imageContext}`;
   if (conv.pending?.type === 'transaction') {
     combined = `[CONTEXTO: o usuário estava registrando "${conv.pending.name}" no valor de ${brl(conv.pending.amount)} e você perguntou se é RECEITA ou DESPESA. A mensagem atual provavelmente responde isso.]\n\n${combined}`;
+  } else if (conv.pending?.type === 'admin_user') {
+    const collected = conv.pending.op === 'create'
+      ? `Dados já coletados: ${JSON.stringify(conv.pending.fields || {})}.`
+      : `Operação em andamento: ${conv.pending.op}${conv.pending.target ? ` (alvo: ${conv.pending.target})` : ''}.`;
+    combined = `[CONTEXTO: uma operação de GESTÃO DE USUÁRIO (op=${conv.pending.op}) está em andamento. ${collected} A mensagem atual provavelmente fornece o(s) dado(s) que faltavam. Use action "manage_user" e preencha user_op apenas com o que a mensagem trouxer.]\n\n${combined}`;
   }
+
+  const accounts = await getUserAccounts(user.id);
 
   let intent;
   try {
@@ -336,7 +563,7 @@ export async function handleAssistantMessage(msg, instanceName) {
       model: cfg.groqModel,
       jsonMode: true,
       messages: [
-        { role: 'system', content: buildSystemPrompt(user) },
+        { role: 'system', content: buildSystemPrompt(user, accounts) },
         ...(conv.history || []).map((h) => ({ role: h.role, content: h.content })),
         { role: 'user', content: combined },
       ],
@@ -353,10 +580,34 @@ export async function handleAssistantMessage(msg, instanceName) {
   let newPending = null;
 
   try {
-    if (intent.action === 'clarify') {
+    if (intent.action === 'clarify' && conv.pending?.type !== 'admin_user') {
       const t = intent.transaction || {};
       newPending = { type: 'transaction', name: t.name || conv.pending?.name || 'Lançamento', amount: t.amount || conv.pending?.amount || 0 };
       answer = intent.reply || 'Esse valor é uma receita (entrada) ou uma despesa (saída)?';
+    } else if (intent.action === 'manage_user' || conv.pending?.type === 'admin_user') {
+      if (!isAdmin) {
+        answer = 'Essa operação é exclusiva para administradores. 🙂';
+      } else {
+        let userOp = intent.user_op || {};
+        // Atalho de confirmação de exclusão: "sim/não" quando aguardando confirmação.
+        if (conv.pending?.op === 'delete_confirm') {
+          const yes = /\b(sim|confirmo|confirmar|pode|isso|ok|exclui[r]?|deletar)\b/i.test(userText || '');
+          const no = /\b(n[ãa]o|cancela|cancelar|deixa|para)\b/i.test(userText || '');
+          if (no) { answer = 'Ok, exclusão cancelada. 🙂'; newPending = null; }
+          else if (yes) { const r = await runManageUser(user, { op: 'delete', target: conv.pending.target }, conv.pending); answer = r.answer; newPending = r.pending; }
+          else { answer = 'Só confirmando: responda "sim" para excluir ou "não" para cancelar.'; newPending = conv.pending; }
+        } else {
+          const r = await runManageUser(user, userOp, conv.pending?.type === 'admin_user' ? conv.pending : null);
+          answer = r.answer;
+          newPending = r.pending;
+        }
+      }
+    } else if (intent.action === 'create_account') {
+      const a = intent.account || {};
+      const name = a.name || 'Conta';
+      await insertAccount(user.id, { name, bank_name: a.bank_name, initial_balance: a.initial_balance, type: a.type });
+      const bal = Number(a.initial_balance) || 0;
+      answer = intent.reply || `Pronto, ${firstName(user.name)}! Criei a conta "${name}"${bal ? ` com saldo inicial de ${brl(bal)}` : ''}. ✅`;
     } else if (intent.action === 'register') {
       const t = intent.transaction || {};
       const type = t.type === 'income' ? 'income' : 'expense';
@@ -366,8 +617,10 @@ export async function handleAssistantMessage(msg, instanceName) {
         newPending = { type: 'transaction', name, amount: 0 };
         answer = 'Entendi o lançamento, mas não peguei o valor. Qual é o valor?';
       } else {
-        await insertTransaction(user.id, { name, amount, type });
-        answer = intent.reply || `Pronto, ${firstName(user.name)}! Registrei ${type === 'income' ? 'a receita' : 'a despesa'} "${name}" de ${brl(amount)}. ✅`;
+        const acc = findAccountByName(accounts, t.account_name);
+        await insertTransaction(user.id, { name, amount, type, kind: t.kind, accountId: acc?.id });
+        const accNote = acc ? ` na conta ${acc.name}` : '';
+        answer = intent.reply || `Pronto, ${firstName(user.name)}! Registrei ${type === 'income' ? 'a receita' : 'a despesa'} "${name}" de ${brl(amount)}${accNote}. ✅`;
       }
     } else if (intent.action === 'query') {
       const scope = intent.query_scope === 'all_users' && isAdmin ? 'all_users' : 'self';

@@ -599,6 +599,9 @@ async function generateMonthTransactions(month, year) {
   const existingTplIds = new Set(existingTplTx.map(t => t.template_id));
   for (const tpl of templates) {
     if (existingTplIds.has(tpl.id)) continue;
+    // Meses "pulados" (ocorrências excluídas individualmente) não são regenerados.
+    const skip = new Set(String(tpl.skip_months || '').split(',').map(s => s.trim()).filter(Boolean));
+    if (skip.has(`${month}-${year}`)) continue;
     const day = Math.min(tpl.due_day || 1, new Date(year, month, 0).getDate());
     const due = new Date(year, month - 1, day);
     await db.transactions.add({
@@ -626,6 +629,9 @@ async function generateInstallmentTransactions(month, year) {
   existingTx.forEach(t => { existingById[t.template_id] = t; });
 
   for (const inst of allInst) {
+    // Meses "pulados" (ocorrências excluídas individualmente) não são regenerados.
+    const skip = new Set(String(inst.skip_months || '').split(',').map(s => s.trim()).filter(Boolean));
+    if (skip.has(`${month}-${year}`)) continue;
     const total = inst.installments || 1;
     const paid  = inst.paid_installments || 0;
     let inRange = false;

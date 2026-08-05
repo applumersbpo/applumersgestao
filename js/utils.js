@@ -130,6 +130,93 @@ function escHandler(e) {
   if (e.key === 'Escape') closeModal();
 }
 
+/**
+ * Modal de confirmação de exclusão no padrão Lumers Flow.
+ * Detecta parcelamento (installment) e recorrência (template) e oferece
+ * "Excluir apenas esta" vs "Excluir toda a série". Para lançamentos avulsos,
+ * mostra uma confirmação simples. Substitui o confirm() nativo do navegador.
+ * @param {object} t transação a excluir
+ * @param {Function} onDeleted callback chamado após a exclusão bem-sucedida
+ */
+async function confirmDeleteTx(t, onDeleted) {
+  const isInstallment = t.transaction_type === 'installment' && !!t.template_id;
+  const isRecurring   = !!t.template_id && t.transaction_type !== 'installment';
+  const isSeries      = isInstallment || isRecurring;
+  const kindLabel     = t.transaction_type === 'income' ? 'receita' : 'despesa';
+  const seriesLabel   = isInstallment ? 'parcelamento' : 'recorrência';
+
+  const body = isSeries ? `
+    <p style="margin:0 0 6px;color:var(--text)">Esta ${kindLabel} faz parte de um <strong>${seriesLabel}</strong>.</p>
+    <p style="margin:0;color:var(--text-muted);font-size:.9rem">O que você deseja excluir?</p>
+  ` : `
+    <p style="margin:0;color:var(--text)">Tem certeza que deseja excluir <strong>${escapeHtml(t.name || 'este lançamento')}</strong>?</p>
+  `;
+
+  const footer = isSeries ? `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-danger-outline" id="del-only-one">Excluir apenas esta</button>
+    <button class="btn btn-danger" id="del-whole-series">Excluir todo o ${seriesLabel}</button>
+  ` : `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-danger" id="del-single">Excluir</button>
+  `;
+
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:440px">
+        <div class="modal-header">
+          <div class="modal-title" style="display:flex;align-items:center;gap:8px">${icon('trash-2', 18)} Excluir ${kindLabel}</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">${body}</div>
+        <div class="modal-footer" style="flex-wrap:wrap;gap:8px">${footer}</div>
+      </div>
+    </div>
+  `);
+
+  if (isSeries) {
+    document.getElementById('del-only-one').onclick = async () => {
+      await _skipSeriesMonth(t, isInstallment);
+      await db.transactions.delete(t.id);
+      closeModal(); toast('Lançamento excluído'); onDeleted?.();
+    };
+    document.getElementById('del-whole-series').onclick = async () => {
+      await _deleteWholeSeries(t, isInstallment);
+      closeModal(); toast(`${isInstallment ? 'Parcelamento' : 'Recorrência'} excluído`); onDeleted?.();
+    };
+  } else {
+    document.getElementById('del-single').onclick = async () => {
+      await db.transactions.delete(t.id);
+      closeModal(); toast('Excluído'); onDeleted?.();
+    };
+  }
+}
+
+// Marca o mês desta ocorrência como "pulado" no pai (parcelamento/recorrência),
+// evitando que a regeneração automática recrie a linha excluída.
+async function _skipSeriesMonth(t, isInstallment) {
+  const coll = isInstallment ? db.installments : db.templates;
+  const parent = await coll.get(t.template_id);
+  if (!parent) return;
+  const set = new Set(String(parent.skip_months || '').split(',').map(s => s.trim()).filter(Boolean));
+  set.add(`${t.month}-${t.year}`);
+  await coll.update(t.template_id, { skip_months: [...set].join(',') });
+  if (typeof _generatedMonths !== 'undefined') _generatedMonths.delete(`${t.year}-${t.month}`);
+}
+
+// Exclui o pai (parcelamento/recorrência) + todas as ocorrências materializadas,
+// impedindo a regeneração futura.
+async function _deleteWholeSeries(t, isInstallment) {
+  const filter = isInstallment
+    ? `template_id = '${t.template_id}' && transaction_type = 'installment'`
+    : `template_id = '${t.template_id}'`;
+  const rows = await db.transactions.filter(filter).toArray();
+  for (const r of rows) await db.transactions.delete(r.id);
+  const coll = isInstallment ? db.installments : db.templates;
+  try { await coll.delete(t.template_id); } catch {}
+  if (typeof _generatedMonths !== 'undefined') _generatedMonths.clear();
+}
+
 /** Escapa caracteres HTML para evitar injeção. */
 function escapeHtml(str) {
   return String(str)

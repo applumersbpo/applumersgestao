@@ -324,7 +324,10 @@ import:     'Importar Dados',
           <button onclick="app.prevMonth()" title="Mês anterior">
             <i data-lucide="chevron-left" style="width:16px;height:16px"></i>
           </button>
-          <span class="month-label">${monthLabel(this.currentMonth, this.currentYear)}</span>
+          <button class="month-label" onclick="app.openMonthPicker()" title="Escolher mês/ano" style="background:none;border:none;font:inherit;color:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:5px">
+            ${monthLabel(this.currentMonth, this.currentYear)}
+            <i data-lucide="chevron-down" style="width:14px;height:14px;opacity:.6"></i>
+          </button>
           <button onclick="app.nextMonth()" title="Próximo mês">
             <i data-lucide="chevron-right" style="width:16px;height:16px"></i>
           </button>
@@ -334,6 +337,50 @@ import:     'Importar Dados',
     } else {
       el.innerHTML = '';
     }
+  },
+
+  openMonthPicker() {
+    const y = this._pickerYear || this.currentYear;
+    const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    const grid = months.map((mn, i) => {
+      const m = i + 1;
+      const isCur = m === this.currentMonth && y === this.currentYear;
+      return `<button class="btn ${isCur ? 'btn-primary' : 'btn-ghost'}" style="padding:12px 0" onclick="app.goToMonth(${m}, ${y})">${mn}</button>`;
+    }).join('');
+    showModal(`
+      <div class="modal-backdrop">
+        <div class="modal" style="max-width:360px">
+          <div class="modal-header">
+            <div class="modal-title">Escolher mês</div>
+            <button class="btn btn-icon btn-ghost" onclick="closeModal()">✕</button>
+          </div>
+          <div class="modal-body">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+              <button class="btn btn-icon btn-ghost" onclick="app.pickerYear(${y - 1})">${icon('chevron-left', 16)}</button>
+              <strong style="font-size:1.1rem">${y}</strong>
+              <button class="btn btn-icon btn-ghost" onclick="app.pickerYear(${y + 1})">${icon('chevron-right', 16)}</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${grid}</div>
+            <button class="btn btn-outline" style="width:100%;margin-top:14px" onclick="app.goToMonth(${new Date().getMonth() + 1}, ${new Date().getFullYear()})">Ir para o mês atual</button>
+          </div>
+        </div>
+      </div>
+    `);
+  },
+
+  pickerYear(y) {
+    this._pickerYear = y;
+    this.openMonthPicker();
+  },
+
+  async goToMonth(month, year) {
+    this._pickerYear = null;
+    this.currentMonth = month;
+    this.currentYear = year;
+    closeModal();
+    this.updateTopbarActions();
+    await getOrGenerateMonth(this.currentMonth, this.currentYear);
+    await this.render();
   },
 
   async prevMonth() {

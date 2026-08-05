@@ -530,6 +530,12 @@ export async function initDb() {
   if (!iColNames.includes('account_id'))  await db.execute("ALTER TABLE installments ADD COLUMN account_id TEXT DEFAULT ''");
   if (!iColNames.includes('start_month')) await db.execute("ALTER TABLE installments ADD COLUMN start_month INTEGER DEFAULT NULL");
   if (!iColNames.includes('start_year'))  await db.execute("ALTER TABLE installments ADD COLUMN start_year INTEGER DEFAULT NULL");
+  if (!iColNames.includes('skip_months')) await db.execute("ALTER TABLE installments ADD COLUMN skip_months TEXT DEFAULT ''");
+
+  // Migrations — templates table
+  const { rows: tplCols } = await db.execute("PRAGMA table_info('templates')");
+  const tplColNames = (tplCols || []).map(r => r.name);
+  if (!tplColNames.includes('skip_months')) await db.execute("ALTER TABLE templates ADD COLUMN skip_months TEXT DEFAULT ''");
 
   // Migrations — users table
   const { rows: ucols } = await db.execute("PRAGMA table_info('users')");
