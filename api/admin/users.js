@@ -104,6 +104,23 @@ export default async function handler(req, res) {
       return res.status(200).json({ logs: rowsToObjects(rows), total, page, limit });
     }
 
+    // Interações do assistente de IA via WhatsApp (entradas + respostas)
+    if (req.query.resource === 'wa-interactions') {
+      const page  = Math.max(1, parseInt(req.query.page  || '1',  10));
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '50', 10)));
+      const offset = (page - 1) * limit;
+      const { rows: totalRows } = await db.execute({ sql: 'SELECT COUNT(*) as total FROM wa_interactions', args: [] });
+      const total = rowsToObjects(totalRows)[0]?.total || 0;
+      const { rows } = await db.execute({
+        sql: `SELECT id, phone, user_id, user_name, in_type, in_text, out_text, action, created_at
+              FROM wa_interactions
+              ORDER BY created_at DESC
+              LIMIT ? OFFSET ?`,
+        args: [limit, offset],
+      });
+      return res.status(200).json({ logs: rowsToObjects(rows), total, page, limit });
+    }
+
     // Log de auditoria administrativa (system_log) com filtros de leitura
     if (req.query.resource === 'system-log') {
       const page  = Math.max(1, parseInt(req.query.page  || '1',  10));

@@ -87,6 +87,11 @@ function txTypeBadge(t) {
   return '';
 }
 
+// Badge indicando que o lançamento foi registrado pelo assistente via WhatsApp.
+function waSourceBadge() {
+  return '<span class="badge" style="background:#dcf8c6;color:#128c7e;margin-left:6px;font-size:.7rem;white-space:nowrap">WhatsApp</span>';
+}
+
 function catTag(cat) {
   if (!cat) return '';
   return `<span class="cat-tag" style="background:${cat.color}22;color:${cat.color}">${cat.icon || ''} ${cat.name}</span>`;

@@ -61,6 +61,26 @@ function cleanMime(mime, fallback) {
   return base || fallback;
 }
 
+// Transcreve áudio (base64) via Groq Whisper (endpoint audio/transcriptions).
+// Groq tem cota própria (separada do Gemini) e aceita ogg/opus do WhatsApp.
+export async function groqTranscribeAudio({ key, model = 'whisper-large-v3-turbo', base64, mime = 'audio/ogg', filename = 'audio.ogg' }) {
+  const type = cleanMime(mime, 'audio/ogg');
+  const bin = Buffer.from(base64, 'base64');
+  const form = new FormData();
+  form.append('file', new Blob([bin], { type }), filename);
+  form.append('model', model);
+  form.append('language', 'pt');
+  form.append('response_format', 'text');
+  const r = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}` },
+    body: form,
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(`Groq Whisper HTTP ${r.status}: ${text.slice(0, 200)}`);
+  return (text || '').trim();
+}
+
 // Transcreve áudio (base64) para texto PT-BR via Gemini.
 export async function geminiTranscribeAudio({ key, model, base64, mime = 'audio/ogg' }) {
   return geminiGenerate({

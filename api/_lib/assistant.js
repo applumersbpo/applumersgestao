@@ -1,5 +1,5 @@
 import { getDb, rowsToObjects } from './db.js';
-import { getAiConfig, groqChat, geminiTranscribeAudio, geminiReadImage } from './ai.js';
+import { getAiConfig, groqChat, groqTranscribeAudio, geminiTranscribeAudio, geminiReadImage } from './ai.js';
 import { sendText, evoBase, resolveKey, headers } from './evolution.js';
 
 // ── Helpers de infraestrutura ────────────────────────────────────────────────
@@ -100,6 +100,22 @@ function safeParse(s) {
   try { return JSON.parse(s); } catch { return null; }
 }
 
+// Registra a interação (entrada + resposta) no painel (tabela wa_interactions).
+async function logInteraction({ phone, user, inType, inText, outText, action }) {
+  try {
+    const db = getDb();
+    await db.execute({
+      sql: `INSERT INTO wa_interactions (id, phone, user_id, user_name, in_type, in_text, out_text, action, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        crypto.randomUUID(), phone || '', user?.id || '', user?.name || '',
+        inType || 'text', String(inText || '').slice(0, 1000), String(outText || '').slice(0, 1000),
+        action || '', new Date().toISOString(),
+      ],
+    });
+  } catch (e) { console.error('[assistant] log de interação falhou', e?.message); }
+}
+
 function firstName(name) {
   return (name || '').trim().split(/\s+/)[0] || '';
 }
@@ -177,8 +193,8 @@ async function insertTransaction(userId, { name, amount, type }) {
   const iso = now.toISOString();
   const today = iso.slice(0, 10);
   await db.execute({
-    sql: `INSERT INTO transactions (id, user_id, name, amount, transaction_type, kind, status, due_date, paid_date, month, year, notes, category_id, template_id, created_at)
-          VALUES (?, ?, ?, ?, ?, 'variable', 'paid', ?, ?, ?, ?, 'Registrado via WhatsApp', '', '', ?)`,
+    sql: `INSERT INTO transactions (id, user_id, name, amount, transaction_type, kind, status, due_date, paid_date, month, year, notes, category_id, template_id, source, created_at)
+          VALUES (?, ?, ?, ?, ?, 'variable', 'paid', ?, ?, ?, ?, 'Registrado via WhatsApp', '', '', 'whatsapp', ?)`,
     args: [id, userId, name || 'Lançamento', Number(amount) || 0, type === 'income' ? 'income' : 'expense', today, today, now.getMonth() + 1, now.getFullYear(), iso],
   });
   return id;
@@ -235,15 +251,20 @@ export async function handleAssistantMessage(msg, instanceName) {
 
   const user = await userByPhone(phone);
   if (!user) {
-    await reply('Olá! Este número ainda não está cadastrado no Lumers Flow. Peça ao administrador para cadastrar o seu WhatsApp e volte a falar comigo. 🙂');
+    const out = 'Olá! Este número ainda não está cadastrado no Lumers Flow. Peça ao administrador para cadastrar o seu WhatsApp e volte a falar comigo. 🙂';
+    await reply(out);
+    await logInteraction({ phone, user: null, inType: 'text', inText: '', outText: out, action: 'unknown_user' });
     return { handled: true, reason: 'unknown_user' };
   }
 
   const m = msg.message || {};
+  const inType = m.audioMessage ? 'audio' : m.imageMessage ? 'image' : m.videoMessage ? 'video' : 'text';
 
   // Vídeo não é suportado
   if (m.videoMessage) {
-    await reply(`Oi, ${firstName(user.name)}! Ainda não consigo entender vídeos. Você pode me mandar por texto, áudio ou um print. 🙂`);
+    const out = `Oi, ${firstName(user.name)}! Ainda não consigo entender vídeos. Você pode me mandar por texto, áudio ou um print. 🙂`;
+    await reply(out);
+    await logInteraction({ phone, user, inType, inText: '', outText: out, action: 'video_unsupported' });
     return { handled: true, reason: 'video_unsupported' };
   }
 
@@ -256,9 +277,16 @@ export async function handleAssistantMessage(msg, instanceName) {
     } else if (m.extendedTextMessage?.text) {
       userText = m.extendedTextMessage.text;
     } else if (m.audioMessage) {
-      if (!cfg.geminiKey) { await reply('Recebi seu áudio, mas a interpretação de áudio ainda não está configurada. Pode me mandar por texto? 🙂'); return { handled: true, reason: 'no_gemini' }; }
+      // Áudio é transcrito pelo Groq Whisper (cota própria, separada do Gemini).
+      // Fallback para o Gemini caso só a chave do Gemini esteja configurada.
+      if (!cfg.groqKey && !cfg.geminiKey) { await reply('Recebi seu áudio, mas a interpretação de áudio ainda não está configurada. Pode me mandar por texto? 🙂'); return { handled: true, reason: 'no_audio_provider' }; }
       const b64 = await getMediaBase64(inst.name, inst.api_key, msg.key);
-      if (b64) userText = await geminiTranscribeAudio({ key: cfg.geminiKey, model: cfg.geminiModel, base64: b64, mime: m.audioMessage.mimetype || 'audio/ogg' });
+      const mime = m.audioMessage.mimetype || 'audio/ogg';
+      if (b64) {
+        userText = cfg.groqKey
+          ? await groqTranscribeAudio({ key: cfg.groqKey, base64: b64, mime })
+          : await geminiTranscribeAudio({ key: cfg.geminiKey, model: cfg.geminiModel, base64: b64, mime });
+      }
     } else if (m.imageMessage) {
       if (!cfg.geminiKey) { await reply('Recebi seu print, mas a interpretação de imagens ainda não está configurada. Pode me mandar os dados por texto? 🙂'); return { handled: true, reason: 'no_gemini' }; }
       const b64 = await getMediaBase64(inst.name, inst.api_key, msg.key);
@@ -359,6 +387,7 @@ export async function handleAssistantMessage(msg, instanceName) {
 
   const history = [...(conv.history || []), { role: 'user', content: combined }, { role: 'assistant', content: answer }];
   await saveConversation(phone, user.id, newPending, history);
+  await logInteraction({ phone, user, inType, inText: userText || imageContext || '', outText: answer, action: intent.action });
 
   return { handled: true, action: intent.action };
 }

@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.17.0] — 2026-08-04
+
+### Adicionado
+- **Flag "WhatsApp" nos lançamentos** — toda receita/despesa registrada pelo assistente via WhatsApp recebe uma marca de origem (`source=whatsapp`) e passa a exibir um selo **WhatsApp** na lista de lançamentos, distinguindo do que foi cadastrado pelo painel.
+- **Registro de interações do assistente no painel** — nova tabela `wa_interactions` e visão em Painel → Logs → "Interações do assistente (WhatsApp)": data/hora, usuário e telefone, tipo de entrada (texto/áudio/print), a mensagem, a resposta da IA e a ação executada (lançamento, consulta, pergunta, etc.).
+
+### Melhorado
+- **Transcrição de áudio agora via Groq Whisper** — os áudios do WhatsApp passam a ser transcritos pelo `whisper-large-v3-turbo` da Groq (cota própria, separada do Gemini, e compatível com `ogg/opus`), resolvendo as falhas de cota (HTTP 429) do Gemini. O Gemini continua como fallback e segue responsável pelos prints/imagens.
+
+---
+
 ## [v1.16.3] — 2026-08-04
 
 ### Melhorado

@@ -33,7 +33,7 @@ function transactionRowTx(t, accounts, cats) {
     <div class="transaction-item" style="border-radius:8px;border:1px solid var(--border)">
       <div class="t-icon" style="background:var(--primary-50);color:var(--primary-600);font-size:1.1rem">${t.transaction_type === 'income' ? '💸' : '💳'}</div>
       <div class="t-info">
-        <div class="t-name">${t.name} <small style="color:var(--text-soft);font-size:.82rem">${acc.name || ''}</small></div>
+        <div class="t-name">${t.name} <small style="color:var(--text-soft);font-size:.82rem">${acc.name || ''}</small>${t.source === 'whatsapp' ? waSourceBadge() : ''}</div>
         <div style="font-size:.82rem;color:var(--text-muted);display:flex;flex-wrap:wrap;align-items:center;gap:4px">
           ${cat ? cat.name + ' ·' : ''} Competência: ${t.competence_date || t.due_date || ''} · Caixa: ${t.cash_date || ''}
           ${txTypeBadge(t)}

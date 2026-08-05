@@ -1564,6 +1564,15 @@ async function renderAdminLogs() {
         ${icon('clock', 14)} Ver histórico
       </button>
     </div>
+    <div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div>
+        <div class="card-title" style="margin-bottom:2px">${icon('message-circle', 14)} Interações do assistente (WhatsApp)</div>
+        <div style="font-size:.8rem;color:var(--text-muted)">Registro das conversas com a IA: quem falou, o que enviou (texto/áudio/print), a resposta e a ação (lançamento, consulta, etc.).</div>
+      </div>
+      <button class="btn btn-outline" onclick="openWaInteractionsModal()" style="font-size:.83rem;white-space:nowrap">
+        ${icon('messages-square', 14)} Ver interações
+      </button>
+    </div>
     <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
       <div>
         <div class="card-title" style="margin-bottom:2px">${icon('shield', 14)} Logs do sistema</div>
@@ -1729,6 +1738,117 @@ async function openMsgHistoryModal(page = 1) {
     if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [bodyEl] });
   } catch(e) {
     const bodyEl = document.getElementById('msg-history-body');
+    if (bodyEl) bodyEl.innerHTML = `<div style="padding:24px;color:var(--expense)">Erro: ${_escHtml(e.message)}</div>`;
+  }
+}
+
+// ── Interações do assistente de IA (WhatsApp) ────────────────────────────────
+
+const _WA_ACTION_LABELS = {
+  register:          { txt: 'Lançamento',   color: '#16a34a', bg: '#dcfce7' },
+  clarify:           { txt: 'Pergunta',     color: '#d97706', bg: '#fef3c7' },
+  query:             { txt: 'Consulta',     color: '#0891b2', bg: '#cffafe' },
+  answer:            { txt: 'Resposta',     color: '#7c3aed', bg: '#ede9fe' },
+  unknown_user:      { txt: 'Não cadastrado', color: '#dc2626', bg: '#fee2e2' },
+  video_unsupported: { txt: 'Vídeo (não suportado)', color: '#dc2626', bg: '#fee2e2' },
+};
+const _WA_TYPE_ICON = { text: 'type', audio: 'mic', image: 'image', video: 'video' };
+
+function _waActionBadge(a) {
+  const m = _WA_ACTION_LABELS[a] || { txt: a || '—', color: 'var(--text-muted)', bg: 'var(--bg-subtle)' };
+  return `<span style="font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:20px;background:${m.bg};color:${m.color};white-space:nowrap">${_escHtml(m.txt)}</span>`;
+}
+
+async function openWaInteractionsModal(page = 1) {
+  if (page === 1) {
+    showModal(`
+      <div class="modal-backdrop">
+        <div class="modal" style="max-width:1000px;width:calc(100% - 32px);max-height:92vh;display:flex;flex-direction:column">
+          <div class="modal-header" style="flex-shrink:0">
+            <div class="modal-title">${icon('messages-square', 16)} Interações do assistente (WhatsApp)</div>
+            <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
+          </div>
+          <div class="modal-body" style="overflow-y:auto;flex:1" id="wa-int-body">
+            <div style="text-align:center;padding:32px;color:var(--text-muted)">
+              <div class="spinner" style="margin:0 auto 12px"></div>
+              Carregando interações…
+            </div>
+          </div>
+        </div>
+      </div>`);
+  }
+
+  try {
+    const data = await _api('GET', `/admin/users?resource=wa-interactions&page=${page}&limit=50`);
+    const logs  = data.logs  || [];
+    const total = data.total || 0;
+    const pages = Math.ceil(total / 50);
+    const bodyEl = document.getElementById('wa-int-body');
+    if (!bodyEl) return;
+
+    if (!logs.length && page === 1) {
+      bodyEl.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-muted)">
+        ${icon('inbox', 32)}<p style="margin-top:12px">Nenhuma interação registrada ainda.</p></div>`;
+      if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [bodyEl] });
+      return;
+    }
+
+    const fmtDate = d => {
+      if (!d) return '—';
+      const dt = new Date(d);
+      return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    };
+
+    bodyEl.innerHTML = `
+      <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">
+        ${total} interaç${total !== 1 ? 'ões' : 'ão'} registrada${total !== 1 ? 's' : ''}
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border);text-align:left">
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;white-space:nowrap">Data/Hora</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase">Usuário</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;white-space:nowrap">Tipo</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase">Mensagem</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase">Resposta</th>
+              <th style="padding:8px 10px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase">Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${logs.map((l, idx) => `
+              <tr style="border-bottom:1px solid var(--border);${idx % 2 === 1 ? 'background:var(--bg-subtle)' : ''}">
+                <td style="padding:8px 10px;white-space:nowrap;color:var(--text-muted);font-size:.78rem">${fmtDate(l.created_at)}</td>
+                <td style="padding:8px 10px">
+                  <div style="font-weight:600;font-size:.82rem">${_escHtml(l.user_name || '—')}</div>
+                  <div style="font-size:.72rem;color:var(--text-muted)">${_escHtml(l.phone || '')}</div>
+                </td>
+                <td style="padding:8px 10px;white-space:nowrap">
+                  <span style="font-size:.75rem;display:inline-flex;align-items:center;gap:4px;color:var(--primary-600)">
+                    ${icon(_WA_TYPE_ICON[l.in_type] || 'type', 12)} ${_escHtml(l.in_type || 'text')}
+                  </span>
+                </td>
+                <td style="padding:8px 10px;max-width:260px">
+                  <div style="font-size:.8rem;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;word-break:break-word" title="${_escHtml(l.in_text || '')}">${_escHtml(l.in_text || '—')}</div>
+                </td>
+                <td style="padding:8px 10px;max-width:260px">
+                  <div style="font-size:.8rem;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;word-break:break-word" title="${_escHtml(l.out_text || '')}">${_escHtml(l.out_text || '—')}</div>
+                </td>
+                <td style="padding:8px 10px">${_waActionBadge(l.action)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${pages > 1 ? `
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;flex-wrap:wrap">
+        ${page > 1 ? `<button class="btn btn-sm btn-outline" onclick="openWaInteractionsModal(${page-1})">← Anterior</button>` : ''}
+        <span style="font-size:.82rem;color:var(--text-muted)">Página ${page} de ${pages}</span>
+        ${page < pages ? `<button class="btn btn-sm btn-outline" onclick="openWaInteractionsModal(${page+1})">Próxima →</button>` : ''}
+      </div>` : ''}`;
+
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [bodyEl] });
+  } catch(e) {
+    const bodyEl = document.getElementById('wa-int-body');
     if (bodyEl) bodyEl.innerHTML = `<div style="padding:24px;color:var(--expense)">Erro: ${_escHtml(e.message)}</div>`;
   }
 }

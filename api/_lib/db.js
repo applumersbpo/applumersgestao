@@ -457,6 +457,17 @@ export async function initDb() {
       history TEXT DEFAULT '',
       updated_at TEXT DEFAULT (datetime('now'))
     )`,
+    `CREATE TABLE IF NOT EXISTS wa_interactions (
+      id TEXT PRIMARY KEY,
+      phone TEXT DEFAULT '',
+      user_id TEXT DEFAULT '',
+      user_name TEXT DEFAULT '',
+      in_type TEXT DEFAULT 'text',
+      in_text TEXT DEFAULT '',
+      out_text TEXT DEFAULT '',
+      action TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {
@@ -485,6 +496,10 @@ export async function initDb() {
     // F-210: nullable, sem DEFAULT 0. NULL = "não-informado" (relatório usa amount);
     // 0 = "R$0 real pago". Novos registros gravam paid_amount explicitamente.
     await db.execute("ALTER TABLE transactions ADD COLUMN paid_amount REAL");
+  }
+  if (!existingCols.includes('source')) {
+    // Origem do lançamento: '' (web/painel) ou 'whatsapp' (registrado via assistente).
+    await db.execute("ALTER TABLE transactions ADD COLUMN source TEXT DEFAULT ''");
   }
   // F-210: legados que receberam paid_amount=0 na migração anterior significavam
   // "não-informado", não "R$0 real pago". Converte 0 → NULL UMA única vez. O flag em
