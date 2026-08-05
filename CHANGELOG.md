@@ -5,6 +5,15 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.22.0] — 2026-08-04
+
+### Adicionado
+- **Cota de uso da IA no painel** — em Sistema → Assistente de IA, o botão "Ver cota de uso" mostra o consumo do Groq (requisições/dia e tokens/minuto) em barras de progresso com % de uso e horário de renovação, além do status de cada provedor (Operacional / Cota esgotada / Erro). O Gemini exibe o status de saúde (a API do Google não expõe a cota restante).
+- **Primeiro login obrigatório no WhatsApp** — usuário comum que nunca acessou o sistema é orientado a fazer o primeiro login no app antes de usar o assistente do WhatsApp (administradores são isentos).
+- **Solicitação de acesso via WhatsApp** — número não cadastrado passa a poder solicitar acesso pelo próprio WhatsApp (coleta nome e e-mail). O pedido é enviado aos administradores, que aprovam ou recusam respondendo "aprovar #código" / "recusar #código". Ao aprovar, a conta é criada e os dados de acesso são enviados automaticamente por e-mail e WhatsApp.
+
+---
+
 ## [v1.21.0] — 2026-08-04
 
 ### Adicionado

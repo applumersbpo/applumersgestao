@@ -1437,9 +1437,90 @@ function _renderAiSection(cfg = {}) {
         <button class="btn btn-secondary" onclick="_aiTestConnection()" id="ai-test-btn" style="font-size:.85rem;white-space:nowrap">
           ${icon('plug', 14)} Testar conexão
         </button>
+        <button class="btn btn-secondary" onclick="_aiLoadQuota()" id="ai-quota-btn" style="font-size:.85rem;white-space:nowrap">
+          ${icon('gauge', 14)} Ver cota de uso
+        </button>
       </div>
       <div id="ai-feedback" style="font-size:.78rem;margin-top:10px"></div>
+      <div id="ai-quota-box" style="margin-top:14px"></div>
     </div>`;
+}
+
+// Barra de progresso de cota (uso = limite - restante).
+function _quotaBar(label, used, limit, resetTxt) {
+  const has = Number.isFinite(used) && Number.isFinite(limit) && limit > 0;
+  const pct = has ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const color = pct >= 90 ? '#dc2626' : pct >= 70 ? '#f59e0b' : 'var(--primary,#6366f1)';
+  const right = has ? `${used.toLocaleString('pt-BR')} / ${limit.toLocaleString('pt-BR')}` : '—';
+  return `
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:.75rem;margin-bottom:3px">
+        <span style="color:var(--text-muted)">${label}</span>
+        <span style="font-weight:600">${right}${has ? ` · ${pct}%` : ''}</span>
+      </div>
+      <div style="height:8px;background:var(--border,#e5e7eb);border-radius:6px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${color};border-radius:6px;transition:width .4s"></div>
+      </div>
+      ${resetTxt ? `<div style="font-size:.68rem;color:var(--text-muted);margin-top:2px">renova em ${_escHtml(resetTxt)}</div>` : ''}
+    </div>`;
+}
+
+function _quotaProvider(title, p) {
+  if (!p || !p.configured) {
+    return `<div style="flex:1;min-width:240px;background:var(--surface-2,#f8fafc);border-radius:var(--r-md);padding:12px 14px">
+      <div style="font-weight:600;font-size:.85rem;margin-bottom:8px">${title}</div>
+      <div style="font-size:.78rem;color:var(--text-muted)">Chave não configurada.</div>
+    </div>`;
+  }
+  const statusMap = {
+    ok:        { txt: 'Operacional', bg: '#dcfce7', fg: '#16a34a' },
+    exhausted: { txt: 'Cota esgotada', bg: '#fee2e2', fg: '#dc2626' },
+    error:     { txt: 'Erro', bg: '#fef3c7', fg: '#b45309' },
+  };
+  const s = statusMap[p.status] || statusMap.error;
+  const pill = `<span style="background:${s.bg};color:${s.fg};font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:999px">${s.txt}</span>`;
+  let body = '';
+  if (p.requests || p.tokens) {
+    if (p.requests && Number.isFinite(p.requests.limit)) {
+      body += _quotaBar('Requisições (por dia)', p.requests.limit - p.requests.remaining, p.requests.limit, p.requests.reset);
+    }
+    if (p.tokens && Number.isFinite(p.tokens.limit)) {
+      body += _quotaBar('Tokens (por minuto)', p.tokens.limit - p.tokens.remaining, p.tokens.limit, p.tokens.reset);
+    }
+  }
+  if (!body) {
+    body = `<div style="font-size:.78rem;color:var(--text-muted)">${
+      p.status === 'ok'
+        ? 'A API não expõe a cota restante. Status verificado: operacional.'
+        : _escHtml(p.error || 'Sem dados de cota disponíveis.')
+    }${p.retryAfter ? ` · tente novamente em ${_escHtml(String(p.retryAfter))}` : ''}</div>`;
+  }
+  return `<div style="flex:1;min-width:240px;background:var(--surface-2,#f8fafc);border-radius:var(--r-md);padding:12px 14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span style="font-weight:600;font-size:.85rem">${title}</span>${pill}
+    </div>
+    ${body}
+  </div>`;
+}
+
+async function _aiLoadQuota() {
+  const box = document.getElementById('ai-quota-box');
+  const btn = document.getElementById('ai-quota-btn');
+  if (!box) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = icon('loader', 14) + ' Consultando…'; }
+  box.innerHTML = `<div style="font-size:.78rem;color:var(--text-muted)">Consultando cota dos provedores…</div>`;
+  try {
+    const res = await _api('POST', '/admin/users', { action: 'ai-quota' });
+    box.innerHTML = `<div style="display:flex;gap:12px;flex-wrap:wrap">
+      ${_quotaProvider(icon('brain', 13) + ' Groq — texto/raciocínio', res.groq)}
+      ${_quotaProvider(icon('image', 13) + ' Gemini — áudio/imagem', res.gemini)}
+    </div>`;
+  } catch (e) {
+    box.innerHTML = `<div style="background:#fee2e2;border-radius:var(--r-md);padding:6px 10px;color:#dc2626;font-size:.78rem">Erro ao consultar cota: ${_escHtml(e.message)}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = icon('gauge', 14) + ' Ver cota de uso'; }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
 }
 
 async function _aiSaveConfig() {

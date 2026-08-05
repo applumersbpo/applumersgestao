@@ -392,6 +392,71 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, text });
       }
 
+      // Consulta de cota/uso dos provedores de IA. Groq expõe limites e restante
+      // via headers de rate-limit (autoritativo). Gemini não expõe restante pela
+      // API — fazemos um probe e reportamos apenas o status (ok/esgotado/erro).
+      if (action === 'ai-quota') {
+        const groqKey = await getSystemSetting('ai_groq_key');
+        const groqModel = (await getSystemSetting('ai_groq_model')) || 'llama-3.3-70b-versatile';
+        const geminiKey = await getSystemSetting('ai_gemini_key');
+        const geminiModel = (await getSystemSetting('ai_gemini_model')) || 'gemini-2.0-flash';
+
+        const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+
+        // ── Groq: probe mínimo lê headers x-ratelimit-* mesmo em 200 ──
+        let groq = { configured: !!groqKey };
+        if (groqKey) {
+          try {
+            const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
+              body: JSON.stringify({ model: groqModel, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, temperature: 0 }),
+            });
+            const h = r.headers;
+            groq.status = r.status === 429 ? 'exhausted' : (r.ok ? 'ok' : 'error');
+            groq.requests = {
+              limit: num(h.get('x-ratelimit-limit-requests')),
+              remaining: num(h.get('x-ratelimit-remaining-requests')),
+              reset: h.get('x-ratelimit-reset-requests') || '',
+            };
+            groq.tokens = {
+              limit: num(h.get('x-ratelimit-limit-tokens')),
+              remaining: num(h.get('x-ratelimit-remaining-tokens')),
+              reset: h.get('x-ratelimit-reset-tokens') || '',
+            };
+            if (r.status === 429) groq.retryAfter = h.get('retry-after') || '';
+            if (!r.ok && r.status !== 429) {
+              const d = await r.json().catch(() => ({}));
+              groq.error = (d?.error?.message || `HTTP ${r.status}`).slice(0, 160);
+            }
+          } catch (e) { groq.status = 'error'; groq.error = String(e?.message || e).slice(0, 160); }
+        }
+
+        // ── Gemini: probe de saúde (a API não retorna cota restante) ──
+        let gemini = { configured: !!geminiKey };
+        if (geminiKey) {
+          try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent?key=${encodeURIComponent(geminiKey)}`;
+            const r = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 1 } }),
+            });
+            gemini.status = r.status === 429 ? 'exhausted' : (r.ok ? 'ok' : 'error');
+            if (!r.ok) {
+              const d = await r.json().catch(() => ({}));
+              gemini.error = (d?.error?.message || `HTTP ${r.status}`).slice(0, 160);
+              // Google às vezes devolve retryDelay em RESOURCE_EXHAUSTED.
+              const details = d?.error?.details || [];
+              const retry = details.find((x) => String(x['@type'] || '').includes('RetryInfo'));
+              if (retry?.retryDelay) gemini.retryAfter = retry.retryDelay;
+            }
+          } catch (e) { gemini.status = 'error'; gemini.error = String(e?.message || e).slice(0, 160); }
+        }
+
+        return res.status(200).json({ ok: true, groq, gemini });
+      }
+
       if (action === 'test-evolution-key') {
         const base = evoBase();
         if (!base) return res.status(500).json({ error: 'EVOLUTION_URL não configurada' });
