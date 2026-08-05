@@ -3114,6 +3114,21 @@ async function openAdminMessageModal(preSelectedIds = []) {
                 </div>
               </div>
 
+              <!-- Agendamento -->
+              <div class="form-group" style="margin:0">
+                <label class="form-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                  <input type="checkbox" id="msg-schedule-toggle" onchange="_msgToggleSchedule(this.checked)"
+                    style="accent-color:var(--primary)">
+                  ${icon('calendar-clock', 13)} Agendar envio
+                </label>
+                <div id="msg-schedule-wrap" style="display:none;margin-top:6px">
+                  <input id="msg-schedule-at" type="datetime-local" class="form-control">
+                  <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">
+                    O envio começa na data/hora escolhida, respeitando a cadência entre mensagens.
+                  </div>
+                </div>
+              </div>
+
               <!-- Mídia -->
               <div class="form-group" style="margin:0">
                 <label class="form-label">Mídia (opcional)</label>
@@ -3421,6 +3436,20 @@ function _detectMediaType(file) {
   return 'document';
 }
 
+function _msgToggleSchedule(on) {
+  const wrap = document.getElementById('msg-schedule-wrap');
+  const inp  = document.getElementById('msg-schedule-at');
+  if (!wrap || !inp) return;
+  wrap.style.display = on ? '' : 'none';
+  if (on) {
+    const d = new Date(Date.now() + 60 * 60 * 1000); // sugere daqui a 1h
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    const iso = d.toISOString().slice(0, 16);
+    inp.min = iso;
+    if (!inp.value) inp.value = iso;
+  }
+}
+
 function _msgInsertVar(varText) {
   const el = document.getElementById('msg-text');
   if (!el) return;
@@ -3441,6 +3470,18 @@ async function _sendAdminMessage() {
   if (!userIds.length) { toast('Selecione ao menos um destinatário', 'error'); return; }
   if (!text && !_stickyMsgMedia) { toast('Digite uma mensagem ou anexe um arquivo', 'error'); return; }
 
+  // Agendamento (opcional)
+  let scheduled_at = null;
+  if (document.getElementById('msg-schedule-toggle')?.checked) {
+    const v = document.getElementById('msg-schedule-at')?.value;
+    if (!v) { toast('Escolha a data e hora do agendamento', 'error'); return; }
+    const d = new Date(v);
+    if (isNaN(d.getTime()) || d.getTime() < Date.now() - 60000) {
+      toast('Escolha uma data/hora futura para o agendamento', 'error'); return;
+    }
+    scheduled_at = d.toISOString();
+  }
+
   btn.disabled = true;
   btn.innerHTML = icon('loader', 14) + ' Enfileirando…';
 
@@ -3457,6 +3498,7 @@ async function _sendAdminMessage() {
       user_ids: userIds,
       text: text || '',
       delay_ms,
+      ...(scheduled_at ? { scheduled_at } : {}),
       ...(media_base64 ? { media_base64, media_type, media_name } : {}),
     });
 
@@ -3464,6 +3506,26 @@ async function _sendAdminMessage() {
       toast('Erro ao criar campanha de disparo', 'error');
       btn.disabled = false;
       btn.innerHTML = icon('send', 14) + ' Enviar para ' + userIds.length;
+      return;
+    }
+
+    // Envio agendado: nada é disparado agora — confirma e encerra sem polling.
+    if (scheduled_at) {
+      const when = new Date(scheduled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      toast(`Campanha agendada para ${when} — ${res.total} destinatário(s)`, 'success');
+      if (resultEl) {
+        resultEl.innerHTML = `
+          <div style="background:var(--surface-alt,#f8fafc);border:1px solid var(--border);border-radius:var(--r-md);
+            padding:10px 12px;font-size:.85rem;display:flex;gap:8px;align-items:flex-start;margin-top:4px">
+            ${icon('calendar-clock', 14)}
+            <div>Envio agendado para <strong>${when}</strong> · <strong>${res.total}</strong> destinatário(s).
+            <div style="margin-top:4px;font-size:.78rem;color:var(--text-muted)">As mensagens serão disparadas automaticamente na data/hora escolhida.</div></div>
+          </div>`;
+        if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [resultEl] });
+      }
+      btn.disabled = false;
+      btn.innerHTML = icon('send', 14) + ' Enviar para ' + userIds.length;
+      setTimeout(() => closeModal(), 3000);
       return;
     }
 

@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.23.0] — 2026-08-04
+
+### Adicionado
+- **Agendamento de mensagens** — na modal de envio de mensagens (Sistema → enviar mensagem), o administrador pode marcar "Agendar envio" e escolher data/hora. As mensagens ficam na fila e são disparadas automaticamente pelo cron na data/hora escolhida, respeitando a cadência entre elas. Sem agendamento, o comportamento continua sendo envio imediato.
+
+---
+
 ## [v1.22.2] — 2026-08-04
 
 ### Corrigido

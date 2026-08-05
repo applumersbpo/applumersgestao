@@ -693,9 +693,19 @@ export default async function handler(req, res) {
 
       // Send WhatsApp message — enfileira campanha e retorna imediatamente
       if (action === 'send-message') {
-        const { user_ids, text, media_base64, media_type, media_name, delay_ms } = req.body;
+        const { user_ids, text, media_base64, media_type, media_name, delay_ms, scheduled_at } = req.body;
         if (!user_ids?.length) return res.status(400).json({ error: 'user_ids é obrigatório' });
         if (!text && !media_base64) return res.status(400).json({ error: 'mensagem ou mídia são obrigatórios' });
+
+        // Agendamento opcional: base de tempo para o scheduled_for dos dispatches.
+        // Sem agendamento, começa imediatamente (Date.now()).
+        let baseTime = Date.now();
+        if (scheduled_at) {
+          const ts = Date.parse(scheduled_at);
+          if (isNaN(ts)) return res.status(400).json({ error: 'Data de agendamento inválida' });
+          if (ts < Date.now() - 60000) return res.status(400).json({ error: 'A data de agendamento deve ser no futuro' });
+          baseTime = ts;
+        }
 
         // Valida instância padrão e status de conexão (fonte: DB, atualizado por webhook/listagem)
         const { rows: defRows } = await db.execute("SELECT name, api_key, connection_status FROM evolution_instances WHERE is_default=1 LIMIT 1");
@@ -764,7 +774,7 @@ export default async function handler(req, res) {
               ],
             });
           } else {
-            const scheduledFor = new Date(Date.now() + pendingIndex * cadenceMs).toISOString();
+            const scheduledFor = new Date(baseTime + pendingIndex * cadenceMs).toISOString();
             await db.execute({
               sql: `INSERT INTO message_dispatch
                       (id, campaign_id, user_id, recipient_name, phone, status, attempts, scheduled_for, created_at)
