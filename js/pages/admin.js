@@ -559,6 +559,9 @@ function _renderAdminUsersPage() {
         <button class="btn btn-sm btn-outline" onclick="openAdminCreateUserModal()">
           ${icon('user-plus',13)} Nova conta
         </button>
+        <button class="btn btn-sm btn-outline" onclick="openScheduledMessagesModal()">
+          ${icon('calendar-clock',13)} Agendadas
+        </button>
         <button class="btn btn-sm btn-primary" onclick="openAdminMessageModal()">
           ${icon('send',13)} Mensagem em massa
           ${comWpp > 0 ? `<span style="background:rgba(255,255,255,.25);border-radius:10px;padding:1px 7px;font-size:.72rem;margin-left:4px">${comWpp}</span>` : ''}
@@ -3828,6 +3831,162 @@ async function _sendAdminMessage() {
     toast('Erro: ' + (e.message || 'falha ao enfileirar'), 'error');
     btn.disabled = false;
     btn.innerHTML = icon('send', 14) + ' Enviar para ' + userIds.length;
+  }
+}
+
+// ── Mensagens agendadas ───────────────────────────────────────────────────────
+
+let _scheduledMsgCache = [];
+
+function _schedFmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return '—';
+  return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Converte um ISO/UTC para o valor de um <input type="datetime-local"> (hora local).
+function _schedToLocalInput(iso) {
+  const dt = iso ? new Date(iso) : new Date(Date.now() + 3600000);
+  if (isNaN(dt.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+}
+
+async function openScheduledMessagesModal() {
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:820px;width:calc(100% - 32px);max-height:92vh;display:flex;flex-direction:column">
+        <div class="modal-header" style="flex-shrink:0">
+          <div class="modal-title">${icon('calendar-clock', 16)} Mensagens agendadas</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
+        </div>
+        <div class="modal-body" style="overflow-y:auto;flex:1" id="sched-body">
+          <div style="text-align:center;padding:32px;color:var(--text-muted)">
+            <div class="spinner" style="margin:0 auto 12px"></div>
+            Carregando agendamentos…
+          </div>
+        </div>
+      </div>
+    </div>`);
+  await _loadScheduledMessages();
+}
+
+async function _loadScheduledMessages() {
+  const body = document.getElementById('sched-body');
+  if (!body) return;
+  try {
+    const data = await _api('GET', '/admin/users?resource=scheduled-messages');
+    _scheduledMsgCache = data.scheduled || [];
+    _renderScheduledMessages();
+  } catch (e) {
+    body.innerHTML = `<div style="background:#fee2e2;border-radius:var(--r-md);padding:12px;font-size:.85rem">
+      Erro ao carregar: ${_escHtml(e.message || 'falha')}</div>`;
+  }
+}
+
+function _renderScheduledMessages() {
+  const body = document.getElementById('sched-body');
+  if (!body) return;
+  const list = _scheduledMsgCache;
+
+  if (!list.length) {
+    body.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-muted)">
+      ${icon('calendar-off', 32)}
+      <p style="margin-top:12px">Nenhuma mensagem agendada ou na fila.</p></div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [body] });
+    return;
+  }
+
+  const cards = list.map(c => {
+    const preview = _escHtml((c.text || '').slice(0, 160)) + ((c.text || '').length > 160 ? '…' : '');
+    const names = c.recipients.slice(0, 4).map(_escHtml).join(', ');
+    const extra = c.recipients.length > 4 ? ` +${c.recipients.length - 4}` : '';
+    return `
+      <div style="border:1px solid var(--border);border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px;background:var(--surface)">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          <span style="font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--primary-light,#DDE7D8);color:var(--primary-600)">
+            ${icon('calendar-clock',12)} ${_schedFmtDate(c.next_at)}
+          </span>
+          <span style="font-size:.75rem;color:var(--text-muted)">${icon('users',12)} ${c.pending_count} pendente(s)</span>
+          ${c.has_media ? `<span style="font-size:.72rem;color:var(--text-muted)">${icon('paperclip',12)} mídia</span>` : ''}
+        </div>
+        <div id="sched-text-${c.id}" style="font-size:.86rem;line-height:1.4;white-space:pre-wrap;margin-bottom:8px">${preview || '<em style="color:var(--text-muted)">(sem texto)</em>'}</div>
+        <div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">Para: ${names}${extra}</div>
+        <div id="sched-edit-${c.id}" style="display:none;margin-bottom:10px">
+          <label class="form-label" style="font-size:.75rem">Mensagem</label>
+          <textarea id="sched-ta-${c.id}" class="form-control" rows="4" style="font-size:.85rem">${_escHtml(c.text || '')}</textarea>
+          <label class="form-label" style="font-size:.75rem;margin-top:8px">Reagendar para (opcional)</label>
+          <input id="sched-dt-${c.id}" type="datetime-local" class="form-control" value="${_schedToLocalInput(c.next_at)}" style="font-size:.85rem">
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-sm btn-primary" onclick="_schedSave('${c.id}')">${icon('save',13)} Salvar</button>
+            <button class="btn btn-sm btn-ghost" onclick="_schedToggleEdit('${c.id}',false)">Cancelar</button>
+          </div>
+        </div>
+        <div id="sched-actions-${c.id}" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sm btn-outline" onclick="_schedToggleEdit('${c.id}',true)">${icon('pencil',13)} Editar / reagendar</button>
+          <button class="btn btn-sm btn-outline" onclick="_schedSendNow('${c.id}')">${icon('send',13)} Disparar agora</button>
+          <button class="btn btn-sm btn-outline" style="color:var(--expense)" onclick="_schedDelete('${c.id}')">${icon('trash-2',13)} Excluir</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  body.innerHTML = cards;
+  if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [body] });
+}
+
+function _schedToggleEdit(id, show) {
+  const edit = document.getElementById(`sched-edit-${id}`);
+  const actions = document.getElementById(`sched-actions-${id}`);
+  const text = document.getElementById(`sched-text-${id}`);
+  if (!edit || !actions) return;
+  edit.style.display = show ? 'block' : 'none';
+  actions.style.display = show ? 'none' : 'flex';
+  if (text) text.style.display = show ? 'none' : 'block';
+}
+
+async function _schedSave(id) {
+  const ta = document.getElementById(`sched-ta-${id}`);
+  const dt = document.getElementById(`sched-dt-${id}`);
+  const text = ta ? ta.value : undefined;
+  const payload = { action: 'scheduled-update', campaign_id: id, text };
+  if (dt && dt.value) {
+    const d = new Date(dt.value);
+    if (isNaN(d.getTime())) { toast('Data inválida', 'error'); return; }
+    if (d.getTime() < Date.now() - 60000) { toast('Escolha uma data/hora futura', 'error'); return; }
+    payload.scheduled_at = d.toISOString();
+  }
+  try {
+    const r = await _api('POST', '/admin/users', payload);
+    if (!r.ok) throw new Error(r.error || 'falha');
+    toast('Agendamento atualizado', 'success');
+    await _loadScheduledMessages();
+  } catch (e) {
+    toast('Erro: ' + (e.message || 'falha'), 'error');
+  }
+}
+
+async function _schedSendNow(id) {
+  if (!confirm('Disparar agora todas as mensagens pendentes desta campanha?')) return;
+  try {
+    const r = await _api('POST', '/admin/users', { action: 'scheduled-send-now', campaign_id: id });
+    if (!r.ok) throw new Error(r.error || 'falha');
+    toast('Disparo iniciado — as mensagens sairão nos próximos minutos', 'success');
+    await _loadScheduledMessages();
+  } catch (e) {
+    toast('Erro: ' + (e.message || 'falha'), 'error');
+  }
+}
+
+async function _schedDelete(id) {
+  if (!confirm('Excluir esta mensagem agendada? Os destinatários pendentes não receberão.')) return;
+  try {
+    const r = await _api('POST', '/admin/users', { action: 'scheduled-delete', campaign_id: id });
+    if (!r.ok) throw new Error(r.error || 'falha');
+    toast('Agendamento excluído', 'success');
+    await _loadScheduledMessages();
+  } catch (e) {
+    toast('Erro: ' + (e.message || 'falha'), 'error');
   }
 }
 

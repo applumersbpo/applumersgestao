@@ -208,6 +208,38 @@ export default async function handler(req, res) {
       });
     }
 
+    // Mensagens agendadas / na fila — campanhas com dispatches ainda pendentes
+    if (req.query.resource === 'scheduled-messages') {
+      const { rows } = await db.execute(`
+        SELECT c.id, c.text, c.has_media, c.media_type, c.media_name, c.instance_name,
+               c.created_by_name, c.status, c.cadence_ms, c.created_at,
+               COUNT(d.id) AS pending_count,
+               MIN(d.scheduled_for) AS next_at,
+               MAX(d.scheduled_for) AS last_at,
+               GROUP_CONCAT(d.recipient_name, '||') AS recipients
+        FROM message_campaigns c
+        JOIN message_dispatch d ON d.campaign_id = c.id AND d.status = 'pending'
+        GROUP BY c.id
+        ORDER BY next_at ASC`);
+      const list = rowsToObjects(rows).map(r => ({
+        id: r.id,
+        text: r.text || '',
+        has_media: Number(r.has_media) === 1,
+        media_type: r.media_type || '',
+        media_name: r.media_name || '',
+        instance_name: r.instance_name || '',
+        created_by_name: r.created_by_name || '',
+        status: r.status || '',
+        cadence_ms: Number(r.cadence_ms) || 0,
+        created_at: r.created_at || '',
+        pending_count: Number(r.pending_count) || 0,
+        next_at: r.next_at || '',
+        last_at: r.last_at || '',
+        recipients: (r.recipients || '').split('||').filter(Boolean),
+      }));
+      return res.status(200).json({ scheduled: list });
+    }
+
     // ── GET/PUT /api/admin/users?resource=system-settings
     if (req.query.resource === 'system-settings') {
       if (req.method === 'GET') {
@@ -846,6 +878,127 @@ export default async function handler(req, res) {
           details: { total: user_ids.length, instance: defInst.name, has_media: hasMedia },
         });
         return res.status(200).json({ ok: true, campaign_id: campaignId, total: user_ids.length });
+      }
+
+      // Editar / reagendar mensagem agendada (texto e/ou nova data-base)
+      if (action === 'scheduled-update') {
+        const { campaign_id, text, scheduled_at } = req.body;
+        if (!campaign_id) return res.status(400).json({ error: 'campaign_id é obrigatório' });
+
+        const { rows: cRows } = await db.execute({
+          sql: 'SELECT id, cadence_ms, has_media FROM message_campaigns WHERE id=? LIMIT 1',
+          args: [campaign_id],
+        });
+        const camp = rowsToObjects(cRows)[0];
+        if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
+
+        const { rows: pendRows } = await db.execute({
+          sql: "SELECT id FROM message_dispatch WHERE campaign_id=? AND status='pending' ORDER BY scheduled_for ASC",
+          args: [campaign_id],
+        });
+        const pending = rowsToObjects(pendRows);
+        if (!pending.length) return res.status(400).json({ error: 'Não há mais mensagens pendentes nesta campanha' });
+
+        // Atualiza o texto (compartilhado por todos os dispatches da campanha)
+        if (typeof text === 'string') {
+          if (!text.trim() && Number(camp.has_media) !== 1) {
+            return res.status(400).json({ error: 'A mensagem não pode ficar vazia' });
+          }
+          await db.execute({ sql: 'UPDATE message_campaigns SET text=? WHERE id=?', args: [text, campaign_id] });
+        }
+
+        // Reagenda preservando a cadência entre destinatários
+        if (scheduled_at) {
+          const ts = Date.parse(scheduled_at);
+          if (isNaN(ts)) return res.status(400).json({ error: 'Data de agendamento inválida' });
+          if (ts < Date.now() - 60000) return res.status(400).json({ error: 'A data de agendamento deve ser no futuro' });
+          const cadence = Math.max(0, Number(camp.cadence_ms) || 0);
+          for (let i = 0; i < pending.length; i++) {
+            const when = new Date(ts + i * cadence).toISOString();
+            await db.execute({
+              sql: "UPDATE message_dispatch SET scheduled_for=?, processing_at='' WHERE id=?",
+              args: [when, pending[i].id],
+            });
+          }
+          await db.execute({ sql: "UPDATE message_campaigns SET status='running' WHERE id=? AND status!='running'", args: [campaign_id] });
+        }
+
+        await logSystem({
+          req, actor: user, action: 'message.scheduled_update',
+          targetType: 'campaign', targetId: campaign_id,
+          targetLabel: `${pending.length} pendente(s)`,
+          details: { rescheduled: !!scheduled_at, text_changed: typeof text === 'string' },
+        });
+        return res.status(200).json({ ok: true, pending: pending.length });
+      }
+
+      // Disparar agora uma mensagem agendada (rebase para agora, mantendo cadência)
+      if (action === 'scheduled-send-now') {
+        const { campaign_id } = req.body;
+        if (!campaign_id) return res.status(400).json({ error: 'campaign_id é obrigatório' });
+
+        const { rows: cRows } = await db.execute({
+          sql: 'SELECT cadence_ms FROM message_campaigns WHERE id=? LIMIT 1',
+          args: [campaign_id],
+        });
+        const camp = rowsToObjects(cRows)[0];
+        if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' });
+
+        const { rows: pendRows } = await db.execute({
+          sql: "SELECT id FROM message_dispatch WHERE campaign_id=? AND status='pending' ORDER BY scheduled_for ASC",
+          args: [campaign_id],
+        });
+        const pending = rowsToObjects(pendRows);
+        if (!pending.length) return res.status(400).json({ error: 'Não há mais mensagens pendentes nesta campanha' });
+
+        const cadence = Math.max(0, Number(camp.cadence_ms) || 0);
+        const base = Date.now();
+        for (let i = 0; i < pending.length; i++) {
+          const when = new Date(base + i * cadence).toISOString();
+          await db.execute({
+            sql: "UPDATE message_dispatch SET scheduled_for=?, processing_at='' WHERE id=?",
+            args: [when, pending[i].id],
+          });
+        }
+        await db.execute({ sql: "UPDATE message_campaigns SET status='running' WHERE id=? AND status!='running'", args: [campaign_id] });
+
+        await logSystem({
+          req, actor: user, action: 'message.scheduled_send_now',
+          targetType: 'campaign', targetId: campaign_id,
+          targetLabel: `${pending.length} destinatário(s)`,
+        });
+        return res.status(200).json({ ok: true, pending: pending.length });
+      }
+
+      // Excluir mensagem agendada (remove os dispatches pendentes)
+      if (action === 'scheduled-delete') {
+        const { campaign_id } = req.body;
+        if (!campaign_id) return res.status(400).json({ error: 'campaign_id é obrigatório' });
+
+        const del = await db.execute({
+          sql: "DELETE FROM message_dispatch WHERE campaign_id=? AND status='pending'",
+          args: [campaign_id],
+        });
+
+        // Se nada mais resta a processar, marca a campanha como cancelada
+        const { rows: remainRows } = await db.execute({
+          sql: "SELECT COUNT(*) as cnt FROM message_dispatch WHERE campaign_id=? AND status IN ('pending','processing')",
+          args: [campaign_id],
+        });
+        const remain = Number(rowsToObjects(remainRows)[0]?.cnt || 0);
+        if (remain === 0) {
+          await db.execute({
+            sql: "UPDATE message_campaigns SET status='canceled' WHERE id=? AND status='running'",
+            args: [campaign_id],
+          });
+        }
+
+        await logSystem({
+          req, actor: user, action: 'message.scheduled_delete',
+          targetType: 'campaign', targetId: campaign_id,
+          targetLabel: `${del.rowsAffected || 0} removido(s)`,
+        });
+        return res.status(200).json({ ok: true, removed: del.rowsAffected || 0 });
       }
 
       // Create user (admin bypass)

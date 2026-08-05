@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.28.0] — 2026-08-05
+
+### Adicionado
+- **Gerenciar mensagens agendadas** — nova ação **Agendadas** na aba Usuários abre um painel com todas as campanhas de WhatsApp com envios ainda pendentes/agendados, mostrando data-hora do próximo disparo, nº de destinatários e prévia do texto. Para cada agendamento é possível **editar a mensagem**, **reagendar** (nova data/hora preservando a cadência), **disparar agora** e **excluir** (cancela os envios pendentes). Ações registradas nos logs do sistema.
+
+---
+
 ## [v1.27.0] — 2026-08-05
 
 ### Adicionado
