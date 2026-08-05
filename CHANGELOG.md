@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.25.1] — 2026-08-05
+
+### Corrigido
+- **Botão "Adicionar botão" quase invisível** — na seção de botões de ação da modal de envio, o botão para adicionar usava estilo fantasma (sem borda/fundo) e passava despercebido. Agora é um botão tracejado destacado, ocupando a largura da seção.
+
+### Melhorado
+- **Agendamento ao lado do "Enviar"** — o controle de agendar saiu das opções avançadas e foi para o rodapé, ao lado do botão de envio: marque "Agendar" e escolha data/hora ali mesmo. O botão de envio passa a indicar "Agendar para N" quando o agendamento está ativo.
+
+---
+
 ## [v1.25.0] — 2026-08-05
 
 ### Melhorado

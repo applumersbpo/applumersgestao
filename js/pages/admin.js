@@ -3085,8 +3085,9 @@ async function openAdminMessageModal(preSelectedIds = []) {
                   <span style="font-weight:400;color:var(--text-muted);font-size:.76rem">(opcional · máx. 3)</span>
                 </label>
                 <div id="msg-buttons-list"></div>
-                <button type="button" id="msg-add-btn" class="btn btn-ghost btn-sm" onclick="_msgAddButton()"
-                  style="margin-top:2px">${icon('plus', 13)} Adicionar botão</button>
+                <button type="button" id="msg-add-btn" class="btn btn-outline btn-sm" onclick="_msgAddButton()"
+                  style="margin-top:4px;width:100%;justify-content:center;border-style:dashed;color:var(--primary)">
+                  ${icon('plus', 14)} Adicionar botão</button>
                 <div style="font-size:.71rem;color:var(--text-muted);margin-top:5px;line-height:1.5">
                   <strong>Resposta</strong> = resposta rápida · <strong>Link</strong> = abre uma URL. Substituem o envio de mídia.
                   <br>⚠️ Em conexões Baileys o WhatsApp pode não exibir botões em alguns aparelhos.
@@ -3118,21 +3119,6 @@ async function openAdminMessageModal(preSelectedIds = []) {
                     </div>
                     <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">
                       0 = sem delay · recomendado 2–5 s para evitar bloqueios do WhatsApp
-                    </div>
-                  </div>
-
-                  <!-- Agendamento -->
-                  <div class="form-group" style="margin:0">
-                    <label class="form-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">
-                      <input type="checkbox" id="msg-schedule-toggle" onchange="_msgToggleSchedule(this.checked)"
-                        style="accent-color:var(--primary)">
-                      ${icon('calendar-clock', 13)} Agendar envio
-                    </label>
-                    <div id="msg-schedule-wrap" style="display:none;margin-top:6px">
-                      <input id="msg-schedule-at" type="datetime-local" class="form-control">
-                      <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">
-                        O envio começa na data/hora escolhida, respeitando a cadência entre mensagens.
-                      </div>
                     </div>
                   </div>
 
@@ -3169,12 +3155,22 @@ async function openAdminMessageModal(preSelectedIds = []) {
 
           </div>
         </div>
-        <div class="modal-footer" style="flex-shrink:0">
+        <div class="modal-footer" style="flex-shrink:0;flex-wrap:wrap;gap:10px">
           <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-          <button class="btn btn-primary" id="msg-send-btn" onclick="_sendAdminMessage()"
-            ${noDefault ? 'disabled title="Defina uma instância padrão antes de enviar"' : 'disabled'}>
-            ${icon('send', 14)} Enviar para 0
-          </button>
+          <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end">
+            <label style="display:flex;align-items:center;gap:5px;font-size:.8rem;cursor:pointer;white-space:nowrap;color:var(--text)">
+              <input type="checkbox" id="msg-schedule-toggle" onchange="_msgToggleSchedule(this.checked)"
+                style="accent-color:var(--primary)">
+              ${icon('calendar-clock', 14)} Agendar
+            </label>
+            <input id="msg-schedule-at" type="datetime-local"
+              class="form-control" title="Data e hora do envio agendado"
+              style="display:none;width:200px;padding:6px 8px;font-size:.82rem;height:auto">
+            <button class="btn btn-primary" id="msg-send-btn" onclick="_sendAdminMessage()"
+              ${noDefault ? 'disabled title="Defina uma instância padrão antes de enviar"' : 'disabled'}>
+              ${icon('send', 14)} Enviar para 0
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -3252,8 +3248,7 @@ function _renderMsgRecipients(search) {
   if (countEl) countEl.textContent = sel.size;
   if (btnEl) {
     btnEl.disabled = sel.size === 0;
-    btnEl.innerHTML = `${icon('send', 14)} Enviar para ${sel.size}`;
-    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btnEl] });
+    _msgRefreshSendBtn();
   }
 }
 
@@ -3472,17 +3467,28 @@ function _detectMediaType(file) {
 }
 
 function _msgToggleSchedule(on) {
-  const wrap = document.getElementById('msg-schedule-wrap');
-  const inp  = document.getElementById('msg-schedule-at');
-  if (!wrap || !inp) return;
-  wrap.style.display = on ? '' : 'none';
+  const inp = document.getElementById('msg-schedule-at');
+  if (!inp) return;
+  inp.style.display = on ? '' : 'none';
   if (on) {
     const d = new Date(Date.now() + 60 * 60 * 1000); // sugere daqui a 1h
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
     const iso = d.toISOString().slice(0, 16);
     inp.min = iso;
     if (!inp.value) inp.value = iso;
+    inp.focus();
   }
+  _msgRefreshSendBtn();
+}
+
+// Reflete no botão de envio se é envio imediato ("Enviar para N") ou agendado ("Agendar para N").
+function _msgRefreshSendBtn() {
+  const btn = document.getElementById('msg-send-btn');
+  if (!btn) return;
+  const n = (window._adminMsgSelected || new Set()).size;
+  const sch = document.getElementById('msg-schedule-toggle')?.checked;
+  btn.innerHTML = `${icon(sch ? 'calendar-clock' : 'send', 14)} ${sch ? 'Agendar para' : 'Enviar para'} ${n}`;
+  if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
 }
 
 function _msgAddButton() {
