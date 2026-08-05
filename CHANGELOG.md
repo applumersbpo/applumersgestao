@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.20.0] — 2026-08-04
+
+### Adicionado
+- **Escrever mensagem com IA no disparo em massa** — o modal de envio de WhatsApp ganhou um assistente de redação com dois botões: **Criar com IA** (descreva o assunto e a IA escreve a mensagem completa) e **Melhorar com IA** (escreva um rascunho e a IA aprimora a escrita). O resultado substitui o texto no campo, pronto para revisar e enviar.
+
+### Melhorado
+- **Modal de disparo maior no desktop** — a largura do modal de envio em massa aumentou (até 1040px) para dar mais visibilidade aos destinatários e à composição da mensagem.
+
+---
+
 ## [v1.19.0] — 2026-08-04
 
 ### Adicionado

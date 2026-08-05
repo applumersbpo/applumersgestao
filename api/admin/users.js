@@ -356,6 +356,42 @@ export default async function handler(req, res) {
         return res.status(200).json(result);
       }
 
+      // Redige/melhora uma mensagem de WhatsApp com IA para o disparo em massa.
+      // mode='create': usa o texto como briefing e gera a mensagem completa.
+      // mode='improve': usa o texto como rascunho e o aprimora.
+      if (action === 'ai-compose-message') {
+        const mode = req.body?.mode === 'improve' ? 'improve' : 'create';
+        const brief = String(req.body?.brief || req.body?.text || '').trim();
+        if (!brief) return res.status(400).json({ error: 'Descreva a mensagem ou informe o texto a melhorar.' });
+
+        const groqKey = await getSystemSetting('ai_groq_key');
+        const groqModel = (await getSystemSetting('ai_groq_model')) || 'llama-3.3-70b-versatile';
+        const geminiKey = await getSystemSetting('ai_gemini_key');
+        const geminiModel = (await getSystemSetting('ai_gemini_model')) || 'gemini-2.0-flash';
+        if (!groqKey && !geminiKey) {
+          return res.status(400).json({ error: 'Nenhuma chave de IA configurada. Configure em Sistema → Assistente de IA.' });
+        }
+
+        const sys = `Você é um redator de mensagens de WhatsApp para a Lumers Flow (app de gestão financeira). Escreva em português do Brasil, com tom cordial, profissional, direto e claro. Use a formatação do WhatsApp quando fizer sentido: *negrito*, _itálico_. No máximo 1 ou 2 emojis discretos. NÃO use markdown de título, nem listas com # ou **. Para personalizar, você PODE usar a variável {nome} (também existem {email}, {telefone}, {status}, {plano}, {saldo}). Responda SOMENTE com o texto final da mensagem — sem aspas, sem comentários, sem explicações.`;
+        const userPrompt = mode === 'improve'
+          ? `Melhore a mensagem abaixo mantendo o sentido, corrigindo a escrita e deixando-a mais clara e envolvente:\n\n"""${brief}"""`
+          : `Crie uma mensagem de WhatsApp a partir deste pedido/assunto:\n\n"""${brief}"""`;
+
+        let text = '';
+        try {
+          if (groqKey) {
+            text = await groqChat({ key: groqKey, model: groqModel, messages: [{ role: 'system', content: sys }, { role: 'user', content: userPrompt }], temperature: 0.7 });
+          } else {
+            text = await geminiGenerate({ key: geminiKey, model: geminiModel, systemInstruction: sys, parts: [{ text: userPrompt }] });
+          }
+        } catch (e) {
+          return res.status(200).json({ ok: false, error: String(e?.message || e).slice(0, 200) });
+        }
+        text = String(text || '').trim().replace(/^["'“”]+|["'“”]+$/g, '').trim();
+        if (!text) return res.status(200).json({ ok: false, error: 'A IA não retornou texto. Tente novamente.' });
+        return res.status(200).json({ ok: true, text });
+      }
+
       if (action === 'test-evolution-key') {
         const base = evoBase();
         if (!base) return res.status(500).json({ error: 'EVOLUTION_URL não configurada' });

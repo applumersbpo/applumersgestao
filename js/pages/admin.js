@@ -2871,7 +2871,7 @@ async function openAdminMessageModal(preSelectedIds = []) {
 
   showModal(`
     <div class="modal-backdrop">
-      <div class="modal" style="max-width:${isDesktop ? '900px' : '540px'};width:calc(100% - 32px);max-height:92vh;display:flex;flex-direction:column">
+      <div class="modal" style="max-width:${isDesktop ? '1040px' : '540px'};width:calc(100% - 32px);max-height:92vh;display:flex;flex-direction:column">
         <div class="modal-header" style="flex-shrink:0">
           <div class="modal-title">${icon('send', 16)} Enviar mensagem via WhatsApp
             ${defaultInst?.name ? `<span style="font-size:.72rem;font-weight:400;color:var(--text-muted);margin-left:8px">via <strong>${_escHtml(defaultInst.name)}</strong></span>` : ''}
@@ -2938,6 +2938,25 @@ async function openAdminMessageModal(preSelectedIds = []) {
                   placeholder="Digite a mensagem aqui…" style="resize:vertical"></textarea>
                 <div style="font-size:.72rem;color:var(--text-muted);margin-top:3px">
                   Formatação WhatsApp: *negrito*, _itálico_, ~tachado~
+                </div>
+
+                <!-- Assistente de redação com IA -->
+                <div style="margin-top:10px;background:linear-gradient(135deg,var(--primary-light,#e8f5e9),transparent);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px">
+                  <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:5px">
+                    ${icon('sparkles', 12)} Escrever com IA
+                  </div>
+                  <div style="font-size:.75rem;color:var(--text-muted);line-height:1.5;margin-bottom:8px">
+                    Descreva o assunto e clique em <strong>Criar</strong>, ou escreva um rascunho e clique em <strong>Melhorar</strong>.
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                    <button type="button" class="btn btn-sm btn-primary" id="msg-ai-create" onclick="_msgAiCompose('create')" style="font-size:.78rem">
+                      ${icon('sparkles', 13)} Criar com IA
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline" id="msg-ai-improve" onclick="_msgAiCompose('improve')" style="font-size:.78rem">
+                      ${icon('wand-2', 13)} Melhorar com IA
+                    </button>
+                    <span id="msg-ai-status" style="font-size:.74rem;color:var(--text-muted)"></span>
+                  </div>
                 </div>
               </div>
 
@@ -3108,6 +3127,41 @@ function _msgClearAll() {
 function _adminMsgTemplate(idx) {
   const t = _ADMIN_MSG_TEMPLATES[idx];
   if (t) document.getElementById('msg-text').value = t.text;
+}
+
+// Redige (create) ou aprimora (improve) a mensagem com IA, usando o próprio texto
+// do campo como briefing/rascunho. O resultado substitui o conteúdo do textarea.
+async function _msgAiCompose(mode) {
+  const ta = document.getElementById('msg-text');
+  const status = document.getElementById('msg-ai-status');
+  const btnC = document.getElementById('msg-ai-create');
+  const btnI = document.getElementById('msg-ai-improve');
+  const brief = (ta?.value || '').trim();
+  if (!brief) {
+    toast(mode === 'improve' ? 'Escreva um rascunho para a IA melhorar' : 'Descreva o assunto da mensagem para a IA criar', 'error');
+    ta?.focus();
+    return;
+  }
+  if (btnC) btnC.disabled = true;
+  if (btnI) btnI.disabled = true;
+  if (status) status.textContent = mode === 'improve' ? 'Melhorando…' : 'Criando…';
+  try {
+    const r = await _api('POST', '/admin/users', { action: 'ai-compose-message', mode, brief });
+    if (r?.ok && r.text) {
+      ta.value = r.text;
+      if (status) status.textContent = '✓ Pronto';
+      setTimeout(() => { if (status) status.textContent = ''; }, 2500);
+    } else {
+      if (status) status.textContent = '';
+      toast(r?.error || 'A IA não conseguiu gerar o texto', 'error');
+    }
+  } catch (e) {
+    if (status) status.textContent = '';
+    toast('Erro ao chamar a IA', 'error');
+  } finally {
+    if (btnC) btnC.disabled = false;
+    if (btnI) btnI.disabled = false;
+  }
 }
 
 async function _adminMsgFileSelected(input) {
