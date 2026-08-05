@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.26.0] — 2026-08-05
+
+### Removido
+- **Opção de botões na modal de envio** — os botões de ação (resposta/link) foram removidos. O WhatsApp não suporta botões interativos nativos em conexões não-oficiais (Baileys), então o recurso não entregava valor real. A modal volta a ter apenas mensagem, mídia e agendamento. Para links, basta colá-los no texto — o WhatsApp já os torna clicáveis.
+
+---
+
 ## [v1.25.2] — 2026-08-05
 
 ### Corrigido

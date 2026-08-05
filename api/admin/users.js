@@ -707,18 +707,6 @@ export default async function handler(req, res) {
           baseTime = ts;
         }
 
-        // Botões opcionais (máx. 3). Tipos: 'reply' (resposta) ou 'url' (link clicável).
-        let buttonsJson = '';
-        if (Array.isArray(req.body.buttons) && req.body.buttons.length) {
-          const clean = req.body.buttons.slice(0, 3).map((b) => {
-            const type = b?.type === 'url' ? 'url' : 'reply';
-            const label = String(b?.label || '').trim().slice(0, 25);
-            const url = type === 'url' ? String(b?.url || '').trim() : '';
-            return { type, label, url };
-          }).filter((b) => b.label && (b.type !== 'url' || /^https?:\/\//i.test(b.url)));
-          if (clean.length) buttonsJson = JSON.stringify(clean);
-        }
-
         // Valida instância padrão e status de conexão (fonte: DB, atualizado por webhook/listagem)
         const { rows: defRows } = await db.execute("SELECT name, api_key, connection_status FROM evolution_instances WHERE is_default=1 LIMIT 1");
         const defInst = rowsToObjects(defRows)[0] || null;
@@ -741,12 +729,12 @@ export default async function handler(req, res) {
           sql: `INSERT INTO message_campaigns
                   (id, created_by_id, created_by_name, created_by_email, instance_name,
                    text, has_media, media_type, media_name, media_b64,
-                   cadence_ms, total, sent, failed, status, buttons, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,0,'running',?,datetime('now'))`,
+                   cadence_ms, total, sent, failed, status, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,0,'running',datetime('now'))`,
           args: [
             campaignId, user.sub, senderName, user.email || '', defInst.name,
             text || '', hasMedia ? 1 : 0, media_type || '', media_name || '', media_base64 || '',
-            cadenceMs, user_ids.length, buttonsJson,
+            cadenceMs, user_ids.length,
           ],
         });
 

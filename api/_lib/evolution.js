@@ -179,50 +179,6 @@ export async function sendMedia({ name, key, number, mediatype, media, caption, 
   });
 }
 
-// Envia mensagem com botões (Evolution v2 /message/sendButtons).
-// buttons: [{ type: 'reply'|'url', label, url? }] — WhatsApp aceita no máx. 3.
-// Atenção: em conexões Baileys o WhatsApp pode não renderizar botões (best-effort).
-export async function sendButtons({ name, key, number, text, title, footer, buttons }) {
-  const base = evoBase();
-  const k = await resolveKey(key);
-  const btns = (buttons || []).slice(0, 3).map((b, i) =>
-    b.type === 'url'
-      ? { type: 'url', displayText: b.label, url: b.url }
-      : { type: 'reply', displayText: b.label, id: b.id || `btn_${i + 1}` },
-  );
-  return withRetry(async () => {
-    const r = await fetch(`${base}/message/sendButtons/${encodeURIComponent(name)}`, {
-      method: 'POST',
-      headers: headers(k),
-      body: JSON.stringify({
-        number,
-        ...(title ? { title } : {}),
-        description: text || '',
-        ...(footer ? { footer } : {}),
-        buttons: btns,
-      }),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      const errMsg = parseEvoError(data, r.status);
-      const e = new Error(errMsg);
-      if (errMsg.toLowerCase().includes('connection closed')) e._retryable = true;
-      throw e;
-    }
-    return { ok: true, status: r.status, data };
-  });
-}
-
-// Renderiza os botões como texto para o fallback (WhatsApp/Baileys não renderiza
-// botões interativos nativos em conexões não-oficiais). URLs viram links clicáveis.
-export function buttonsAsText(buttons) {
-  if (!Array.isArray(buttons) || !buttons.length) return '';
-  const lines = buttons
-    .filter(b => (b && (b.label || '').trim()))
-    .map(b => (b.type === 'url' && b.url) ? `👉 ${b.label}: ${b.url}` : `▶️ ${b.label}`);
-  return lines.length ? '\n\n' + lines.join('\n') : '';
-}
-
 export async function verifyNumbers({ name, key, numbers }) {
   const base = evoBase();
   const k = await resolveKey(key);

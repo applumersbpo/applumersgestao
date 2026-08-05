@@ -3078,24 +3078,6 @@ async function openAdminMessageModal(preSelectedIds = []) {
                 </div>
               </div>
 
-              <!-- Botões de ação (opcional) -->
-              <div class="form-group" style="margin:0">
-                <label class="form-label" style="display:flex;align-items:center;gap:6px">
-                  ${icon('mouse-pointer-click', 13)} Botões de ação
-                  <span style="font-weight:400;color:var(--text-muted);font-size:.76rem">(opcional · máx. 3)</span>
-                </label>
-                <div id="msg-buttons-list"></div>
-                <button type="button" id="msg-add-btn" class="btn btn-outline btn-sm" onclick="_msgAddButton()"
-                  style="margin-top:4px;width:100%;justify-content:center;border-style:dashed;color:var(--primary)">
-                  ${icon('plus', 14)} Adicionar botão</button>
-                <div style="font-size:.71rem;color:var(--text-muted);margin-top:5px;line-height:1.5">
-                  <strong>Resposta</strong> = resposta rápida · <strong>Link</strong> = abre uma URL. Substituem o envio de mídia.
-                  <br>⚠️ O WhatsApp não exibe botões interativos em conexões não-oficiais (Baileys). Nesse caso eles são
-                  enviados automaticamente como texto no fim da mensagem — os <strong>links</strong> ficam clicáveis; as
-                  <strong>respostas</strong> aparecem como opções listadas.
-                </div>
-              </div>
-
               <!-- Opções avançadas (recolhível) -->
               <div style="border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden">
                 <button type="button" onclick="_msgToggleAdvanced()"
@@ -3180,8 +3162,6 @@ async function openAdminMessageModal(preSelectedIds = []) {
 
   _renderMsgRecipients('');
   _renderMsgMediaSection();
-  window._msgButtons = [];
-  _msgRenderButtons();
   _msgUpdatePreview();
 }
 
@@ -3493,28 +3473,6 @@ function _msgRefreshSendBtn() {
   if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
 }
 
-function _msgAddButton() {
-  window._msgButtons = window._msgButtons || [];
-  if (window._msgButtons.length >= 3) { toast('Máximo de 3 botões', 'error'); return; }
-  window._msgButtons.push({ type: 'reply', label: '', url: '' });
-  _msgRenderButtons();
-  _msgUpdatePreview();
-}
-
-function _msgRemoveButton(i) {
-  if (!window._msgButtons) return;
-  window._msgButtons.splice(i, 1);
-  _msgRenderButtons();
-  _msgUpdatePreview();
-}
-
-function _msgBtnChange(i, field, val) {
-  if (!window._msgButtons || !window._msgButtons[i]) return;
-  window._msgButtons[i][field] = val;
-  if (field === 'type') _msgRenderButtons();
-  _msgUpdatePreview();
-}
-
 function _msgToggleAdvanced() {
   const w = document.getElementById('msg-adv-wrap');
   const c = document.getElementById('msg-adv-caret');
@@ -3536,30 +3494,23 @@ function _waFormat(t) {
   return s;
 }
 
-// Atualiza a bolha de pré-visualização com o texto atual e os botões configurados.
+// Atualiza a bolha de pré-visualização com o texto e a mídia atuais.
 function _msgUpdatePreview() {
   const el = document.getElementById('msg-preview');
   if (!el) return;
   const raw = document.getElementById('msg-text')?.value || '';
   const hasMedia = !!_stickyMsgMedia;
-  const btns = (window._msgButtons || []).filter(b => (b.label || '').trim());
   const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   const body = raw.trim()
     ? _waFormat(raw)
     : '<span style="color:#8696a0">Sua mensagem aparece aqui…</span>';
 
-  const mediaChip = (hasMedia && !btns.length) ? `
+  const mediaChip = hasMedia ? `
     <div style="display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.05);border-radius:6px;padding:6px 8px;margin-bottom:6px;font-size:.78rem;color:#3b4a54">
       ${_stickyMsgMedia.type === 'image' ? icon('image', 13) : icon('paperclip', 13)}
       ${_escHtml(_stickyMsgMedia.name || 'anexo')}
     </div>` : '';
-
-  const btnHtml = btns.map(b => `
-    <div style="display:flex;align-items:center;justify-content:center;gap:6px;background:#fff;color:#00a5f4;
-      font-weight:500;font-size:.82rem;padding:8px;border-radius:8px;box-shadow:0 1px 1px rgba(0,0,0,.1)">
-      ${b.type === 'url' ? icon('external-link', 14) : icon('reply', 14)} ${_escHtml((b.label || '').trim())}
-    </div>`).join('');
 
   el.innerHTML = `
     <div style="max-width:85%;margin-left:auto">
@@ -3570,39 +3521,8 @@ function _msgUpdatePreview() {
         <span style="float:right;font-size:.65rem;color:#667781;margin:6px 0 0 8px">${now} ✓✓</span>
         <div style="clear:both"></div>
       </div>
-      ${btnHtml ? `<div style="display:flex;flex-direction:column;gap:4px;margin-top:4px">${btnHtml}</div>` : ''}
     </div>`;
   if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [el] });
-}
-
-function _msgRenderButtons() {
-  const list = document.getElementById('msg-buttons-list');
-  const addBtn = document.getElementById('msg-add-btn');
-  if (!list) return;
-  const btns = window._msgButtons || [];
-  list.innerHTML = btns.map((b, i) => `
-    <div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px;flex-wrap:wrap">
-      <select class="form-control" style="width:110px;flex:0 0 auto"
-        onchange="_msgBtnChange(${i}, 'type', this.value)">
-        <option value="reply" ${b.type !== 'url' ? 'selected' : ''}>Resposta</option>
-        <option value="url" ${b.type === 'url' ? 'selected' : ''}>Link</option>
-      </select>
-      <input class="form-control" style="flex:1;min-width:120px" maxlength="25"
-        placeholder="Texto do botão" value="${(b.label || '').replace(/"/g, '&quot;')}"
-        oninput="_msgBtnChange(${i}, 'label', this.value)">
-      ${b.type === 'url' ? `
-      <input class="form-control" style="flex:1;min-width:140px" type="url"
-        placeholder="https://exemplo.com" value="${(b.url || '').replace(/"/g, '&quot;')}"
-        oninput="_msgBtnChange(${i}, 'url', this.value)">` : ''}
-      <button type="button" class="btn btn-ghost btn-sm" onclick="_msgRemoveButton(${i})"
-        style="flex:0 0 auto" title="Remover">${icon('trash-2', 13)}</button>
-    </div>
-  `).join('');
-  if (addBtn) {
-    addBtn.disabled = btns.length >= 3;
-    addBtn.style.opacity = btns.length >= 3 ? '.5' : '';
-  }
-  if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [list] });
 }
 
 function _msgInsertVar(varText) {
@@ -3638,25 +3558,6 @@ async function _sendAdminMessage() {
     scheduled_at = d.toISOString();
   }
 
-  // Botões (opcional, máx. 3) — resposta rápida ou link
-  const buttons = [];
-  for (const b of (window._msgButtons || [])) {
-    const label = (b.label || '').trim();
-    if (!label) continue;
-    if (b.type === 'url') {
-      const url = (b.url || '').trim();
-      if (!/^https?:\/\//i.test(url)) {
-        toast('Botão de link precisa de uma URL válida (http/https)', 'error'); return;
-      }
-      buttons.push({ type: 'url', label, url });
-    } else {
-      buttons.push({ type: 'reply', label });
-    }
-  }
-  if (buttons.length && _stickyMsgMedia) {
-    toast('Botões substituem o envio de mídia — a mídia não será enviada', 'info');
-  }
-
   btn.disabled = true;
   btn.innerHTML = icon('loader', 14) + ' Enfileirando…';
 
@@ -3674,7 +3575,6 @@ async function _sendAdminMessage() {
       text: text || '',
       delay_ms,
       ...(scheduled_at ? { scheduled_at } : {}),
-      ...(buttons.length ? { buttons } : {}),
       ...(media_base64 ? { media_base64, media_type, media_name } : {}),
     });
 
