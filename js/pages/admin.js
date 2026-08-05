@@ -2918,6 +2918,18 @@ async function openAdminMessageModal(preSelectedIds = []) {
                     <button class="btn btn-sm btn-ghost"   style="padding:3px 10px;font-size:.75rem" onclick="_msgClearAll()">Limpar</button>
                   </div>
                 </div>
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+                  <span style="font-size:.72rem;color:var(--text-muted);white-space:nowrap;display:flex;align-items:center;gap:4px">${icon('filter', 12)} Filtrar por acesso</span>
+                  <select id="msg-filter" class="form-control" onchange="_msgApplyFilter(this.value)"
+                    style="flex:1;font-size:.8rem;padding:5px 8px;height:auto">
+                    <option value="">Selecionar automaticamente…</option>
+                    <option value="all">Todos com WhatsApp</option>
+                    <option value="never">Nunca acessaram</option>
+                    <option value="inactive7">Inativos há +7 dias</option>
+                    <option value="inactive15">Inativos há +15 dias</option>
+                    <option value="inactive30">Inativos há +30 dias</option>
+                  </select>
+                </div>
                 <div style="position:relative;margin-bottom:8px">
                   <div style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text-muted);display:flex">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -2977,7 +2989,7 @@ async function openAdminMessageModal(preSelectedIds = []) {
                   Variáveis — clique para inserir
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:5px">
-                  ${['{nome}','{email}','{telefone}','{status}','{plano}','{saldo}'].map(v => `
+                  ${['{nome}','{email}','{telefone}','{status}','{plano}','{saldo}','{ultimo_acesso}'].map(v => `
                     <button class="btn btn-sm" onclick="_msgInsertVar('${v}')"
                       style="font-size:.75rem;padding:3px 9px;font-family:monospace;background:var(--surface-alt,#f1f5f9);border:1px solid var(--border)">
                       ${v}
@@ -3100,6 +3112,7 @@ function _renderMsgRecipients(search) {
               </div>
               <div style="font-size:.73rem;color:${hasPhone ? 'var(--income-text,#166534)' : 'var(--text-muted)'}">
                 ${hasPhone ? '📱 ' + u.phone : 'Sem WhatsApp cadastrado'}
+                <span style="color:var(--text-muted)"> · ${_msgLastAccessLabel(u)}</span>
               </div>
             </div>
             ${checked ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="3"><polyline points="20,6 9,17 4,12"/></svg>` : ''}
@@ -3128,6 +3141,48 @@ function _msgSelectAll() {
     (_adminUsersCache || []).filter(u => u.phone).map(u => u.id)
   );
   _renderMsgRecipients(document.getElementById('msg-recipients-search')?.value || '');
+}
+
+// Dias desde o último acesso (login OU última transação). Infinity se nunca acessou.
+function _msgDaysSinceAccess(u) {
+  const ref = u.last_active || u.last_login;
+  if (!ref) return Infinity;
+  const t = new Date(ref).getTime();
+  return isNaN(t) ? Infinity : (Date.now() - t) / 86400000;
+}
+
+// Rótulo curto do último acesso p/ exibir na lista de destinatários.
+function _msgLastAccessLabel(u) {
+  if (!u.last_login && !u.last_active) return 'Nunca acessou';
+  const days = _msgDaysSinceAccess(u);
+  if (days === Infinity) return 'Nunca acessou';
+  if (days < 1) return 'Acesso hoje';
+  const d = Math.floor(days);
+  return `Último acesso há ${d} dia${d > 1 ? 's' : ''}`;
+}
+
+// Aplica um filtro por acesso e JÁ seleciona os destinatários correspondentes
+// (apenas os que têm WhatsApp cadastrado), disponibilizando-os para o disparo.
+function _msgApplyFilter(kind) {
+  if (!kind) return;
+  const all = (_adminUsersCache || []).filter(u => u.phone);
+  let matched;
+  switch (kind) {
+    case 'all':        matched = all; break;
+    case 'never':      matched = all.filter(u => !u.last_login && !u.last_active); break;
+    case 'inactive7':  matched = all.filter(u => _msgDaysSinceAccess(u) >= 7); break;
+    case 'inactive15': matched = all.filter(u => _msgDaysSinceAccess(u) >= 15); break;
+    case 'inactive30': matched = all.filter(u => _msgDaysSinceAccess(u) >= 30); break;
+    default:           matched = [];
+  }
+  window._adminMsgSelected = new Set(matched.map(u => u.id));
+  _renderMsgRecipients(document.getElementById('msg-recipients-search')?.value || '');
+  toast(
+    matched.length
+      ? `${matched.length} destinatário(s) selecionado(s) pelo filtro`
+      : 'Nenhum usuário com WhatsApp corresponde a esse filtro',
+    matched.length ? 'success' : 'error'
+  );
 }
 
 function _msgClearAll() {

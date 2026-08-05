@@ -63,14 +63,26 @@ export function applySpin(str) {
   });
 }
 
+// Formata uma data ISO para dd/mm/aaaa (pt-BR). Retorna '' se ausente/inválida.
+function fmtBrDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getUTCFullYear()}`;
+}
+
 // Substitui variáveis personalizadas do usuário
 export function applyVars(str, u) {
+  const lastAccess = fmtBrDate(u.last_active || u.last_login);
   return str
     .replace(/\{nome\}/gi,     u.name      || '')
     .replace(/\{email\}/gi,    u.email     || '')
     .replace(/\{telefone\}/gi, u.phone     || '')
     .replace(/\{status\}/gi,   u.plan_active == 1 ? 'Ativo' : 'Inativo')
     .replace(/\{plano\}/gi,    u.plan_name  || 'Sem plano')
+    .replace(/\{ultimo_acesso\}/gi, lastAccess || 'nunca acessou')
     .replace(/\{saldo\}/gi,    u.saldo != null
       ? 'R$ ' + Number(u.saldo).toFixed(2).replace('.', ',')
       : '—');

@@ -83,8 +83,9 @@ export default async function handler(req, res) {
       // Load user data for template personalization
       const [{ rows: uRows }, { rows: acctRows }] = await Promise.all([
         db.execute({
-          sql: `SELECT u.name, u.email, u.phone,
-                       p.active AS plan_active, p.name AS plan_name
+          sql: `SELECT u.name, u.email, u.phone, u.last_login,
+                       p.active AS plan_active, p.name AS plan_name,
+                       (SELECT MAX(created_at) FROM transactions WHERE user_id = u.id) AS last_tx_at
                 FROM users u
                 LEFT JOIN user_plans p ON p.user_id = u.id
                 WHERE u.id = ?`,
@@ -98,6 +99,8 @@ export default async function handler(req, res) {
 
       const target = rowsToObjects(uRows)[0] || { name: d.recipient_name, email: '', phone: d.phone };
       target.saldo = rowsToObjects(acctRows)[0]?.saldo ?? null;
+      // Último acesso = mais recente entre login e última transação.
+      target.last_active = [target.last_login, target.last_tx_at].filter(Boolean).sort().pop() || '';
 
       const personalizedText = evo.applyVars(evo.applySpin(d.text || ''), target);
       const hasMedia = !!d.has_media;

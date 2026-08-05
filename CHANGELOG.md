@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.21.0] — 2026-08-04
+
+### Adicionado
+- **Variável `{ultimo_acesso}`** — nova variável de mensagem que insere a data do último acesso do destinatário (resolvida por destinatário no disparo, considerando o último login ou a última transação registrada). Disponível nos botões de variáveis do disparo em massa.
+- **Filtro "Filtrar por acesso" no disparo em massa** — seletor que pré-seleciona automaticamente os destinatários conforme o critério escolhido: todos com WhatsApp, nunca acessaram, ou inativos há +7 / +15 / +30 dias.
+
+### Melhorado
+- **Rótulo de último acesso por destinatário** — cada linha da lista de destinatários agora mostra quando foi o último acesso do usuário (ex.: "Nunca acessou", "Acesso hoje", "Último acesso há X dias").
+
+---
+
 ## [v1.20.1] — 2026-08-04
 
 ### Adicionado
