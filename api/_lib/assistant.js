@@ -28,6 +28,39 @@ async function getMediaBase64(instanceName, key, messageKey) {
   return data.base64 || data.media || '';
 }
 
+// Lê o conteúdo de uma imagem/print tentando Groq (visão) e, em falha, o Gemini.
+// Retorna o texto extraído (não vazio). Se ambos falharem, lança Error com:
+//   .kind = 'tech'  → falha técnica do provedor (API/limite) → função indisponível
+//   .kind = 'empty' → provedor respondeu vazio → conteúdo não compreendido
+async function readImageContent(cfg, base64, mime) {
+  let threw = false;
+  const providers = [];
+  if (cfg.groqKey)   providers.push('groq');
+  if (cfg.geminiKey) providers.push('gemini');
+  for (const p of providers) {
+    try {
+      const t = p === 'groq'
+        ? await groqReadImage({ key: cfg.groqKey, base64, mime })
+        : await geminiReadImage({ key: cfg.geminiKey, model: cfg.geminiModel, base64, mime });
+      if (t && t.trim()) return t.trim();
+    } catch (e) {
+      threw = true;
+      console.error(`[assistant] leitura de imagem (${p}) falhou`, e?.message);
+    }
+  }
+  const err = new Error('image read failed');
+  err.kind = threw ? 'tech' : 'empty';
+  throw err;
+}
+
+// Heurística: o modelo respondeu, mas dizendo que não consegue ler (borrada/ilegível),
+// ou o texto é curto demais para ser um comprovante útil.
+function imageLooksUnreadable(t) {
+  const s = String(t || '').trim().toLowerCase();
+  if (s.length < 8) return true;
+  return /(n[ãa]o\s+(consigo|foi poss[ií]vel|d[áa]\s+para|consegui)[^.]*(ler|identificar|entender|distinguir|vis))|ileg[íi]vel|muito\s+borrad|imagem\s+borrad|baixa\s+qualidade|n[ãa]o\s+est[áa]\s+n[ií]tid|pouco\s+n[ií]tid|can'?t\s+(read|see)|unable\s+to\s+(read|identify)/i.test(s);
+}
+
 // Gera as variações plausíveis de um número BR para casar com o que está salvo,
 // tolerando: código do país 55 presente/ausente e o 9º dígito do celular presente/ausente.
 // Ex.: WhatsApp manda "5511912345678"; o cadastro pode estar como "551112345678",
@@ -1180,16 +1213,33 @@ export async function handleAssistantMessage(msg, instanceName) {
           : await geminiTranscribeAudio({ key: cfg.geminiKey, model: cfg.geminiModel, base64: b64, mime });
       }
     } else if (m.imageMessage) {
-      // Print/imagem é lido pelo Groq (visão, cota própria). Fallback para o Gemini.
-      if (!cfg.groqKey && !cfg.geminiKey) { await reply('Recebi seu print, mas a interpretação de imagens ainda não está configurada. Pode me mandar os dados por texto? 🙂'); return { handled: true, reason: 'no_image_provider' }; }
-      const b64 = await getMediaBase64(inst.name, inst.api_key, msg.key);
-      const mime = m.imageMessage.mimetype || 'image/jpeg';
-      if (b64) {
-        imageContext = cfg.groqKey
-          ? await groqReadImage({ key: cfg.groqKey, base64: b64, mime })
-          : await geminiReadImage({ key: cfg.geminiKey, model: cfg.geminiModel, base64: b64, mime });
-      }
       userText = m.imageMessage.caption || '';
+      // Sem nenhum provedor de visão configurado → função indisponível.
+      if (!cfg.groqKey && !cfg.geminiKey) {
+        await reply('A *leitura de imagens não está disponível* no momento. Me envie os dados por texto (ex.: "gastei 30 no mercado") que eu registro. 🙂');
+        return { handled: true, reason: 'image_unavailable' };
+      }
+      const b64 = await getMediaBase64(inst.name, inst.api_key, msg.key);
+      if (!b64) {
+        await reply('Não consegui baixar a imagem que você enviou. Pode reenviar ou me mandar os dados por texto? 🙂');
+        return { handled: true, reason: 'image_download_failed' };
+      }
+      const mime = m.imageMessage.mimetype || 'image/jpeg';
+      try {
+        imageContext = await readImageContent(cfg, b64, mime);
+      } catch (e) {
+        if (e.kind === 'tech') {
+          await reply('A *leitura de imagens está temporariamente indisponível*. Tente novamente em alguns minutos ou me envie os dados por texto. 🙏');
+          return { handled: true, reason: 'image_tech_unavailable' };
+        }
+        await reply('Não consegui *entender* o conteúdo dessa imagem. Se for um recibo, reenvie mais nítido e bem enquadrado, ou me diga os dados por texto (ex.: "gastei 30 no mercado"). 🙂');
+        return { handled: true, reason: 'image_unreadable' };
+      }
+      // Leu algo, mas o próprio modelo indicou que a imagem está ilegível/borrada.
+      if (imageLooksUnreadable(imageContext)) {
+        await reply('Não consegui *entender* o conteúdo dessa imagem — a leitura ficou ruim. Reenvie o recibo mais nítido e bem enquadrado, ou me diga os dados por texto. 🙂');
+        return { handled: true, reason: 'image_unreadable' };
+      }
     }
   } catch (e) {
     console.error('[assistant] extração de mídia falhou', e?.message);

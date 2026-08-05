@@ -640,7 +640,7 @@ export default async function handler(req, res) {
         if (typeof admin_note === 'string') { sets.push('admin_note = ?'); args.push(admin_note.slice(0, 500)); }
         const statusChanged = validStatus.includes(status) && status !== imp.status;
         if (statusChanged && (status === 'done' || status === 'rejected')) {
-          sets.push("decided_at = datetime('now')"); sets.push('decided_by = ?'); args.push(user.id);
+          sets.push("decided_at = datetime('now')"); sets.push('decided_by = ?'); args.push(user.sub);
         }
         if (!sets.length) return res.status(400).json({ error: 'nada para atualizar' });
         args.push(id);

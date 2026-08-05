@@ -5,6 +5,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.29.1] — 2026-08-05
+
+### Corrigido
+- **Leitura de imagens/recibos no WhatsApp** — quando o Groq (visão) falha, o assistente agora tenta o Gemini automaticamente, aumentando a taxa de sucesso. As respostas ao usuário passaram a distinguir os casos: leitura ruim/ilegível → informa que *não deu para entender* e pede reenviar mais nítido ou por texto; indisponibilidade técnica (provedor fora do ar/limite) → informa que a *função está temporariamente indisponível*; falha ao baixar a mídia → pede reenviar.
+- **Erro "Unsupported type of value" ao concluir/recusar melhoria** — o campo `decided_by` estava sendo preenchido com um valor indefinido, quebrando a atualização. Corrigido para usar o ID do admin autenticado.
+
+---
+
 ## [v1.29.0] — 2026-08-05
 
 ### Melhorado
