@@ -496,6 +496,22 @@ export async function initDb() {
       decided_at TEXT DEFAULT '',
       decided_by TEXT DEFAULT ''
     )`,
+    // Follow-ups automáticos de campanhas de atualização: quando o admin habilita,
+    // criamos uma linha por destinatário após o envio original. O cron reenvia
+    // lembretes (a cada 3h, até o máximo) enquanto a pessoa não responder.
+    `CREATE TABLE IF NOT EXISTS message_followups (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL,
+      user_id TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      recipient_name TEXT DEFAULT '',
+      instance_name TEXT DEFAULT '',
+      original_sent_at TEXT DEFAULT '',
+      followups_sent INTEGER DEFAULT 0,
+      last_sent_at TEXT DEFAULT '',
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
   ];
 
   for (const sql of tables) {
@@ -648,6 +664,14 @@ export async function initDb() {
 
   // message_dispatch index for queue processing
   await db.execute("CREATE INDEX IF NOT EXISTS idx_message_dispatch_status_scheduled ON message_dispatch(status, scheduled_for)");
+
+  // message_campaigns — follow-up opt-in flag for update broadcasts
+  const { rows: mcCols } = await db.execute("PRAGMA table_info('message_campaigns')");
+  if ((mcCols || []).length > 0 && !(mcCols || []).map(r => r.name).includes('followup_enabled')) {
+    await db.execute("ALTER TABLE message_campaigns ADD COLUMN followup_enabled INTEGER DEFAULT 0");
+  }
+  // message_followups index for the cron scan
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_message_followups_status ON message_followups(status, last_sent_at)");
 
   // Seed default system settings (INSERT OR IGNORE keeps existing values)
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('allow_registration', '0')", args: [] });

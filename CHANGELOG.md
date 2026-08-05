@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.31.0] — 2026-08-05
+
+### Adicionado
+- **Resumo diário do mês por WhatsApp (17h)** — todo dia, às 17h (horário de Brasília), o assistente envia ao usuário (plano ativo, com telefone) um resumo do mês atual: receitas, despesas e saldo. Se a pessoa não registrou nenhum valor no dia, a mensagem inclui um lembrete convidando a interagir e registrar seus lançamentos. Envio único por dia por usuário; respeita opt-out em preferências de notificação.
+- **Follow-up automático em mensagens em massa** — ao disparar uma mensagem/atualização em massa, o admin pode marcar *Follow-up*. Quem não responder recebe lembretes automáticos (a cada 3h, até 3 vezes) do tipo _"Olá, você está por aí? O que achou dessa atualização? Já testou?"_. Assim que a pessoa interage com o assistente, os follow-ups param.
+
+### Melhorado
+- **Detecção de nome no cadastro via WhatsApp** — quando um número não cadastrado inicia a conversa e a primeira mensagem não parece um nome (ex.: anúncio encaminhado, link, saudação ou pergunta), o assistente não salva mais aquilo como nome: ele identifica que não é um nome e pede, de forma clara, apenas o nome completo para prosseguir com o cadastro.
+
+---
+
 ## [v1.30.0] — 2026-08-05
 
 ### Adicionado

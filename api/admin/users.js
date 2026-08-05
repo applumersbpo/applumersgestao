@@ -779,7 +779,8 @@ export default async function handler(req, res) {
 
       // Send WhatsApp message — enfileira campanha e retorna imediatamente
       if (action === 'send-message') {
-        const { user_ids, text, media_base64, media_type, media_name, delay_ms, scheduled_at } = req.body;
+        const { user_ids, text, media_base64, media_type, media_name, delay_ms, scheduled_at, followup } = req.body;
+        const followupEnabled = followup === true || followup === 1 || followup === '1' ? 1 : 0;
         if (!user_ids?.length) return res.status(400).json({ error: 'user_ids é obrigatório' });
         if (!text && !media_base64) return res.status(400).json({ error: 'mensagem ou mídia são obrigatórios' });
 
@@ -815,12 +816,12 @@ export default async function handler(req, res) {
           sql: `INSERT INTO message_campaigns
                   (id, created_by_id, created_by_name, created_by_email, instance_name,
                    text, has_media, media_type, media_name, media_b64,
-                   cadence_ms, total, sent, failed, status, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,0,'running',datetime('now'))`,
+                   cadence_ms, total, sent, failed, status, followup_enabled, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,0,'running',?,datetime('now'))`,
           args: [
             campaignId, user.sub, senderName, user.email || '', defInst.name,
             text || '', hasMedia ? 1 : 0, media_type || '', media_name || '', media_base64 || '',
-            cadenceMs, user_ids.length,
+            cadenceMs, user_ids.length, followupEnabled,
           ],
         });
 

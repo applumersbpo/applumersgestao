@@ -155,6 +155,27 @@ function firstName(name) {
   return (name || '').trim().split(/\s+/)[0] || '';
 }
 
+// Heurística para decidir se um texto é plausivelmente o NOME de uma pessoa.
+// Números não cadastrados costumam mandar como primeira mensagem coisas que NÃO
+// são o nome deles (anúncios encaminhados, links, "oi", perguntas, correntes).
+// Nesses casos não devemos salvar a mensagem como nome — precisamos pedir o nome.
+function looksLikeName(s) {
+  const t = String(s || '').trim();
+  if (t.length < 2 || t.length > 60) return false;   // curto demais ou texto longo (anúncio)
+  if (/[\r\n]/.test(t)) return false;                 // várias linhas = mensagem encaminhada
+  if (/(https?:\/\/|www\.|\.com|\.br|@|\b\d{4,}\b)/i.test(t)) return false; // link/email/telefone/preço
+  if (/[?!]{1,}$/.test(t) || /\?/.test(t)) return false; // pergunta
+  if ((t.match(/\d/g) || []).length > 2) return false; // muitos dígitos
+  if (t.split(/\s+/).length > 6) return false;          // frase, não um nome
+  // Termos típicos de anúncio/saudação/corrente — não são nomes.
+  if (/\b(oi|ol[áa]|bom dia|boa tarde|boa noite|promo|promo[çc][ãa]o|desconto|oferta|gr[áa]tis|clique|link|whatsapp|zap|grupo|vaga|renda|ganhe|invista|cripto|body|bom demais|imperd[íi]vel|aproveite|acesse|confira)\b/i.test(t)) return false;
+  // Um nome deve ser predominantemente letras (com acentos), espaços, ponto ou hífen.
+  if (!/^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .'-]*$/.test(t)) return false;
+  // Precisa ter ao menos uma "palavra" alfabética de 2+ letras.
+  if (!/[A-Za-zÀ-ÿ]{2,}/.test(t)) return false;
+  return true;
+}
+
 // ── Snapshot financeiro (respeitando o nível de acesso) ──────────────────────
 
 async function getSelfSnapshot(userId) {
@@ -718,6 +739,16 @@ async function handleUnknownUser({ phone, text, inType, reply, inst }) {
 
   if (pend.step === 'name') {
     if (t.length < 2) { await reply('Preciso do seu nome completo para seguir. Como você se chama?'); return { handled: true, reason: 'signup_name_invalid' }; }
+    // A mensagem não parece um nome (ex.: anúncio encaminhado, link, saudação ou
+    // pergunta). Não salvamos como nome — tratamos como continuidade de conversa e
+    // pedimos, de forma clara, apenas o nome para prosseguir.
+    if (!looksLikeName(t)) {
+      const out = 'Para liberar o seu acesso ao *Lumers Flow*, eu preciso primeiro do seu *nome*. 🙂\n\nMe diga *apenas o seu nome completo* (ex.: _Maria Silva_) e seguimos com o cadastro.';
+      await reply(out);
+      await saveConversation(phone, '', { type: 'signup', step: 'name', data }, conv.history || []);
+      await logInteraction({ phone, user: null, inType, inText: t, outText: out, action: 'signup_name_rejected' });
+      return { handled: true, reason: 'signup_name_rejected' };
+    }
     data.name = t;
     const out = `Prazer, ${firstName(data.name)}! Agora me envie o seu *e-mail* para acesso.`;
     await reply(out);

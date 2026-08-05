@@ -42,7 +42,8 @@ export default async function handler(req, res) {
       sql: `SELECT d.id, d.campaign_id, d.user_id, d.recipient_name, d.phone,
                    d.status, d.attempts, d.scheduled_for,
                    c.text, c.has_media, c.media_type, c.media_name, c.media_b64,
-                   c.instance_name, c.created_by_id, c.created_by_name, c.created_by_email
+                   c.instance_name, c.created_by_id, c.created_by_name, c.created_by_email,
+                   c.followup_enabled
             FROM message_dispatch d
             JOIN message_campaigns c ON c.id = d.campaign_id
             WHERE d.status = 'pending' AND d.scheduled_for <= ?
@@ -143,6 +144,20 @@ export default async function handler(req, res) {
           sql: "UPDATE message_campaigns SET sent=sent+1 WHERE id=?",
           args: [d.campaign_id],
         });
+        // Follow-up automático: se a campanha pediu, registra o destinatário para
+        // receber lembretes caso não responda (processado no BLOCK D).
+        if ((d.followup_enabled === 1 || d.followup_enabled === '1') && d.phone) {
+          await db.execute({
+            sql: `INSERT INTO message_followups
+                    (id, campaign_id, user_id, phone, recipient_name, instance_name,
+                     original_sent_at, followups_sent, last_sent_at, status, created_at)
+                  VALUES (?,?,?,?,?,?,?,0,'','active',datetime('now'))`,
+            args: [
+              crypto.randomUUID(), d.campaign_id, d.user_id, d.phone,
+              target.name || d.recipient_name || '', d.instance_name, now,
+            ],
+          });
+        }
         await db.execute({
           sql: `INSERT INTO message_logs
                   (id,sent_by_id,sent_by_name,sent_by_email,instance_name,
@@ -573,12 +588,207 @@ export default async function handler(req, res) {
       console.error('[dispatcher] notification_rules block error', blockCErr && blockCErr.message);
     }
 
+    // ===================================================================
+    // BLOCK D — follow-ups de campanhas de atualização
+    // ===================================================================
+    // Quando o admin habilita follow-up numa mensagem em massa, cada destinatário
+    // que recebeu a mensagem ganha uma linha em message_followups. Aqui, a cada 3h
+    // sem resposta, reenviamos um lembrete curto (até 3 vezes). Se a pessoa
+    // responder/interagir (registrou algo no assistente), encerramos os follow-ups.
+    let followupSends = 0;
+    try {
+      const FOLLOWUP_GAP_MS = 3 * 60 * 60 * 1000; // 3 horas
+      const FOLLOWUP_MAX = 3;
+      const FOLLOWUP_TEXTS = [
+        'Olá! 👋 Você está por aí? Vi que ainda não tive um retorno seu sobre a novidade que enviei. O que achou? Já testou? Estou por aqui pra ajudar. 🙂',
+        'Oi! Passando pra saber se você conseguiu dar uma olhada na atualização. Qualquer dúvida, é só me chamar — estou à disposição. 😉',
+        'Olá! Ainda dá tempo de conferir a novidade. Se precisar de uma mãozinha pra testar ou tiver qualquer dúvida, me avise. 💬',
+      ];
+      const cutoffIso = new Date(Date.now() - FOLLOWUP_GAP_MS).toISOString();
+
+      const { rows: fuRows } = await db.execute({
+        sql: `SELECT id, campaign_id, user_id, phone, recipient_name, instance_name,
+                     original_sent_at, followups_sent, last_sent_at, status
+              FROM message_followups
+              WHERE status='active' AND followups_sent < ?
+                AND COALESCE(NULLIF(last_sent_at,''), original_sent_at) <= ?
+              LIMIT 50`,
+        args: [FOLLOWUP_MAX, cutoffIso],
+      });
+      const followups = rowsToObjects(fuRows);
+      const instCache = {};
+
+      for (const f of followups) {
+        // A pessoa respondeu/interagiu desde o envio original? (mensagem recebida)
+        const last8 = String(f.phone || '').replace(/\D/g, '').slice(-8);
+        if (last8) {
+          const { rows: intRows } = await db.execute({
+            sql: `SELECT 1 FROM wa_interactions
+                  WHERE phone LIKE ? AND created_at > ? LIMIT 1`,
+            args: ['%' + last8, f.original_sent_at],
+          });
+          if (rowsToObjects(intRows).length > 0) {
+            await db.execute({
+              sql: "UPDATE message_followups SET status='done_responded' WHERE id=?",
+              args: [f.id],
+            });
+            continue;
+          }
+        }
+
+        // Instância conectada? (cache por nome)
+        if (!(f.instance_name in instCache)) {
+          const { rows: iRows } = await db.execute({
+            sql: "SELECT name, api_key, connection_status FROM evolution_instances WHERE name=? LIMIT 1",
+            args: [f.instance_name],
+          });
+          instCache[f.instance_name] = rowsToObjects(iRows)[0] || null;
+        }
+        const fuInst = instCache[f.instance_name];
+        if (!fuInst || fuInst.connection_status !== 'connected') continue; // adia p/ próximo tick
+
+        const idx = Math.min(Number(f.followups_sent) || 0, FOLLOWUP_TEXTS.length - 1);
+        const text = evo.applyVars(FOLLOWUP_TEXTS[idx], { name: f.recipient_name || '' });
+
+        let ok = false;
+        try {
+          const sr = await evo.sendText({ name: fuInst.name, key: fuInst.api_key || null, number: f.phone, text });
+          ok = !!sr.ok;
+        } catch (e) { ok = false; }
+
+        if (ok) {
+          const nextCount = (Number(f.followups_sent) || 0) + 1;
+          const nowIso = new Date().toISOString();
+          await db.execute({
+            sql: "UPDATE message_followups SET followups_sent=?, last_sent_at=?, status=? WHERE id=?",
+            args: [nextCount, nowIso, nextCount >= FOLLOWUP_MAX ? 'done_maxed' : 'active', f.id],
+          });
+          followupSends++;
+        }
+      }
+    } catch (blockDErr) {
+      console.error('[dispatcher] follow-up block error', blockDErr && blockDErr.message);
+    }
+
+    // ===================================================================
+    // BLOCK E — resumo diário do mês (17h BRT) + lembrete de inatividade
+    // ===================================================================
+    // Todo dia, às 17h (horário de Brasília), enviamos ao usuário um resumo do MÊS
+    // atual (receitas, despesas e saldo). Se a pessoa não registrou NENHUM valor no
+    // dia, anexamos um lembrete convidando a interagir. Dedupe: 1 envio por dia por
+    // usuário (marca em notification_rule_sends com rule_id='daily_summary').
+    let dailySummarySends = 0;
+    try {
+      // "Agora" em horário de Brasília (UTC-3, sem DST desde 2019).
+      const nowBRT = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+      const hourBRT = nowBRT.getHours();
+
+      // Só dispara dentro da janela das 17h BRT (o dedupe evita repetição no minuto).
+      if (hourBRT === 17) {
+        const yBRT = nowBRT.getFullYear();
+        const mBRT = nowBRT.getMonth() + 1;
+        const dBRT = nowBRT.getDate();
+        // Início do dia BRT (00:00) expresso em UTC = 03:00Z da mesma data.
+        const dayStartUtc = new Date(Date.UTC(yBRT, mBRT - 1, dBRT, 3, 0, 0)).toISOString();
+        const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+        const nomeMes = MESES[mBRT - 1];
+        const brl = (n) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        // Instância padrão conectada (canal WhatsApp).
+        const { rows: dsInstRows } = await db.execute("SELECT name, api_key, connection_status FROM evolution_instances WHERE is_default=1 LIMIT 1");
+        const dsInst = rowsToObjects(dsInstRows)[0] || null;
+
+        if (dsInst && dsInst.connection_status === 'connected') {
+          // Usuários elegíveis: plano ativo + telefone + não optaram por sair do resumo.
+          const { rows: dsUserRows } = await db.execute({
+            sql: `SELECT u.id AS user_id, u.name, u.phone
+                  FROM users u
+                  JOIN user_plans p ON p.user_id = u.id
+                  LEFT JOIN user_notification_prefs np
+                         ON np.user_id = u.id AND np.notif_key = 'daily_summary'
+                  WHERE p.active = 1
+                    AND u.phone IS NOT NULL AND u.phone != ''
+                    AND (np.enabled IS NULL OR np.enabled = 1)
+                  LIMIT 500`,
+          });
+          const dsUsers = rowsToObjects(dsUserRows);
+          const DS_MAX = 200;
+
+          for (const u of dsUsers) {
+            if (dailySummarySends >= DS_MAX) break;
+
+            // Dedupe: já enviou hoje?
+            const { rows: dupRows } = await db.execute({
+              sql: `SELECT 1 FROM notification_rule_sends
+                    WHERE rule_id='daily_summary' AND user_id=? AND sent_at >= ? LIMIT 1`,
+              args: [u.user_id, dayStartUtc],
+            });
+            if (rowsToObjects(dupRows).length > 0) continue;
+
+            // Totais do mês.
+            const { rows: totRows } = await db.execute({
+              sql: `SELECT
+                       COALESCE(SUM(CASE WHEN transaction_type='income'  THEN amount ELSE 0 END),0) AS income,
+                       COALESCE(SUM(CASE WHEN transaction_type='expense' THEN amount ELSE 0 END),0) AS expense,
+                       COUNT(*) AS cnt
+                     FROM transactions WHERE user_id=? AND month=? AND year=?`,
+              args: [u.user_id, mBRT, yBRT],
+            });
+            const tot = rowsToObjects(totRows)[0] || { income: 0, expense: 0, cnt: 0 };
+            const income = Number(tot.income) || 0;
+            const expense = Number(tot.expense) || 0;
+            const saldo = income - expense;
+
+            // Registrou algum valor HOJE?
+            const { rows: todayRows } = await db.execute({
+              sql: `SELECT 1 FROM transactions WHERE user_id=? AND created_at >= ? LIMIT 1`,
+              args: [u.user_id, dayStartUtc],
+            });
+            const registrouHoje = rowsToObjects(todayRows).length > 0;
+
+            const nome = (u.name || '').trim().split(/\s+/)[0] || '';
+            const saldoIcon = saldo >= 0 ? '🟢' : '🔴';
+            let text =
+              `📊 *Resumo de ${nomeMes}*${nome ? ', ' + nome : ''}!\n\n` +
+              `💰 Receitas: *${brl(income)}*\n` +
+              `💸 Despesas: *${brl(expense)}*\n` +
+              `${saldoIcon} Saldo do mês: *${brl(saldo)}*`;
+
+            if (registrouHoje) {
+              text += `\n\nSe teve mais algum gasto ou recebimento hoje, é só me mandar que eu registro na hora. 😉`;
+            } else {
+              text += `\n\n👋 Passando pra lembrar que estou por aqui pra te ajudar na sua gestão financeira! Você ainda não registrou nada hoje — se teve algum gasto ou recebimento, me envie por aqui que eu cuido do resto. 💪`;
+            }
+
+            let ok = false, errMsg = '';
+            try {
+              const sr = await evo.sendText({ name: dsInst.name, key: dsInst.api_key || null, number: (u.phone || '').replace(/\D/g, ''), text });
+              ok = !!sr.ok;
+              if (!ok) errMsg = evo.parseEvoError(sr?.data, sr?.status);
+            } catch (e) { errMsg = e.message || 'erro'; }
+
+            // Marca o envio (sucesso ou falha) para não reprocessar no mesmo dia.
+            await db.execute({
+              sql: `INSERT INTO notification_rule_sends (id, rule_id, user_id, channel, status, error, sent_at)
+                    VALUES (?, 'daily_summary', ?, 'whatsapp', ?, ?, ?)`,
+              args: [crypto.randomUUID(), u.user_id, ok ? 'sent' : 'failed', errMsg, new Date().toISOString()],
+            });
+            if (ok) dailySummarySends++;
+          }
+        }
+      }
+    } catch (blockEErr) {
+      console.error('[dispatcher] daily_summary block error', blockEErr && blockEErr.message);
+    }
+
     return res.status(200).json({
       ok: true,
       whatsapp: processed.length,
       email: emailProcessed.length,
       plan_reminders: reminderCount,
       rule_sends: ruleSends,
+      followup_sends: followupSends,
+      daily_summary_sends: dailySummarySends,
       processed: processed.length,
       details: processed,
     });

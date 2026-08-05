@@ -3279,6 +3279,11 @@ async function openAdminMessageModal(preSelectedIds = []) {
         <div class="modal-footer" style="flex-shrink:0;flex-wrap:wrap;gap:10px">
           <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
           <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end">
+            <label style="display:flex;align-items:center;gap:5px;font-size:.8rem;cursor:pointer;white-space:nowrap;color:var(--text)"
+              title="Reenvia um lembrete automático (a cada 3h, até 3 vezes) para quem não responder">
+              <input type="checkbox" id="msg-followup-toggle" style="accent-color:var(--primary)">
+              ${icon('bell-ring', 14)} Follow-up
+            </label>
             <label style="display:flex;align-items:center;gap:5px;font-size:.8rem;cursor:pointer;white-space:nowrap;color:var(--text)">
               <input type="checkbox" id="msg-schedule-toggle" onchange="_msgToggleSchedule(this.checked)"
                 style="accent-color:var(--primary)">
@@ -3706,11 +3711,14 @@ async function _sendAdminMessage() {
       media_name   = _stickyMsgMedia.name;
     }
 
+    const followup = !!document.getElementById('msg-followup-toggle')?.checked;
+
     const res = await _api('POST', '/admin/users', {
       action: 'send-message',
       user_ids: userIds,
       text: text || '',
       delay_ms,
+      ...(followup ? { followup: true } : {}),
       ...(scheduled_at ? { scheduled_at } : {}),
       ...(media_base64 ? { media_base64, media_type, media_name } : {}),
     });
