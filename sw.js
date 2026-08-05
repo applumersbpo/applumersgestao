@@ -1,4 +1,4 @@
-const CACHE_STATIC = 'lumers-v62';
+const CACHE_STATIC = 'lumers-v63';
 
 const SHELL_ASSETS = [
   './',
@@ -30,6 +30,7 @@ const SHELL_ASSETS = [
   './js/pages/transactions.js',
   './js/notifications.js',
   './lumers-flow-logotipo.png',
+  './lumers-atualizacao.png',
   './favicon-lumers-flow.png',
   './logos/banks/banco-do-brasil.svg',
   './logos/banks/bradesco.svg',

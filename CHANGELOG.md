@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.20.1] — 2026-08-04
+
+### Adicionado
+- **Mensagem pronta "Primeiro acesso pendente"** — avisa o usuário que criou a conta mas nunca acessou, com aviso de remoção automática em 48h caso o primeiro acesso não aconteça.
+- **Mensagem pronta "Sentimos sua falta"** — reengajamento para usuários inativos há alguns dias, com variações de texto (spin) e personalização por {nome}.
+
+### Melhorado
+- **Mensagem pronta "Atualização"** — texto revisado e agora anexa automaticamente o banner de atualização (`lumers-atualizacao.png`), enviado como imagem com legenda no WhatsApp.
+
+---
+
 ## [v1.20.0] — 2026-08-04
 
 ### Adicionado

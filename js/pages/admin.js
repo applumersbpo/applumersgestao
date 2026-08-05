@@ -2839,7 +2839,18 @@ const _ADMIN_MSG_TEMPLATES = [
   {
     icon: 'sparkles',
     label: 'Atualização',
-    text: '🚀 *Novidade no Lumers Flow!* Acabamos de lançar melhorias que vão transformar a sua gestão financeira. Acesse agora e confira tudo o que preparamos para você!\n\n👉 https://app.lumersbpo.com.br/ ✨',
+    media: 'lumers-atualizacao.png',
+    text: '🚀 *Novidade no Lumers Flow!*\n\nAcabamos de lançar melhorias que vão deixar a sua gestão financeira ainda mais simples, completa e inteligente. Já está tudo disponível para você aproveitar!\n\n👉 Acesse agora e confira: https://app.lumersbpo.com.br/ ✨',
+  },
+  {
+    icon: 'log-in',
+    label: 'Primeiro acesso pendente',
+    text: 'Olá, {nome}! 👋\n\nNotamos que a sua conta no *Lumers Flow* já está pronta, mas você ainda *não realizou o seu primeiro acesso*.\n\nPara não perder o acesso, é importante entrar o quanto antes. ⚠️ *Atenção:* caso o primeiro acesso não aconteça nas próximas *48 horas*, a sua conta será removida automaticamente.\n\nÉ rápido e simples — comece agora mesmo:\n👉 https://app.lumersbpo.com.br/\n\nEstamos à disposição para ajudar no que precisar. 💚',
+  },
+  {
+    icon: 'heart-handshake',
+    label: 'Sentimos sua falta',
+    text: '{Olá|Oi|Ei}, {nome}! {Sentimos a sua falta|Notamos a sua ausência|Faz um tempinho que não te vemos} por aqui 💚\n\nPercebemos que você não acessa o *Lumers Flow* há alguns dias. {Encontrou alguma dificuldade?|Aconteceu alguma coisa?|Ficou com alguma dúvida?}\n\n{Estamos aqui para te ajudar|Conte com a gente|Pode contar conosco}! {Nos conte|Nos diga|Compartilhe} o que aconteceu que vamos trabalhar juntos para resolver o quanto antes. 🤝\n\n👉 https://app.lumersbpo.com.br/',
   },
   {
     icon: 'share-2',
@@ -3124,9 +3135,37 @@ function _msgClearAll() {
   _renderMsgRecipients(document.getElementById('msg-recipients-search')?.value || '');
 }
 
-function _adminMsgTemplate(idx) {
+async function _adminMsgTemplate(idx) {
   const t = _ADMIN_MSG_TEMPLATES[idx];
-  if (t) document.getElementById('msg-text').value = t.text;
+  if (!t) return;
+  const ta = document.getElementById('msg-text');
+  if (ta) ta.value = t.text;
+
+  // Templates com imagem (ex.: banner de atualização) anexam a mídia automaticamente,
+  // que segue como imagem + legenda (o texto acima) no envio pelo WhatsApp.
+  if (t.media) {
+    try {
+      const resp = await fetch(t.media, { cache: 'reload' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const blob = await resp.blob();
+      const base64 = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = reject;
+        r.readAsDataURL(blob);
+      });
+      _stickyMsgMedia = {
+        base64,
+        type: (blob.type || '').startsWith('image/') ? 'image' : 'document',
+        name: t.media.split('/').pop() || 'imagem.png',
+        size: blob.size,
+      };
+      _renderMsgMediaSection();
+      toast('Imagem anexada à mensagem', 'success');
+    } catch (e) {
+      toast('Não consegui anexar a imagem do template', 'error');
+    }
+  }
 }
 
 // Redige (create) ou aprimora (improve) a mensagem com IA, usando o próprio texto
