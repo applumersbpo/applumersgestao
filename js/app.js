@@ -324,9 +324,9 @@ import:     'Importar Dados',
           <button onclick="app.prevMonth()" title="Mês anterior">
             <i data-lucide="chevron-left" style="width:16px;height:16px"></i>
           </button>
-          <button class="month-label" onclick="app.openMonthPicker()" title="Escolher mês/ano" style="background:none;border:none;font:inherit;color:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:5px">
-            ${monthLabel(this.currentMonth, this.currentYear)}
-            <i data-lucide="chevron-down" style="width:14px;height:14px;opacity:.6"></i>
+          <button class="month-label" onclick="app.openMonthPicker()" title="Escolher mês/ano">
+            <span>${monthLabel(this.currentMonth, this.currentYear)}</span>
+            <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
           </button>
           <button onclick="app.nextMonth()" title="Próximo mês">
             <i data-lucide="chevron-right" style="width:16px;height:16px"></i>

@@ -739,14 +739,20 @@ input, select, textarea { font: inherit; }
 }
 .month-selector button:hover { background: var(--bg-subtle); color: var(--text); }
 
-.month-selector .month-label {
+.month-selector button.month-label {
+  width: auto;
+  height: 26px;
+  min-width: 118px;
+  padding: 0 8px;
+  gap: 5px;
   font-weight: 600;
   font-size: .875rem;
-  min-width: 110px;
-  text-align: center;
   letter-spacing: -.01em;
   color: var(--text);
+  cursor: pointer;
 }
+.month-selector button.month-label i { color: var(--text-muted); transition: transform .12s; }
+.month-selector button.month-label:hover i { color: var(--text); }
 
 /* ── Buttons ── */
 .btn {
@@ -1659,7 +1665,7 @@ body.impersonating .bulk-cb-wrap { display: none !important; }
   }
 
   .month-selector { padding: 4px 6px; gap: 4px; }
-  .month-selector .month-label { min-width: 80px; font-size: .8rem; }
+  .month-selector button.month-label { min-width: 92px; font-size: .8rem; height: 24px; }
   .month-selector button { width: 24px; height: 24px; }
 
   .topbar { padding: 0 12px; gap: 8px; }

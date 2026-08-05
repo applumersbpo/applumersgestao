@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.18.1] — 2026-08-04
+
+### Corrigido
+- **Visual do seletor de mês no topo** — o botão do mês (agora clicável para abrir o seletor) estava deformado por conflito de estilos com os botões de navegação. Ajustado o CSS para exibir o mês e a seta de forma limpa e alinhada, com largura adequada e responsividade.
+
+---
+
 ## [v1.18.0] — 2026-08-04
 
 ### Adicionado
