@@ -3129,6 +3129,21 @@ async function openAdminMessageModal(preSelectedIds = []) {
                 </div>
               </div>
 
+              <!-- Botões -->
+              <div class="form-group" style="margin:0">
+                <label class="form-label" style="display:flex;align-items:center;gap:6px">
+                  ${icon('mouse-pointer-click', 13)} Botões (opcional)
+                </label>
+                <div id="msg-buttons-list"></div>
+                <button type="button" id="msg-add-btn" class="btn btn-ghost btn-sm" onclick="_msgAddButton()"
+                  style="margin-top:4px">${icon('plus', 13)} Adicionar botão</button>
+                <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">
+                  Máx. 3 botões. Tipo <strong>Resposta</strong> = resposta rápida; <strong>Link</strong> = abre uma URL.
+                  ⚠️ Em conexões não-oficiais (Baileys) o WhatsApp pode não exibir os botões em alguns aparelhos.
+                  Botões substituem o envio com mídia.
+                </div>
+              </div>
+
               <!-- Mídia -->
               <div class="form-group" style="margin:0">
                 <label class="form-label">Mídia (opcional)</label>
@@ -3153,6 +3168,8 @@ async function openAdminMessageModal(preSelectedIds = []) {
 
   _renderMsgRecipients('');
   _renderMsgMediaSection();
+  window._msgButtons = [];
+  _msgRenderButtons();
 }
 
 // Helper to open for a single user (avoids JSON-in-onclick)
@@ -3450,6 +3467,55 @@ function _msgToggleSchedule(on) {
   }
 }
 
+function _msgAddButton() {
+  window._msgButtons = window._msgButtons || [];
+  if (window._msgButtons.length >= 3) { toast('Máximo de 3 botões', 'error'); return; }
+  window._msgButtons.push({ type: 'reply', label: '', url: '' });
+  _msgRenderButtons();
+}
+
+function _msgRemoveButton(i) {
+  if (!window._msgButtons) return;
+  window._msgButtons.splice(i, 1);
+  _msgRenderButtons();
+}
+
+function _msgBtnChange(i, field, val) {
+  if (!window._msgButtons || !window._msgButtons[i]) return;
+  window._msgButtons[i][field] = val;
+  if (field === 'type') _msgRenderButtons();
+}
+
+function _msgRenderButtons() {
+  const list = document.getElementById('msg-buttons-list');
+  const addBtn = document.getElementById('msg-add-btn');
+  if (!list) return;
+  const btns = window._msgButtons || [];
+  list.innerHTML = btns.map((b, i) => `
+    <div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px;flex-wrap:wrap">
+      <select class="form-control" style="width:110px;flex:0 0 auto"
+        onchange="_msgBtnChange(${i}, 'type', this.value)">
+        <option value="reply" ${b.type !== 'url' ? 'selected' : ''}>Resposta</option>
+        <option value="url" ${b.type === 'url' ? 'selected' : ''}>Link</option>
+      </select>
+      <input class="form-control" style="flex:1;min-width:120px" maxlength="25"
+        placeholder="Texto do botão" value="${(b.label || '').replace(/"/g, '&quot;')}"
+        oninput="_msgBtnChange(${i}, 'label', this.value)">
+      ${b.type === 'url' ? `
+      <input class="form-control" style="flex:1;min-width:140px" type="url"
+        placeholder="https://exemplo.com" value="${(b.url || '').replace(/"/g, '&quot;')}"
+        oninput="_msgBtnChange(${i}, 'url', this.value)">` : ''}
+      <button type="button" class="btn btn-ghost btn-sm" onclick="_msgRemoveButton(${i})"
+        style="flex:0 0 auto" title="Remover">${icon('trash-2', 13)}</button>
+    </div>
+  `).join('');
+  if (addBtn) {
+    addBtn.disabled = btns.length >= 3;
+    addBtn.style.opacity = btns.length >= 3 ? '.5' : '';
+  }
+  if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [list] });
+}
+
 function _msgInsertVar(varText) {
   const el = document.getElementById('msg-text');
   if (!el) return;
@@ -3482,6 +3548,25 @@ async function _sendAdminMessage() {
     scheduled_at = d.toISOString();
   }
 
+  // Botões (opcional, máx. 3) — resposta rápida ou link
+  const buttons = [];
+  for (const b of (window._msgButtons || [])) {
+    const label = (b.label || '').trim();
+    if (!label) continue;
+    if (b.type === 'url') {
+      const url = (b.url || '').trim();
+      if (!/^https?:\/\//i.test(url)) {
+        toast('Botão de link precisa de uma URL válida (http/https)', 'error'); return;
+      }
+      buttons.push({ type: 'url', label, url });
+    } else {
+      buttons.push({ type: 'reply', label });
+    }
+  }
+  if (buttons.length && _stickyMsgMedia) {
+    toast('Botões substituem o envio de mídia — a mídia não será enviada', 'info');
+  }
+
   btn.disabled = true;
   btn.innerHTML = icon('loader', 14) + ' Enfileirando…';
 
@@ -3499,6 +3584,7 @@ async function _sendAdminMessage() {
       text: text || '',
       delay_ms,
       ...(scheduled_at ? { scheduled_at } : {}),
+      ...(buttons.length ? { buttons } : {}),
       ...(media_base64 ? { media_base64, media_type, media_name } : {}),
     });
 

@@ -42,7 +42,8 @@ export default async function handler(req, res) {
       sql: `SELECT d.id, d.campaign_id, d.user_id, d.recipient_name, d.phone,
                    d.status, d.attempts, d.scheduled_for,
                    c.text, c.has_media, c.media_type, c.media_name, c.media_b64,
-                   c.instance_name, c.created_by_id, c.created_by_name, c.created_by_email
+                   c.instance_name, c.created_by_id, c.created_by_name, c.created_by_email,
+                   c.buttons
             FROM message_dispatch d
             JOIN message_campaigns c ON c.id = d.campaign_id
             WHERE d.status = 'pending' AND d.scheduled_for <= ?
@@ -104,10 +105,21 @@ export default async function handler(req, res) {
 
       const personalizedText = evo.applyVars(evo.applySpin(d.text || ''), target);
       const hasMedia = !!d.has_media;
+      let buttons = [];
+      if (d.buttons) { try { buttons = JSON.parse(d.buttons) || []; } catch { buttons = []; } }
 
       let sendResult;
       try {
-        if (hasMedia && d.media_b64) {
+        if (buttons.length) {
+          // Botões têm prioridade — enviados via sendButtons (best-effort no Baileys).
+          sendResult = await evo.sendButtons({
+            name: d.instance_name,
+            key: inst.api_key || null,
+            number: d.phone,
+            text: personalizedText,
+            buttons,
+          });
+        } else if (hasMedia && d.media_b64) {
           sendResult = await evo.sendMedia({
             name: d.instance_name,
             key: inst.api_key || null,

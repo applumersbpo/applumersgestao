@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.24.0] — 2026-08-05
+
+### Adicionado
+- **Botões na mensagem do WhatsApp** — na modal de envio (Sistema → enviar mensagem), o administrador pode adicionar até 3 botões de dois tipos: **Resposta** (resposta rápida) e **Link** (URL clicável). Os botões são enviados junto com a mensagem, inclusive em campanhas agendadas. Quando há botões, o envio de mídia é substituído. ⚠️ Em conexões não-oficiais (Baileys), o WhatsApp pode não exibir os botões em alguns aparelhos (best-effort).
+
+---
+
 ## [v1.23.0] — 2026-08-04
 
 ### Adicionado

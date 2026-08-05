@@ -285,6 +285,7 @@ export async function initDb() {
       sent INTEGER DEFAULT 0,
       failed INTEGER DEFAULT 0,
       status TEXT DEFAULT 'running',
+      buttons TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     )`,
     `CREATE TABLE IF NOT EXISTS message_dispatch (
@@ -490,6 +491,12 @@ export async function initDb() {
   const { rows: eiCols } = await db.execute("PRAGMA table_info('evolution_instances')");
   if ((eiCols || []).length > 0 && !(eiCols || []).find(r => r.name === 'is_default')) {
     await db.execute("ALTER TABLE evolution_instances ADD COLUMN is_default INTEGER DEFAULT 0");
+  }
+
+  // message_campaigns — add buttons column if missing (JSON de botões da campanha)
+  const { rows: mcCols } = await db.execute("PRAGMA table_info('message_campaigns')");
+  if ((mcCols || []).length > 0 && !(mcCols || []).find(r => r.name === 'buttons')) {
+    await db.execute("ALTER TABLE message_campaigns ADD COLUMN buttons TEXT DEFAULT ''");
   }
 
   // Column migrations — safe PRAGMA checks
