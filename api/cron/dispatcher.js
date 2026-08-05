@@ -111,14 +111,25 @@ export default async function handler(req, res) {
       let sendResult;
       try {
         if (buttons.length) {
-          // Botões têm prioridade — enviados via sendButtons (best-effort no Baileys).
-          sendResult = await evo.sendButtons({
-            name: d.instance_name,
-            key: inst.api_key || null,
-            number: d.phone,
-            text: personalizedText,
-            buttons,
-          });
+          // Botões nativos (best-effort). Baileys/WhatsApp costuma rejeitar ou não
+          // renderizar botões em conexões não-oficiais — nesse caso caímos para
+          // texto com os botões anexados (URLs viram links) para garantir a entrega.
+          try {
+            sendResult = await evo.sendButtons({
+              name: d.instance_name,
+              key: inst.api_key || null,
+              number: d.phone,
+              text: personalizedText,
+              buttons,
+            });
+          } catch (btnErr) {
+            sendResult = await evo.sendText({
+              name: d.instance_name,
+              key: inst.api_key || null,
+              number: d.phone,
+              text: personalizedText + evo.buttonsAsText(buttons),
+            });
+          }
         } else if (hasMedia && d.media_b64) {
           sendResult = await evo.sendMedia({
             name: d.instance_name,

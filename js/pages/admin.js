@@ -3090,7 +3090,9 @@ async function openAdminMessageModal(preSelectedIds = []) {
                   ${icon('plus', 14)} Adicionar botão</button>
                 <div style="font-size:.71rem;color:var(--text-muted);margin-top:5px;line-height:1.5">
                   <strong>Resposta</strong> = resposta rápida · <strong>Link</strong> = abre uma URL. Substituem o envio de mídia.
-                  <br>⚠️ Em conexões Baileys o WhatsApp pode não exibir botões em alguns aparelhos.
+                  <br>⚠️ O WhatsApp não exibe botões interativos em conexões não-oficiais (Baileys). Nesse caso eles são
+                  enviados automaticamente como texto no fim da mensagem — os <strong>links</strong> ficam clicáveis; as
+                  <strong>respostas</strong> aparecem como opções listadas.
                 </div>
               </div>
 

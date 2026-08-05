@@ -213,6 +213,16 @@ export async function sendButtons({ name, key, number, text, title, footer, butt
   });
 }
 
+// Renderiza os botões como texto para o fallback (WhatsApp/Baileys não renderiza
+// botões interativos nativos em conexões não-oficiais). URLs viram links clicáveis.
+export function buttonsAsText(buttons) {
+  if (!Array.isArray(buttons) || !buttons.length) return '';
+  const lines = buttons
+    .filter(b => (b && (b.label || '').trim()))
+    .map(b => (b.type === 'url' && b.url) ? `👉 ${b.label}: ${b.url}` : `▶️ ${b.label}`);
+  return lines.length ? '\n\n' + lines.join('\n') : '';
+}
+
 export async function verifyNumbers({ name, key, numbers }) {
   const base = evoBase();
   const k = await resolveKey(key);

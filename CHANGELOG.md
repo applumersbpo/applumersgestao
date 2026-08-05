@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.25.2] — 2026-08-05
+
+### Corrigido
+- **Mensagens com botões não chegavam** — quando o WhatsApp/Baileys rejeitava os botões interativos (comum em conexões não-oficiais), o envio falhava por completo e a mensagem nunca era entregue. Agora, se os botões nativos falharem, a mensagem é enviada automaticamente como texto com os botões anexados ao final: **links** ficam clicáveis e **respostas** aparecem como opções listadas — garantindo que a mensagem sempre chegue.
+
+---
+
 ## [v1.25.1] — 2026-08-05
 
 ### Corrigido
