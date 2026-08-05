@@ -468,6 +468,18 @@ export async function initDb() {
       action TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     )`,
+    // Solicitações de acesso via WhatsApp (número não cadastrado): coleta nome/e-mail
+    // e fica pendente até um administrador aprovar (ou recusar) pelo próprio WhatsApp.
+    `CREATE TABLE IF NOT EXISTS signup_requests (
+      id TEXT PRIMARY KEY,
+      name TEXT DEFAULT '',
+      email TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT (datetime('now')),
+      decided_at TEXT DEFAULT '',
+      decided_by TEXT DEFAULT ''
+    )`,
   ];
 
   for (const sql of tables) {

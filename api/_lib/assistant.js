@@ -69,7 +69,7 @@ async function userByPhone(phone) {
   const norm = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'(',''),')',''),'-',''),'+',''),'.','')";
   const placeholders = variants.map(() => '?').join(',');
   const { rows } = await db.execute({
-    sql: `SELECT id, email, name, phone, role, is_admin FROM users WHERE ${norm} IN (${placeholders})`,
+    sql: `SELECT id, email, name, phone, role, is_admin, last_login FROM users WHERE ${norm} IN (${placeholders})`,
     args: variants,
   });
   return rowsToObjects(rows)[0] || null;
@@ -433,6 +433,172 @@ async function notifyWelcome(inst, notify) {
   return { answer: `Notifiquei ${firstName(notify.name)}:\n${parts.join('\n')}` };
 }
 
+// ── Solicitação de acesso (número não cadastrado → aprovação por admin) ───────
+
+// Pedido de acesso ainda pendente vindo deste número (evita reabrir a coleta).
+async function getOpenSignupByPhone(phone) {
+  const db = getDb();
+  const variants = brazilPhoneVariants(phone);
+  if (!variants.length) return null;
+  const norm = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'(',''),')',''),'-',''),'+',''),'.','')";
+  const ph = variants.map(() => '?').join(',');
+  const { rows } = await db.execute({
+    sql: `SELECT id, name, email, phone, status FROM signup_requests WHERE status='pending' AND ${norm} IN (${ph}) ORDER BY created_at DESC LIMIT 1`,
+    args: variants,
+  });
+  return rowsToObjects(rows)[0] || null;
+}
+
+async function createSignupRequest({ name, email, phone }) {
+  const db = getDb();
+  const id = crypto.randomUUID();
+  const ph = canonicalBrazilPhone(phone) || String(phone || '').replace(/\D/g, '');
+  await db.execute({
+    sql: `INSERT INTO signup_requests (id, name, email, phone, status, created_at) VALUES (?, ?, ?, ?, 'pending', datetime('now'))`,
+    args: [id, name, String(email).toLowerCase().trim(), ph],
+  });
+  return id;
+}
+
+// Localiza um pedido pendente pelo código curto (prefixo do id) enviado ao admin.
+async function findSignupByCode(code) {
+  const db = getDb();
+  const c = String(code || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (c.length < 4) return null;
+  const { rows } = await db.execute({
+    sql: `SELECT id, name, email, phone, status FROM signup_requests WHERE status='pending' AND lower(id) LIKE ? ORDER BY created_at DESC LIMIT 2`,
+    args: [c + '%'],
+  });
+  const found = rowsToObjects(rows);
+  return found.length === 1 ? found[0] : null;
+}
+
+// Único pedido pendente (permite o admin responder só "aprovar" sem código).
+async function getSingleOpenSignup() {
+  const db = getDb();
+  const { rows } = await db.execute(
+    "SELECT id, name, email, phone, status FROM signup_requests WHERE status='pending' ORDER BY created_at DESC LIMIT 2"
+  );
+  const f = rowsToObjects(rows);
+  return f.length === 1 ? f[0] : null;
+}
+
+// Telefones (canônicos) dos administradores com WhatsApp cadastrado.
+async function listAdminPhones() {
+  const db = getDb();
+  const { rows } = await db.execute(
+    "SELECT name, phone FROM users WHERE (is_admin=1 OR role IN ('admin','super_admin')) AND NULLIF(phone,'') IS NOT NULL"
+  );
+  return rowsToObjects(rows)
+    .map((a) => ({ name: a.name, phone: canonicalBrazilPhone(a.phone) }))
+    .filter((a) => a.phone);
+}
+
+async function notifyAdminsNewSignup(inst, req) {
+  const admins = await listAdminPhones();
+  const code = String(req.id).slice(0, 6);
+  const text = `🆕 *Nova solicitação de acesso* ao Lumers Flow\n\n👤 Nome: ${req.name}\n✉️ E-mail: ${req.email}\n📱 WhatsApp: ${req.phone}\n\nPara liberar, responda:\n*aprovar #${code}*\nPara negar:\n*recusar #${code}*`;
+  for (const a of admins) {
+    try { await sendText({ name: inst.name, key: inst.api_key || null, number: a.phone, text }); }
+    catch (e) { console.error('[assistant] notificar admin de cadastro falhou', e?.message); }
+  }
+  return admins.length;
+}
+
+// Aprova o pedido: cria o usuário, marca aprovado e envia os dados de acesso.
+async function approveSignup(inst, req, adminUser) {
+  const db = getDb();
+  const password = randomPassword();
+  const r = await createSystemUser({ name: req.name, email: req.email, password, phone: req.phone });
+  if (!r.ok) {
+    if (/e-mail já/.test(r.error)) {
+      await db.execute({ sql: "UPDATE signup_requests SET status='approved', decided_at=datetime('now'), decided_by=? WHERE id=?", args: [adminUser.id, req.id] });
+      return { answer: `A conta de *${req.name}* (${req.email}) já existia — marquei o pedido como resolvido. ✅` };
+    }
+    return { answer: `Não consegui criar a conta de ${req.name}: ${r.error}. O pedido segue pendente.` };
+  }
+  await db.execute({ sql: "UPDATE signup_requests SET status='approved', decided_at=datetime('now'), decided_by=? WHERE id=?", args: [adminUser.id, req.id] });
+  await notifyWelcome(inst, { name: req.name, email: req.email, password, phone: req.phone });
+  return { answer: `✅ Cadastro de *${req.name}* (${req.email}) aprovado! A conta foi criada e os dados de acesso foram enviados por e-mail e WhatsApp.` };
+}
+
+async function rejectSignup(inst, req, adminUser) {
+  const db = getDb();
+  await db.execute({ sql: "UPDATE signup_requests SET status='rejected', decided_at=datetime('now'), decided_by=? WHERE id=?", args: [adminUser.id, req.id] });
+  const wphone = canonicalBrazilPhone(req.phone);
+  if (wphone) {
+    try { await sendText({ name: inst.name, key: inst.api_key || null, number: wphone, text: `Olá, ${firstName(req.name)}. Sua solicitação de acesso ao Lumers Flow não foi aprovada no momento. Em caso de dúvida, fale com o administrador. 🙂` }); }
+    catch (e) { console.error('[assistant] aviso de recusa falhou', e?.message); }
+  }
+  return { answer: `Cadastro de *${req.name}* (${req.email}) recusado. O solicitante foi avisado.` };
+}
+
+// Máquina de estados da coleta de solicitação de acesso para números não cadastrados.
+async function handleUnknownUser({ phone, text, inType, reply, inst }) {
+  const conv = await getConversation(phone);
+  const pend = conv.pending?.type === 'signup' ? conv.pending : null;
+  const t = String(text || '').trim();
+
+  // Já existe pedido em análise → não reabre a coleta.
+  const open = await getOpenSignupByPhone(phone);
+  if (open && !pend) {
+    const out = `Olá! Já recebemos a sua solicitação de acesso (em nome de ${open.name}). Ela está em análise por um administrador — assim que for aprovada, você recebe os dados de acesso por aqui e por e-mail. 🙂`;
+    await reply(out);
+    await logInteraction({ phone, user: null, inType, inText: t, outText: out, action: 'signup_pending' });
+    return { handled: true, reason: 'signup_pending' };
+  }
+
+  // Sem coleta em andamento → inicia pedindo o nome.
+  if (!pend) {
+    const out = 'Olá! 👋 Este número ainda não tem acesso ao Lumers Flow. Posso registrar a sua *solicitação de acesso* para um administrador aprovar.\n\nPara começar, me diga o seu *nome completo*.';
+    await reply(out);
+    await saveConversation(phone, '', { type: 'signup', step: 'name', data: {} }, conv.history || []);
+    await logInteraction({ phone, user: null, inType, inText: t, outText: out, action: 'signup_start' });
+    return { handled: true, reason: 'signup_start' };
+  }
+
+  const data = { ...(pend.data || {}) };
+
+  if (pend.step === 'name') {
+    if (t.length < 2) { await reply('Preciso do seu nome completo para seguir. Como você se chama?'); return { handled: true, reason: 'signup_name_invalid' }; }
+    data.name = t;
+    const out = `Prazer, ${firstName(data.name)}! Agora me envie o seu *e-mail* para acesso.`;
+    await reply(out);
+    await saveConversation(phone, '', { type: 'signup', step: 'email', data }, conv.history || []);
+    await logInteraction({ phone, user: null, inType, inText: t, outText: out, action: 'signup_name' });
+    return { handled: true, reason: 'signup_name' };
+  }
+
+  if (pend.step === 'email') {
+    const email = t.toLowerCase();
+    if (!isValidEmail(email)) { await reply('Esse e-mail não parece válido. Pode conferir e reenviar? (ex.: nome@email.com)'); return { handled: true, reason: 'signup_email_invalid' }; }
+    const db = getDb();
+    const { rows: ex } = await db.execute({ sql: 'SELECT id FROM users WHERE email=?', args: [email] });
+    if (rowsToObjects(ex).length) {
+      const out = 'Esse e-mail já possui cadastro no Lumers Flow. Se é você, acesse com a sua senha em https://app.lumersbpo.com.br (ou use "Esqueci minha senha"). 🙂';
+      await reply(out);
+      await saveConversation(phone, '', null, conv.history || []);
+      await logInteraction({ phone, user: null, inType, inText: email, outText: out, action: 'signup_email_exists' });
+      return { handled: true, reason: 'signup_email_exists' };
+    }
+    data.email = email;
+    const reqId = await createSignupRequest({ name: data.name, email: data.email, phone });
+    await saveConversation(phone, '', null, conv.history || []);
+    const n = await notifyAdminsNewSignup(inst, { id: reqId, name: data.name, email: data.email, phone: canonicalBrazilPhone(phone) || phone });
+    const out = n
+      ? `Perfeito, ${firstName(data.name)}! ✅ Sua solicitação foi enviada para aprovação de um administrador. Assim que for aprovada, você recebe os dados de acesso por aqui e por e-mail.`
+      : `Recebi seus dados, ${firstName(data.name)}. Ainda não há um administrador com WhatsApp para aprovar agora, mas o pedido ficou registrado e será analisado em breve.`;
+    await reply(out);
+    await logInteraction({ phone, user: null, inType, inText: data.email, outText: out, action: 'signup_submitted' });
+    return { handled: true, reason: 'signup_submitted' };
+  }
+
+  // Estado inesperado → recomeça a coleta.
+  await reply('Vamos recomeçar sua solicitação de acesso. Qual é o seu *nome completo*?');
+  await saveConversation(phone, '', { type: 'signup', step: 'name', data: {} }, conv.history || []);
+  return { handled: true, reason: 'signup_reset' };
+}
+
 // ── Núcleo: classificação de intenção via Groq ───────────────────────────────
 
 function buildSystemPrompt(user, accounts = []) {
@@ -500,15 +666,28 @@ export async function handleAssistantMessage(msg, instanceName) {
   const reply = (text) => sendText({ name: inst.name, key: inst.api_key || null, number: phone, text }).catch((e) => console.error('[assistant] reply falhou', e?.message));
 
   const user = await userByPhone(phone);
-  if (!user) {
-    const out = 'Olá! Este número ainda não está cadastrado no Lumers Flow. Peça ao administrador para cadastrar o seu WhatsApp e volte a falar comigo. 🙂';
-    await reply(out);
-    await logInteraction({ phone, user: null, inType: 'text', inText: '', outText: out, action: 'unknown_user' });
-    return { handled: true, reason: 'unknown_user' };
-  }
 
   const m = msg.message || {};
   const inType = m.audioMessage ? 'audio' : m.imageMessage ? 'image' : m.videoMessage ? 'video' : 'text';
+  const quickText = m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || '';
+
+  // Número não cadastrado → fluxo de solicitação de acesso (aprovação por admin).
+  if (!user) {
+    return handleUnknownUser({ phone, text: quickText, inType, reply, inst });
+  }
+
+  const isAdmin = user.is_admin === 1 || user.role === 'admin' || user.role === 'super_admin';
+
+  // Primeiro login obrigatório: usuário comum que NUNCA acessou o sistema não pode
+  // operar pelo WhatsApp antes de concluir o primeiro login no app. Admin é isento
+  // (precisa do WhatsApp para aprovar solicitações e sempre tem acesso ao painel).
+  if (!isAdmin && !user.last_login) {
+    const appUrl = process.env.APP_URL || 'https://app.lumersbpo.com.br';
+    const out = `Oi, ${firstName(user.name)}! 👋 Antes de usar o assistente pelo WhatsApp, você precisa fazer o *seu primeiro acesso* no sistema:\n\n1️⃣ Acesse ${appUrl}\n2️⃣ Entre com o seu e-mail (${user.email}) e a senha que você recebeu\n3️⃣ Depois é só voltar aqui que a gente começa 😉\n\nSe não tem a senha ou esqueceu, toque em "Esqueci minha senha" na tela de acesso.`;
+    await reply(out);
+    await logInteraction({ phone, user, inType, inText: quickText, outText: out, action: 'login_required' });
+    return { handled: true, reason: 'login_required' };
+  }
 
   // Vídeo não é suportado
   if (m.videoMessage) {
@@ -570,6 +749,23 @@ export async function handleAssistantMessage(msg, instanceName) {
     return { handled: true, reason: 'no_groq' };
   }
 
+  // Decisão de solicitação de acesso pelo admin ("aprovar #cod" / "recusar #cod"),
+  // tratada fora do classificador de IA. Só sequestra a mensagem se houver um pedido
+  // pendente correspondente; caso contrário, segue para o fluxo normal.
+  if (isAdmin && /\b(aprovar|aprova|aprovo|liberar|libera|recusar|recusa|negar|nega|rejeitar|rejeita)\b/i.test(userText || '')) {
+    const isApprove = /\b(aprovar|aprova|aprovo|liberar|libera)\b/i.test(userText);
+    const stripped = userText.replace(/\b(aprovar|aprova|aprovo|liberar|libera|recusar|recusa|negar|nega|rejeitar|rejeita)\b/gi, ' ');
+    const codeM = /#?([a-f0-9]{4,8})/i.exec(stripped);
+    let sreq = codeM ? await findSignupByCode(codeM[1]) : null;
+    if (!sreq) sreq = await getSingleOpenSignup();
+    if (sreq) {
+      const r = isApprove ? await approveSignup(inst, sreq, user) : await rejectSignup(inst, sreq, user);
+      await reply(r.answer);
+      await logInteraction({ phone, user, inType, inText: userText, outText: r.answer, action: isApprove ? 'signup_approved' : 'signup_rejected' });
+      return { handled: true, reason: 'signup_decision' };
+    }
+  }
+
   const conv = await getConversation(phone);
 
   // Monta a mensagem para o classificador, incluindo contexto pendente e de imagem
@@ -605,7 +801,6 @@ export async function handleAssistantMessage(msg, instanceName) {
     return { handled: true, reason: 'groq_error' };
   }
 
-  const isAdmin = user.is_admin === 1 || user.role === 'admin' || user.role === 'super_admin';
   let answer = intent.reply || '';
   let newPending = null;
 
