@@ -94,6 +94,7 @@ function _adminNavBar(active) {
     { id: 'plans',     href: '#/admin-plans',  lucide: 'credit-card',      label: 'Planos'      },
     { id: 'banks',     href: '#/banks',        lucide: 'landmark',         label: 'Bancos'      },
   ];
+  tabs.push({ id: 'improvements', href: '#/admin-improvements', lucide: 'lightbulb', label: 'Melhorias' });
   if (isSuperAdmin) {
     tabs.push({ id: 'email',  href: '#/admin-email',  lucide: 'megaphone',  label: 'Comunicação' });
     tabs.push({ id: 'theme',  href: '#/admin-theme',  lucide: 'palette',    label: 'Tema'    });
@@ -1104,12 +1105,126 @@ async function renderAdminSystem() {
         </div>
         <div id="toggle-reg-feedback" style="font-size:.8rem;margin-top:10px;display:none"></div>
       </div>
-      ${await _renderEvolutionSection(evoGlobalKey, cronSecret, n8nUrl, n8nSecret)}
+      ${await _renderEvolutionSection(evoGlobalKey, cronSecret, n8nUrl, n8nSecret, sysCfg.wa_assistant_number || '')}
       ${_renderAiSection(aiCfg)}`;
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
   } catch(e) {
     content.innerHTML = `<p style="color:var(--expense);padding:16px">Erro: ${e.message}</p>`;
+  }
+}
+
+// ── Render Admin Improvements (sugestões dos usuários via /melhorias) ─────────
+
+const _IMP_STATUS = {
+  pending:     { label: 'Pendente',     color: '#807B6C', bg: 'rgba(128,123,108,.12)' },
+  in_progress: { label: 'Em andamento', color: '#D4A24C', bg: 'rgba(212,162,76,.15)' },
+  done:        { label: 'Concluída',    color: '#3A5A40', bg: 'rgba(58,90,64,.14)' },
+  rejected:    { label: 'Recusada',     color: '#C95A47', bg: 'rgba(201,90,71,.14)' },
+};
+const _IMP_PRIO = { low: 'Baixa', medium: 'Média', high: 'Alta' };
+
+function _impFmtDate(s) {
+  if (!s) return '';
+  const d = new Date(String(s).replace(' ', 'T') + (String(s).includes('Z') ? '' : 'Z'));
+  if (isNaN(d.getTime())) return String(s);
+  return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+async function renderAdminImprovements() {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading-screen"><div class="spinner"></div></div>';
+
+  try {
+    const { improvements = [] } = await _api('GET', '/admin/users?resource=improvements');
+
+    const counts = improvements.reduce((a, i) => { a[i.status] = (a[i.status] || 0) + 1; return a; }, {});
+    const summary = `
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+        ${Object.entries(_IMP_STATUS).map(([k, s]) => `
+          <div style="background:${s.bg};color:${s.color};border-radius:10px;padding:8px 14px;font-size:.82rem;font-weight:600">
+            ${s.label}: ${counts[k] || 0}
+          </div>`).join('')}
+      </div>`;
+
+    const rows = improvements.length ? improvements.map(i => {
+      const st = _IMP_STATUS[i.status] || _IMP_STATUS.pending;
+      const idJs = _escHtml(i.id);
+      return `
+        <div class="card" style="margin-bottom:12px" id="imp-card-${idJs}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+            <div style="min-width:0;flex:1">
+              <div style="font-weight:600;font-size:.9rem;color:var(--text)">${_escHtml(i.user_name || 'Usuário')} ${i.user_phone ? `<span style="color:var(--text-muted);font-weight:400;font-size:.78rem">· ${_escHtml(i.user_phone)}</span>` : ''}</div>
+              <div style="font-size:.75rem;color:var(--text-muted);margin-top:1px">${_impFmtDate(i.created_at)}</div>
+            </div>
+            <span style="background:${st.bg};color:${st.color};border-radius:8px;padding:3px 10px;font-size:.75rem;font-weight:600;flex-shrink:0">${st.label}</span>
+          </div>
+          <p style="font-size:.88rem;color:var(--text);margin:10px 0;line-height:1.5;white-space:pre-wrap">${_escHtml(i.text || '')}</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">
+            <label style="font-size:.72rem;color:var(--text-muted)">Status
+              <select id="imp-status-${idJs}" class="input" style="display:block;margin-top:3px;padding:6px 8px;font-size:.82rem">
+                ${Object.entries(_IMP_STATUS).map(([k, s]) => `<option value="${k}" ${i.status === k ? 'selected' : ''}>${s.label}</option>`).join('')}
+              </select>
+            </label>
+            <label style="font-size:.72rem;color:var(--text-muted)">Prioridade
+              <select id="imp-prio-${idJs}" class="input" style="display:block;margin-top:3px;padding:6px 8px;font-size:.82rem">
+                ${Object.entries(_IMP_PRIO).map(([k, l]) => `<option value="${k}" ${i.priority === k ? 'selected' : ''}>${l}</option>`).join('')}
+              </select>
+            </label>
+            <label style="font-size:.72rem;color:var(--text-muted);flex:1;min-width:160px">Nota (enviada ao usuário)
+              <input id="imp-note-${idJs}" class="input" style="display:block;margin-top:3px;padding:6px 8px;font-size:.82rem;width:100%" value="${_escHtml(i.admin_note || '')}" placeholder="opcional">
+            </label>
+            <button class="btn btn-primary btn-sm" onclick="_impSave('${idJs}')">Salvar</button>
+          </div>
+          <div style="font-size:.72rem;color:var(--text-muted);margin-top:8px">
+            💬 Ao mudar para <strong>Concluída</strong> ou <strong>Recusada</strong>, o usuário é avisado automaticamente pelo WhatsApp.
+          </div>
+        </div>`;
+    }).join('') : `
+      <div style="padding:48px;text-align:center;color:var(--text-muted)">
+        <i data-lucide="lightbulb" style="width:40px;height:40px;opacity:.3;display:block;margin:0 auto 12px"></i>
+        <p>Nenhuma sugestão de melhoria ainda. Elas chegam quando um usuário envia <strong>/melhorias</strong> no WhatsApp.</p>
+      </div>`;
+
+    content.innerHTML = `
+      ${_adminNavBar('improvements')}
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title" style="margin-bottom:6px">${icon('lightbulb', 14)} Sugestões de Melhoria</div>
+        <p style="font-size:.82rem;color:var(--text-muted);margin:0">Enviadas pelos usuários pelo comando <strong>/melhorias</strong> no WhatsApp, em ordem de data.</p>
+      </div>
+      ${summary}
+      ${rows}`;
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } catch (e) {
+    content.innerHTML = `<p style="color:var(--expense);padding:16px">Erro: ${e.message}</p>`;
+  }
+}
+
+async function _saveWaNumber() {
+  const el = document.getElementById('wa-assistant-number');
+  const fb = document.getElementById('wa-number-feedback');
+  const num = String(el?.value || '').replace(/\D/g, '');
+  try {
+    await _api('PUT', '/admin/users?resource=system-settings', { wa_assistant_number: num });
+    if (el) el.value = num;
+    if (fb) { fb.style.display = 'block'; fb.style.color = 'var(--income-text,#16a34a)'; fb.textContent = '✓ Número salvo.'; }
+    if (typeof toast === 'function') toast('Número do assistente salvo.', 'success');
+  } catch (e) {
+    if (fb) { fb.style.display = 'block'; fb.style.color = 'var(--expense,#dc2626)'; fb.textContent = 'Erro: ' + e.message; }
+  }
+}
+
+async function _impSave(id) {
+  const status = document.getElementById(`imp-status-${id}`)?.value;
+  const priority = document.getElementById(`imp-prio-${id}`)?.value;
+  const admin_note = document.getElementById(`imp-note-${id}`)?.value || '';
+  try {
+    const r = await _api('POST', '/admin/users', { action: 'improvement-update', id, status, priority, admin_note });
+    if (typeof toast === 'function') toast(r.notified ? 'Salvo. Usuário avisado pelo WhatsApp.' : 'Melhoria atualizada.', 'success');
+    renderAdminImprovements();
+  } catch (e) {
+    if (typeof toast === 'function') toast('Erro: ' + e.message, 'error');
   }
 }
 
@@ -1153,7 +1268,7 @@ async function renderAdminTheme() {
 
 // ── Evolution API Instance Management ────────────────────────────────────────
 
-async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUrl = '', n8nSecret = '') {
+async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUrl = '', n8nSecret = '', waNumber = '') {
   let instances = [];
   try { instances = await _api('GET', '/admin/users?resource=evolution-instances'); } catch {}
   const statusColor  = s => (s === 'connected' || s === 'open') ? 'var(--income-text,#16a34a)' : s === 'connecting' ? 'var(--warning,#d97706)' : 'var(--expense,#dc2626)';
@@ -1218,6 +1333,21 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUr
       </p>
       <div id="evo-instances-list">
         ${rows || '<div style="color:var(--text-muted);font-size:.85rem;padding:8px 0">Nenhuma instância cadastrada neste sistema.</div>'}
+      </div>
+
+      <!-- Número público do assistente (para o popup de onboarding montar o link wa.me) -->
+      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">Número do assistente (WhatsApp)</div>
+        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px">
+          Número da instância padrão, com DDI e DDD (só dígitos, ex.: <code>5511999998888</code>).
+          É usado no popup de novidade para o usuário enviar a mensagem de teste ao Lumers Flow.
+        </div>
+        <div style="display:flex;gap:8px">
+          <input id="wa-assistant-number" type="text" inputmode="numeric" class="form-input"
+            style="flex:1" placeholder="5511999998888" value="${_escHtml(waNumber)}">
+          <button class="btn btn-primary btn-sm" onclick="_saveWaNumber()">Salvar</button>
+        </div>
+        <div id="wa-number-feedback" style="font-size:.78rem;margin-top:8px;display:none"></div>
       </div>
 
       <!-- Chave global -->

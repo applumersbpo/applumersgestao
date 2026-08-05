@@ -58,48 +58,78 @@ const app = {
     this._maybeShowWhatsAppPopup();
   },
 
-  _maybeShowWhatsAppPopup() {
+  async _maybeShowWhatsAppPopup() {
     const user = pb.authStore.model || pb.authStore.record;
-    if (!user || user.phone) return;
-    const key = `wa_popup_shown_${user.id}`;
+    if (!user) return;
+    const key = `wa_update_popup_v1_${user.id}`;
     if (localStorage.getItem(key)) return;
+
+    // Número do assistente (instância padrão) vindo da config pública de marca.
+    let waNumber = '';
+    try {
+      const res = await fetch('/api/brand');
+      if (res.ok) { const cfg = await res.json(); waNumber = String(cfg.waNumber || '').replace(/\D/g, ''); }
+    } catch (_) {}
+
     localStorage.setItem(key, '1');
 
+    const hasPhone = !!(user.phone && String(user.phone).trim());
+    const testMsg = encodeURIComponent('esse é um teste "gastei 30 com almoço"');
+    const waLink = waNumber ? `https://wa.me/${waNumber}?text=${testMsg}` : '';
+
+    const phoneHint = hasPhone ? '' : `
+      <div style="background:var(--warning-light,#FAF1D8);border-radius:10px;padding:10px 12px;margin:0 0 14px;font-size:.78rem;color:var(--text-muted);line-height:1.45">
+        ⚠️ Para o assistente te reconhecer, cadastre o seu WhatsApp (com DDI e DDD) em
+        <a href="#/settings" onclick="document.getElementById('wa-update-popup')?.remove()" style="color:var(--primary,#3A5A40);font-weight:600">Configurações</a>.
+      </div>`;
+
+    const primaryBtn = waLink
+      ? `<a href="${waLink}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="flex:1;text-align:center;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px" onclick="document.getElementById('wa-update-popup')?.remove()">
+           <i data-lucide="message-circle" style="width:15px;height:15px"></i> Testar agora
+         </a>`
+      : `<button class="btn btn-primary btn-sm" style="flex:1" onclick="location.hash='#/settings';document.getElementById('wa-update-popup')?.remove()">Ir para Configurações</button>`;
+
     const el = document.createElement('div');
-    el.id = 'wa-popup';
+    el.id = 'wa-update-popup';
     el.style.cssText = `
-      position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
-      width:calc(100% - 32px);max-width:400px;
-      background:#fff;border-radius:16px;
-      box-shadow:0 8px 32px rgba(0,0,0,.15);
-      padding:20px;z-index:4000;
-      animation:slideUp .3s ease
+      position:fixed;inset:0;z-index:5000;
+      background:rgba(0,0,0,.45);
+      display:flex;align-items:center;justify-content:center;padding:16px;
+      animation:fadeIn .2s ease
     `;
+    el.addEventListener('click', (e) => { if (e.target === el) el.remove(); });
     el.innerHTML = `
-      <div style="display:flex;align-items:flex-start;gap:14px">
-        <div style="flex-shrink:0;color:var(--income)"><i data-lucide="message-circle" style="width:32px;height:32px"></i></div>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:.95rem;color:var(--text);margin-bottom:4px">
-            Registre gastos pelo WhatsApp!
-          </div>
-          <p style="font-size:.82rem;color:var(--text-muted);margin:0 0 14px;line-height:1.5">
-            Mande uma mensagem como <em>"gastei 35 no almoço"</em> e o lançamento entra automático no app.
-            Basta cadastrar seu número com DDI e DDD nas Configurações.
+      <div style="background:var(--surface,#fff);border-radius:18px;box-shadow:0 12px 40px rgba(0,0,0,.25);
+                  width:100%;max-width:420px;max-height:90vh;overflow-y:auto;animation:slideUp .3s ease">
+        <div style="background:linear-gradient(135deg,#25D366,#128C7E);padding:22px 20px;border-radius:18px 18px 0 0;text-align:center;color:#fff">
+          <i data-lucide="message-circle-more" style="width:40px;height:40px"></i>
+          <div style="font-weight:800;font-size:1.15rem;margin-top:6px">Novidade no Lumers Flow!</div>
+          <div style="font-size:.85rem;opacity:.92;margin-top:2px">Sua gestão financeira agora no WhatsApp</div>
+        </div>
+        <div style="padding:20px">
+          <p style="font-size:.88rem;color:var(--text,#292720);margin:0 0 14px;line-height:1.55">
+            Registre e consulte suas finanças conversando com o assistente — <strong>sem abrir o app</strong>:
+          </p>
+          <ul style="list-style:none;padding:0;margin:0 0 16px;font-size:.84rem;color:var(--text-muted,#5D594E);line-height:1.7">
+            <li>💸 <em>"gastei 30 no almoço"</em> → lança a despesa</li>
+            <li>💰 <em>"recebi 2000 de salário"</em> → lança a receita</li>
+            <li>📊 <em>"qual meu saldo?"</em> → resumo na hora</li>
+            <li>🎙️ mande áudio ou 📷 print do comprovante</li>
+            <li>💡 comandos <strong>/ajuda</strong> e <strong>/melhorias</strong></li>
+          </ul>
+          ${phoneHint}
+          <p style="font-size:.8rem;color:var(--text-muted,#5D594E);margin:0 0 14px;line-height:1.45">
+            Toque abaixo para enviar uma mensagem de <strong>teste</strong> ao Lumers Flow e ver como funciona. 😉
           </p>
           <div style="display:flex;gap:8px">
-            <button class="btn btn-primary btn-sm" style="flex:1" onclick="location.hash='#/settings';document.getElementById('wa-popup').remove()">
-              Ir para Configurações
-            </button>
-            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('wa-popup').remove()">
-              Agora não
-            </button>
+            ${primaryBtn}
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('wa-update-popup')?.remove()">Agora não</button>
           </div>
         </div>
       </div>
     `;
     document.body.appendChild(el);
     if (typeof lucide !== 'undefined') lucide.createIcons();
-    setTimeout(() => { if (el.parentNode) el.remove(); }, 12000);
   },
 
   _showImpersonationNotice() {
@@ -255,6 +285,7 @@ case 'accounts':   await renderAccounts();       break;
         case 'admin-theme':  await renderAdminTheme();  break;
         case 'admin-plans':  await renderAdminPlans();  break;
         case 'admin-logs':   await renderAdminLogs();   break;
+        case 'admin-improvements': await renderAdminImprovements(); break;
         default:           await renderDashboard(m, y);
       }
       if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -277,7 +308,7 @@ case 'accounts':   await renderAccounts();       break;
 
   updateNav() {
     // Subpáginas do painel admin mantêm o item único "Painel Admin" destacado
-    const adminPages = ['admin', 'admin-users', 'admin-system', 'admin-email', 'admin-theme', 'admin-plans', 'admin-logs', 'banks'];
+    const adminPages = ['admin', 'admin-users', 'admin-system', 'admin-email', 'admin-theme', 'admin-plans', 'admin-logs', 'admin-improvements', 'banks'];
     const inAdmin = adminPages.includes(this.currentPage);
     document.querySelectorAll('[data-page]').forEach(el => {
       const isActive = el.dataset.page === this.currentPage
@@ -310,6 +341,7 @@ import:     'Importar Dados',
       'admin-theme':  'Tema & Identidade Visual',
       'admin-plans':  'Planos de Assinatura',
       'admin-logs':   'Logs do Sistema',
+      'admin-improvements': 'Melhorias',
     };
     document.getElementById('pageTitle').textContent = titles[this.currentPage] || 'Dashboard';
   },

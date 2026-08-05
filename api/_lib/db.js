@@ -480,6 +480,22 @@ export async function initDb() {
       decided_at TEXT DEFAULT '',
       decided_by TEXT DEFAULT ''
     )`,
+    // Sugestões de melhoria enviadas pelos usuários via WhatsApp (comando /melhorias).
+    // Ficam em lista no painel admin, ordenadas por data. status: pending → in_progress →
+    // done (aceita/entregue) | rejected (recusada). priority: low | medium | high.
+    `CREATE TABLE IF NOT EXISTS improvements (
+      id TEXT PRIMARY KEY,
+      user_id TEXT DEFAULT '',
+      user_name TEXT DEFAULT '',
+      user_phone TEXT DEFAULT '',
+      text TEXT DEFAULT '',
+      priority TEXT DEFAULT 'medium',
+      status TEXT DEFAULT 'pending',
+      admin_note TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      decided_at TEXT DEFAULT '',
+      decided_by TEXT DEFAULT ''
+    )`,
   ];
 
   for (const sql of tables) {
@@ -568,6 +584,14 @@ export async function initDb() {
   if (!uColNames.includes('email_notifications_enabled')) {
     await db.execute("ALTER TABLE users ADD COLUMN email_notifications_enabled INTEGER DEFAULT 1");
   }
+  // Moderação do assistente WhatsApp: contagem de avisos por conteúdo proibido e
+  // flag de bloqueio de acesso ao assistente (após 3 avisos, ou bloqueio manual do admin).
+  if (!uColNames.includes('wa_warnings')) {
+    await db.execute("ALTER TABLE users ADD COLUMN wa_warnings INTEGER DEFAULT 0");
+  }
+  if (!uColNames.includes('wa_blocked')) {
+    await db.execute("ALTER TABLE users ADD COLUMN wa_blocked INTEGER DEFAULT 0");
+  }
 
   // Garante que o super admin sempre tenha role e is_admin corretos
   await db.execute({
@@ -644,6 +668,9 @@ export async function initDb() {
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_groq_model', 'llama-3.3-70b-versatile')", args: [] });
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_gemini_key', '')", args: [] });
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_gemini_model', 'gemini-2.0-flash')", args: [] });
+  // Número WhatsApp da instância padrão (só dígitos, com DDI). Usado no popup de
+  // onboarding para montar o link wa.me de teste. Vazio até o admin configurar no painel.
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('wa_assistant_number', '')", args: [] });
 
   // Seed e-mail system settings (INSERT OR IGNORE keeps existing values)
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('email_enabled', '0')", args: [] });

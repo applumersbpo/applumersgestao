@@ -1,4 +1,4 @@
-import { getDb, initDb } from './_lib/db.js';
+import { getDb, initDb, getSystemSetting } from './_lib/db.js';
 import { requireAuth, cors, isImpersonation } from './_lib/auth.js';
 
 // Aumenta o limite para comportar logos em base64 (~2MB imagem → ~2.7MB base64)
@@ -80,12 +80,16 @@ export default async function handler(req, res) {
   // GET — público, sem autenticação
   if (req.method === 'GET') {
     try {
+      // Número do assistente WhatsApp (para o popup de onboarding montar o link wa.me).
+      let waNumber = '';
+      try { waNumber = (await getSystemSetting('wa_assistant_number')) || ''; } catch (_) {}
       const { rows } = await db.execute({
         sql: "SELECT value FROM settings WHERE user_id = '__brand__' AND key = 'brand_config'",
         args: [],
       });
-      if (rows.length === 0) return res.json(DEFAULTS);
-      return res.json(JSON.parse(rows[0].value));
+      const cfg = rows.length === 0 ? { ...DEFAULTS } : JSON.parse(rows[0].value);
+      cfg.waNumber = waNumber;
+      return res.json(cfg);
     } catch (_) {
       return res.json(DEFAULTS);
     }

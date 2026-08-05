@@ -4,12 +4,12 @@ import { logSystem } from '../_lib/audit.js';
 import {
   evoBase, resolveKey, headers as evoHdrs, normalizeStatus, parseEvoError,
   connectionState, connectQr, deleteInstance, setSettings, setWebhook,
-  createInstance, deriveWebhookUrl,
+  createInstance, deriveWebhookUrl, sendText,
 } from '../_lib/evolution.js';
 import { groqChat, geminiGenerate } from '../_lib/ai.js';
 import bcrypt from 'bcryptjs';
 
-const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret', 'n8n_webhook_url', 'n8n_secret', 'ai_enabled', 'ai_groq_key', 'ai_groq_model', 'ai_gemini_key', 'ai_gemini_model'];
+const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret', 'n8n_webhook_url', 'n8n_secret', 'ai_enabled', 'ai_groq_key', 'ai_groq_model', 'ai_gemini_key', 'ai_gemini_model', 'wa_assistant_number'];
 
 // Normaliza um telefone BR para o formato canônico: 55 + DDD(2) + 9 + 8 dígitos (celular).
 // Insere o 9º dígito quando ausente (regra padrão: local de 10 dígitos cujo assinante
@@ -119,6 +119,15 @@ export default async function handler(req, res) {
         args: [limit, offset],
       });
       return res.status(200).json({ logs: rowsToObjects(rows), total, page, limit });
+    }
+
+    // Sugestões de melhoria enviadas pelos usuários (comando /melhorias no WhatsApp)
+    if (req.query.resource === 'improvements') {
+      const { rows } = await db.execute(
+        `SELECT id, user_id, user_name, user_phone, text, priority, status, admin_note, created_at, decided_at
+           FROM improvements ORDER BY created_at DESC`
+      );
+      return res.status(200).json({ improvements: rowsToObjects(rows) });
     }
 
     // Log de auditoria administrativa (system_log) com filtros de leitura
@@ -579,6 +588,51 @@ export default async function handler(req, res) {
         await db.execute({ sql: 'DELETE FROM evolution_instances WHERE name = ?', args: [instanceName] });
         await logSystem({ req, actor: user, action: 'evolution.instance_unlink', targetType: 'evolution_instance', targetLabel: instanceName });
         return res.status(200).json({ ok: true });
+      }
+
+      // Atualiza uma sugestão de melhoria (status/prioridade/nota) e, quando concluída
+      // ou recusada, notifica o usuário que sugeriu pelo WhatsApp (instância padrão).
+      if (action === 'improvement-update') {
+        const { id, status, priority, admin_note } = req.body || {};
+        if (!id) return res.status(400).json({ error: 'id é obrigatório' });
+        const { rows: iRows } = await db.execute({ sql: 'SELECT * FROM improvements WHERE id = ?', args: [id] });
+        const imp = rowsToObjects(iRows)[0];
+        if (!imp) return res.status(404).json({ error: 'melhoria não encontrada' });
+
+        const sets = [], args = [];
+        const validStatus = ['pending', 'in_progress', 'done', 'rejected'];
+        const validPrio = ['low', 'medium', 'high'];
+        const newStatus = validStatus.includes(status) ? status : imp.status;
+        if (validStatus.includes(status)) { sets.push('status = ?'); args.push(status); }
+        if (validPrio.includes(priority)) { sets.push('priority = ?'); args.push(priority); }
+        if (typeof admin_note === 'string') { sets.push('admin_note = ?'); args.push(admin_note.slice(0, 500)); }
+        const statusChanged = validStatus.includes(status) && status !== imp.status;
+        if (statusChanged && (status === 'done' || status === 'rejected')) {
+          sets.push("decided_at = datetime('now')"); sets.push('decided_by = ?'); args.push(user.id);
+        }
+        if (!sets.length) return res.status(400).json({ error: 'nada para atualizar' });
+        args.push(id);
+        await db.execute({ sql: `UPDATE improvements SET ${sets.join(', ')} WHERE id = ?`, args });
+
+        let notified = false;
+        if (statusChanged && (status === 'done' || status === 'rejected') && imp.user_phone) {
+          try {
+            const { rows: instRows } = await db.execute("SELECT name, api_key FROM evolution_instances WHERE is_default = 1 LIMIT 1");
+            const inst = rowsToObjects(instRows)[0];
+            if (inst) {
+              const first = (imp.user_name || '').trim().split(/\s+/)[0] || '';
+              const shortIdea = String(imp.text || '').slice(0, 120);
+              const note = typeof admin_note === 'string' && admin_note.trim() ? `\n\n📝 ${admin_note.trim()}` : '';
+              const text = status === 'done'
+                ? `✅ Olá, ${first}! Sua sugestão de melhoria foi *aceita e implementada*:\n\n_"${shortIdea}"_${note}\n\nObrigado por ajudar a melhorar o Lumers Flow! 🙌`
+                : `Olá, ${first}. Analisamos sua sugestão:\n\n_"${shortIdea}"_\n\nDesta vez ela *não foi aceita*.${note}\n\nAgradecemos muito o seu envio — continue sugerindo! 💡`;
+              await sendText({ name: inst.name, key: inst.api_key || null, number: imp.user_phone, text });
+              notified = true;
+            }
+          } catch (e) { console.error('[improvements] notificar usuário falhou', e?.message); }
+        }
+        await logSystem({ req, actor: user, action: 'improvement.update', targetType: 'improvement', targetLabel: id, details: { status: newStatus, notified } });
+        return res.status(200).json({ ok: true, notified });
       }
 
       // Define instância padrão

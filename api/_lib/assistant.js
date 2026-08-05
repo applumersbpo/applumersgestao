@@ -599,6 +599,328 @@ async function handleUnknownUser({ phone, text, inType, reply, inst }) {
   return { handled: true, reason: 'signup_reset' };
 }
 
+// ── Moderação de conteúdo do assistente WhatsApp ─────────────────────────────
+
+// Termos proibidos (xingamentos e conteúdo sexual explícito). A comparação é feita
+// sobre o texto normalizado (minúsculo, sem acento) com limites de palavra, para
+// evitar falsos positivos (ex.: "São Paulo" não casa com "pau").
+const BLOCKED_TERMS = [
+  'porra', 'caralho', 'buceta', 'boceta', 'cacete', 'merda', 'bosta', 'fdp',
+  'viado', 'veado', 'corno', 'otario', 'babaca', 'arrombado', 'arrombada',
+  'desgraca', 'vagabundo', 'vagabunda', 'puta', 'puto', 'piranha', 'cuzao',
+  'escroto', 'imbecil', 'idiota', 'retardado', 'filho da puta', 'vai se foder',
+  'vai tomar no cu', 'tomar no cu', 'pornografia', 'pornografico', 'porno',
+  'xvideos', 'xvideo', 'pornhub', 'nude', 'nudes', 'xoxota', 'transar',
+  'transando', 'gozar', 'gozada', 'punheta', 'siririca', 'masturba',
+];
+
+function normalizeForModeration(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+// Retorna o termo proibido encontrado, ou null.
+function detectBlockedContent(text) {
+  const n = ' ' + normalizeForModeration(text).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+  for (const term of BLOCKED_TERMS) {
+    const t = normalizeForModeration(term);
+    if (n.includes(' ' + t + ' ')) return term;
+  }
+  return null;
+}
+
+async function notifyAdminsBlocked(inst, user, reason) {
+  const admins = await listAdminPhones();
+  const text = `🚫 *Usuário bloqueado no assistente WhatsApp*\n\n👤 ${user.name || user.email}\n✉️ ${user.email}\n📱 ${user.phone || '—'}\nMotivo: ${reason}\n\nPara reativar, responda:\n*desbloquear ${user.email}*`;
+  for (const a of admins) {
+    try { await sendText({ name: inst.name, key: inst.api_key || null, number: a.phone, text }); }
+    catch (e) { console.error('[assistant] notificar admin de bloqueio falhou', e?.message); }
+  }
+  return admins.length;
+}
+
+// Escalada de moderação: 3 avisos e, na 4ª ocorrência, bloqueia o acesso e notifica admins.
+async function warnOrBlock(user, phone, reply, inst, reason) {
+  const db = getDb();
+  const next = Number(user.wa_warnings || 0) + 1;
+  if (next > 3) {
+    await db.execute({ sql: 'UPDATE users SET wa_blocked=1 WHERE id=?', args: [user.id] });
+    const out = '🚫 Seu acesso ao assistente foi *bloqueado* por uso indevido repetido. Um administrador foi notificado. Para reativar, entre em contato com o suporte.';
+    await reply(out);
+    await notifyAdminsBlocked(inst, user, reason);
+    return { out, action: 'moderation_blocked' };
+  }
+  await db.execute({ sql: 'UPDATE users SET wa_warnings=? WHERE id=?', args: [next, user.id] });
+  const msgs = {
+    1: '⚠️ *Aviso 1/3*: identifiquei conteúdo impróprio ou uso indevido na sua mensagem. Por favor, mantenha o respeito ao usar o assistente.',
+    2: '⚠️ *Aviso 2/3*: detectei novamente conteúdo impróprio ou tentativa de uso indevido. Mais uma ocorrência e o seu acesso poderá ser suspenso.',
+    3: '⚠️ *Último aviso (3/3)*: na *próxima* ocorrência o seu acesso ao assistente será *bloqueado* automaticamente e um administrador será avisado.',
+  };
+  const out = msgs[next] || msgs[3];
+  await reply(out);
+  return { out, action: 'moderation_warn' };
+}
+
+// ── Sugestões de melhoria (comando /melhorias) ───────────────────────────────
+
+async function createImprovement(user, phone, text) {
+  const db = getDb();
+  const id = crypto.randomUUID();
+  await db.execute({
+    sql: `INSERT INTO improvements (id, user_id, user_name, user_phone, text, priority, status, created_at)
+          VALUES (?, ?, ?, ?, ?, 'medium', 'pending', datetime('now'))`,
+    args: [id, user.id, user.name || '', phone, String(text || '').slice(0, 1000)],
+  });
+  return id;
+}
+
+// ── Textos de ajuda / menu ───────────────────────────────────────────────────
+
+const HELP_OVERVIEW = `🤖 *Assistente Lumers Flow — Ajuda*
+
+Eu cuido das suas finanças direto pelo WhatsApp. Você pode:
+• 💸 Registrar despesas: _"gastei 30 no almoço"_
+• 💰 Registrar receitas: _"recebi 2000 de salário"_
+• 🏦 Criar contas/carteiras: _"criar carteira Nubank com saldo 200"_
+• 📊 Consultar saldo e resumos: _"qual meu saldo este mês?"_
+• 🎙️ Mandar áudio ou 📷 print de comprovante — eu entendo e lanço pra você
+
+*Comandos:*
+• */ajuda* _sua pergunta_ — tira dúvidas sobre o sistema
+• */melhorias* _sua ideia_ — envie uma sugestão de melhoria
+
+❌ *O que eu não faço:* não acesso dados de outros usuários, não faço transferências bancárias reais e não dou recomendações de investimento.
+
+É só mandar sua mensagem que eu cuido do resto! 😉`;
+
+function systemMenuText(name) {
+  return `🛠️ *Painel do Sistema* — olá, ${firstName(name)}!
+
+Responda com o *número* da opção:
+
+1️⃣ Cadastrar usuário
+2️⃣ Editar usuário
+3️⃣ Excluir usuário
+4️⃣ 📊 Relatório do sistema
+5️⃣ ✉️ Enviar mensagem para um usuário
+6️⃣ ℹ️ Ver funcionalidades do sistema
+
+_Responda "sair" para fechar o menu._`;
+}
+
+const SYSTEM_FEATURES_TEXT = `ℹ️ *Funcionalidades do Lumers Flow*
+
+*Já disponíveis:*
+• Lançamentos por texto, áudio e imagem (WhatsApp)
+• Contas/carteiras e saldo consolidado
+• Relatórios mensais e anuais no app
+• Gestão de usuários e planos (admin)
+• Disparo de mensagens e campanhas (admin)
+• Solicitação de acesso e aprovação via WhatsApp
+• Moderação automática e bloqueio por uso indevido
+
+*Em evolução:*
+• Metas e alertas inteligentes
+• Categorização automática por IA
+• Painel de melhorias sugeridas pelos usuários
+
+Envie */melhorias* seguido da sua ideia para contribuir! 🚀`;
+
+function isTestMessage(text) {
+  const n = normalizeForModeration(text);
+  return /esse e um teste/.test(n) || (/\bteste\b/.test(n) && /gastei\s*30\s*com\s*almoco/.test(n));
+}
+
+const TEST_SIMULATION_TEXT = `🎉 *Você acabou de testar o assistente!*
+
+Recebi _"gastei 30 com almoço"_ e entendi:
+• Tipo: 💸 Despesa
+• Valor: R$ 30,00
+• Descrição: Almoço
+
+⚠️ Como isto é um *teste*, não registrei nada de verdade.
+
+Na prática, quando você manda uma mensagem assim, eu lanço automaticamente no seu app — sem abrir nada, sem planilha. Você também pode:
+• 💰 _"recebi 2000 de salário"_
+• 🏦 _"criar carteira Nubank com saldo 200"_
+• 📊 _"qual meu saldo este mês?"_
+• 🎙️ mandar áudio ou 📷 print do comprovante
+
+Digite */ajuda* para tirar dúvidas ou */melhorias* para sugerir algo.
+
+Pronto pra começar? É só mandar seu primeiro lançamento de verdade! 😉`;
+
+// Responde a uma dúvida sobre o sistema usando o Groq (fallback: visão geral estática).
+async function answerHelpQuestion(cfg, user, question) {
+  if (!cfg.groqKey) return HELP_OVERVIEW;
+  try {
+    const composed = await groqChat({
+      key: cfg.groqKey,
+      model: cfg.groqModel,
+      messages: [
+        { role: 'system', content: `Você é o assistente de suporte do Lumers Flow (app de gestão financeira com assistente no WhatsApp). Responda em português do Brasil, breve e cordial, usando o primeiro nome do usuário (${firstName(user.name)}).
+O QUE O SISTEMA FAZ: registra receitas/despesas por texto, áudio e imagem no WhatsApp; cria contas/carteiras; informa saldo e resumos; tem relatórios mensais/anuais no app; admins gerenciam usuários e planos.
+O QUE NÃO FAZ: não acessa dados de outros usuários (usuário comum só vê a própria conta); não faz transferências bancárias reais; não dá recomendações de investimento.
+COMANDOS: /ajuda (dúvidas), /melhorias (sugestões).
+Responda APENAS sobre o funcionamento do sistema. Se perguntarem algo fora disso, oriente gentilmente a usar o assistente para finanças.` },
+        { role: 'user', content: String(question || '').slice(0, 500) },
+      ],
+    });
+    return composed || HELP_OVERVIEW;
+  } catch (e) {
+    console.error('[assistant] ajuda groq falhou', e?.message);
+    return HELP_OVERVIEW;
+  }
+}
+
+// Continua o menu /system (apenas admin). Retorna { answer, pending }.
+async function runSystemMenu(user, pending, userText, inst) {
+  const step = pending?.step || 'menu';
+  const t = String(userText || '').trim();
+  const low = normalizeForModeration(t);
+
+  if (/\b(sair|cancelar|cancela|fechar|voltar)\b/.test(low)) {
+    return { answer: 'Menu fechado. Quando precisar, é só enviar */system* de novo. 🙂', pending: null };
+  }
+
+  if (step === 'menu') {
+    const choice = (t.match(/[1-6]/) || [])[0];
+    if (choice === '1') return { answer: 'Cadastrar usuário 📝\nMe envie em uma mensagem: *nome completo*, *e-mail* e *telefone (com DDD)* do novo usuário. Se quiser, diga "gerar senha".', pending: null };
+    if (choice === '2') return { answer: 'Editar usuário ✏️\nMe diga o *e-mail* do usuário e o que deseja alterar (nome, telefone ou senha).', pending: null };
+    if (choice === '3') return { answer: 'Excluir usuário 🗑️\nMe envie o *e-mail* do usuário que deseja excluir para eu confirmar.', pending: null };
+    if (choice === '4') {
+      const snap = await getAdminSnapshot();
+      const top = (snap.usuarios || []).slice(0, 8)
+        .map((u, i) => `${i + 1}. ${u.nome} — ${u.lancamentos} lanç. (rec ${u.receitas} / desp ${u.despesas})`)
+        .join('\n');
+      return { answer: `📊 *Relatório do Sistema*\n\n👥 Usuários: *${snap.total_usuarios}*\n\n*Mais ativos:*\n${top || '— sem dados —'}`, pending: null };
+    }
+    if (choice === '5') return { answer: 'Enviar mensagem ✉️\nPara *quem* devo enviar? Envie o *e-mail* ou o *nome* do usuário.', pending: { type: 'system', step: 'broadcast_target' } };
+    if (choice === '6') return { answer: SYSTEM_FEATURES_TEXT, pending: null };
+    return { answer: 'Opção inválida. Responda com um número de *1* a *6*, ou "sair".', pending: { type: 'system', step: 'menu' } };
+  }
+
+  if (step === 'broadcast_target') {
+    const target = await findSystemUser(t);
+    if (!target) return { answer: 'Não encontrei esse usuário. Envie o *e-mail* exato dele.', pending: { type: 'system', step: 'broadcast_target' } };
+    if (!target.phone) return { answer: `${target.name} (${target.email}) não tem WhatsApp cadastrado, não consigo enviar. Escolha outro usuário (e-mail) ou "sair".`, pending: { type: 'system', step: 'broadcast_target' } };
+    return { answer: `Certo! Vou enviar para *${target.name}* (${target.email}). Agora me envie o *texto da mensagem*.`, pending: { type: 'system', step: 'broadcast_text', target: target.email, targetPhone: target.phone, targetName: target.name } };
+  }
+
+  if (step === 'broadcast_text') {
+    const wphone = canonicalBrazilPhone(pending.targetPhone);
+    if (!wphone) return { answer: 'O telefone do destinatário é inválido. Menu cancelado.', pending: null };
+    try {
+      await sendText({ name: inst.name, key: inst.api_key || null, number: wphone, text: t });
+      return { answer: `✅ Mensagem enviada para *${pending.targetName}* (${pending.target}).`, pending: null };
+    } catch (e) {
+      return { answer: `Não consegui enviar: ${e?.message || 'erro'}. Tente novamente ou "sair".`, pending: { type: 'system', step: 'broadcast_text', target: pending.target, targetPhone: pending.targetPhone, targetName: pending.targetName } };
+    }
+  }
+
+  return { answer: 'Menu encerrado.', pending: null };
+}
+
+// Roteia comandos, moderação, teste e modos pendentes (help/system/improvement).
+// Retorna { handled: true, ... } quando trata a mensagem; caso contrário { handled: false }.
+async function handleWaCommands({ user, isAdmin, phone, userText, inType, reply, inst, conv, cfg }) {
+  const raw = String(userText || '').trim();
+  const low = raw.toLowerCase();
+
+  // Admin: desbloquear usuário via WhatsApp (apenas admin ativa/inativa contas).
+  if (isAdmin && /^desbloquear\s+/i.test(raw)) {
+    const target = await findSystemUser(raw.replace(/^desbloquear\s+/i, '').trim());
+    let out;
+    if (!target) out = 'Não encontrei esse usuário. Envie: *desbloquear e-mail@do-usuario*';
+    else {
+      const db = getDb();
+      await db.execute({ sql: 'UPDATE users SET wa_blocked=0, wa_warnings=0 WHERE id=?', args: [target.id] });
+      out = `✅ Acesso de *${target.name}* (${target.email}) reativado. Avisos zerados.`;
+    }
+    await reply(out);
+    await logInteraction({ phone, user, inType, inText: raw, outText: out, action: 'wa_unblock' });
+    return { handled: true, reason: 'wa_unblock' };
+  }
+
+  // Moderação de conteúdo (não-admin): xingamentos / conteúdo sexual.
+  if (!isAdmin) {
+    const bad = detectBlockedContent(raw);
+    if (bad) {
+      const r = await warnOrBlock(user, phone, reply, inst, `conteúdo proibido: "${bad}"`);
+      await logInteraction({ phone, user, inType, inText: raw, outText: r.out, action: r.action });
+      return { handled: true, reason: r.action };
+    }
+  }
+
+  // /ajuda [pergunta]
+  if (low === '/ajuda' || low.startsWith('/ajuda ')) {
+    const q = raw.slice(6).trim();
+    const out = q ? await answerHelpQuestion(cfg, user, q) : HELP_OVERVIEW;
+    await reply(out);
+    await logInteraction({ phone, user, inType, inText: raw, outText: out, action: 'help' });
+    return { handled: true, reason: 'help' };
+  }
+
+  // /system (somente admin) — tentativa de não-admin conta como uso indevido.
+  if (low === '/system' || low.startsWith('/system')) {
+    if (!isAdmin) {
+      const r = await warnOrBlock(user, phone, reply, inst, 'tentou usar comando de administrador (/system)');
+      await logInteraction({ phone, user, inType, inText: raw, outText: r.out, action: r.action });
+      return { handled: true, reason: r.action };
+    }
+    const out = systemMenuText(user.name);
+    await reply(out);
+    await saveConversation(phone, user.id, { type: 'system', step: 'menu' }, conv.history || []);
+    await logInteraction({ phone, user, inType, inText: raw, outText: out, action: 'system_menu' });
+    return { handled: true, reason: 'system_menu' };
+  }
+
+  // /melhorias [texto]
+  if (low === '/melhorias' || low.startsWith('/melhorias ') || low.startsWith('/melhoria ')) {
+    const idea = raw.replace(/^\/melhorias?\s*/i, '').trim();
+    if (idea) {
+      await createImprovement(user, phone, idea);
+      const out = `💡 Recebi sua sugestão, ${firstName(user.name)}! Ela foi registrada e será analisada pela equipe. Você recebe um retorno por aqui quando ela for avaliada. Obrigado! 🙌`;
+      await reply(out);
+      await saveConversation(phone, user.id, null, conv.history || []);
+      await logInteraction({ phone, user, inType, inText: raw, outText: out, action: 'improvement_saved' });
+      return { handled: true, reason: 'improvement_saved' };
+    }
+    const out = '💡 Que ótimo que você quer contribuir! Me envie, em uma mensagem, a sua *sugestão de melhoria* para o Lumers Flow.';
+    await reply(out);
+    await saveConversation(phone, user.id, { type: 'improvement' }, conv.history || []);
+    await logInteraction({ phone, user, inType, inText: raw, outText: out, action: 'improvement_prompt' });
+    return { handled: true, reason: 'improvement_prompt' };
+  }
+
+  // Mensagem de teste do onboarding (esse é um teste "gastei 30 com almoço")
+  if (isTestMessage(raw)) {
+    await reply(TEST_SIMULATION_TEXT);
+    await saveConversation(phone, user.id, null, conv.history || []);
+    await logInteraction({ phone, user, inType, inText: raw, outText: TEST_SIMULATION_TEXT, action: 'test_simulation' });
+    return { handled: true, reason: 'test_simulation' };
+  }
+
+  // Continuação de modos pendentes
+  if (conv.pending?.type === 'improvement') {
+    await createImprovement(user, phone, raw);
+    const out = `💡 Recebi sua sugestão, ${firstName(user.name)}! Ela foi registrada e será analisada pela equipe. Você recebe um retorno por aqui quando ela for avaliada. Obrigado! 🙌`;
+    await reply(out);
+    await saveConversation(phone, user.id, null, conv.history || []);
+    await logInteraction({ phone, user, inType, inText: raw, outText: out, action: 'improvement_saved' });
+    return { handled: true, reason: 'improvement_saved' };
+  }
+
+  if (conv.pending?.type === 'system' && isAdmin) {
+    const r = await runSystemMenu(user, conv.pending, raw, inst);
+    await reply(r.answer);
+    await saveConversation(phone, user.id, r.pending, conv.history || []);
+    await logInteraction({ phone, user, inType, inText: raw, outText: r.answer, action: 'system_menu_step' });
+    return { handled: true, reason: 'system_menu_step' };
+  }
+
+  return { handled: false };
+}
+
 // ── Núcleo: classificação de intenção via Groq ───────────────────────────────
 
 function buildSystemPrompt(user, accounts = []) {
@@ -677,6 +999,14 @@ export async function handleAssistantMessage(msg, instanceName) {
   }
 
   const isAdmin = user.is_admin === 1 || user.role === 'admin' || user.role === 'super_admin';
+
+  // Acesso ao assistente bloqueado por moderação (somente não-admin é bloqueável).
+  if (!isAdmin && user.wa_blocked === 1) {
+    const out = 'Seu acesso ao assistente do WhatsApp está *bloqueado* por uso indevido. Fale com um administrador para reativar. 🚫';
+    await reply(out);
+    await logInteraction({ phone, user, inType, inText: quickText, outText: out, action: 'blocked' });
+    return { handled: true, reason: 'blocked' };
+  }
 
   // Primeiro login obrigatório: usuário comum que NUNCA acessou o sistema não pode
   // operar pelo WhatsApp antes de concluir o primeiro login no app. Admin é isento
@@ -767,6 +1097,11 @@ export async function handleAssistantMessage(msg, instanceName) {
   }
 
   const conv = await getConversation(phone);
+
+  // Comandos (/ajuda, /system, /melhorias), moderação, teste de onboarding e modos
+  // pendentes — tratados antes do classificador de IA.
+  const cmd = await handleWaCommands({ user, isAdmin, phone, userText, inType, reply, inst, conv, cfg });
+  if (cmd?.handled) return cmd;
 
   // Monta a mensagem para o classificador, incluindo contexto pendente e de imagem
   let combined = userText || '';

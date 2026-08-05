@@ -1,4 +1,4 @@
-const CACHE_STATIC = 'lumers-v71';
+const CACHE_STATIC = 'lumers-v72';
 
 const SHELL_ASSETS = [
   './',

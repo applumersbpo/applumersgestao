@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.27.0] — 2026-08-05
+
+### Adicionado
+- **Popup de novidade do WhatsApp** — ao acessar a plataforma, o usuário vê (uma vez) um popup apresentando o assistente no WhatsApp e suas possibilidades, com um botão *Testar agora* que abre o WhatsApp já com a mensagem de teste `esse é um teste "gastei 30 com almoço"` endereçada à instância padrão. O sistema reconhece o teste e responde com uma simulação explicando como funciona. O número da instância é configurável no painel (Sistema → WhatsApp).
+- **Comando `/ajuda`** — tira-dúvidas sobre o sistema. `/ajuda` mostra a visão geral; `/ajuda <pergunta>` responde via IA o que o sistema pode e não pode fazer.
+- **Comando `/system` (somente admin)** — menu numerado `[1..6]` com emojis: cadastrar/editar/excluir usuário, relatório do sistema, enviar mensagem a um usuário e ver funcionalidades. Fluxo conduzido por respostas numéricas.
+- **Comando `/melhorias`** — qualquer usuário envia uma sugestão pelo WhatsApp; ela é arquivada e listada no painel admin (nova aba **Melhorias**), em ordem de data, com autor, prioridade e status. Ao marcar como *Concluída* ou *Recusada*, o usuário é avisado automaticamente pelo WhatsApp.
+- **Moderação do assistente** — travas de palavras proibidas (xingamentos/conteúdo sexual) e detecção de uso indevido (ex.: não-admin tentando usar `/system`). O usuário é avisado 3 vezes e, na ocorrência seguinte, tem o acesso ao assistente *bloqueado* automaticamente, com notificação a um administrador. Admins reativam via `desbloquear <e-mail>` — somente administradores ativam/inativam contas pelo WhatsApp.
+
+---
+
 ## [v1.26.0] — 2026-08-05
 
 ### Removido
