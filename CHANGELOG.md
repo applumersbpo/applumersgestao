@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.22.1] — 2026-08-04
+
+### Corrigido
+- **IA do WhatsApp voltou a responder** — o webhook da instância Evolution estava registrado com `webhookByEvents: true`, fazendo o Evolution enviar as mensagens para um subcaminho inexistente (`/api/webhooks/evolution/messages-upsert` → 404) em vez da URL base. Os botões "Criar instância" e "Testar" do painel gravavam essa configuração errada, então clicar em "Testar" re-quebrava a conexão. Ambos passam a usar `byEvents: false` (caminho-base). O registro em produção foi corrigido.
+
+---
+
 ## [v1.22.0] — 2026-08-04
 
 ### Adicionado

@@ -488,7 +488,7 @@ export default async function handler(req, res) {
         const webhookUrl = deriveWebhookUrl(req);
         const webhookCfg = {
           url: webhookUrl,
-          byEvents: true,
+          byEvents: false,
           base64: true,
           events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
         };
@@ -649,7 +649,7 @@ export default async function handler(req, res) {
         const webhookUrl = deriveWebhookUrl(req);
         const webhookCfg = {
           url: webhookUrl,
-          byEvents: true,
+          byEvents: false,
           base64: true,
           events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
         };
