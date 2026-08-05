@@ -5,6 +5,18 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.19.0] — 2026-08-04
+
+### Adicionado
+- **Telefone obrigatório ao criar usuário pelo assistente** — na criação de usuários via WhatsApp (admin), o telefone com DDD passou a ser um dado obrigatório, coletado junto com nome, e-mail e senha.
+- **Notificação de boas-vindas com dados de acesso** — após criar um usuário, o assistente pergunta ao admin se deseja informar o novo usuário dos dados de acesso. Ao confirmar, envia **e-mail e WhatsApp** com login, senha e link de acesso.
+- **Template de e-mail "Boas-vindas com dados de acesso"** — novo modelo de sistema (`welcome_credentials`) com login, senha e botão de acesso, usado no envio confirmado pelo admin.
+
+### Melhorado
+- **Assistente sempre exibe a senha ao admin** após criar o usuário, facilitando o repasse manual caso a notificação automática não seja desejada.
+
+---
+
 ## [v1.18.1] — 2026-08-04
 
 ### Corrigido

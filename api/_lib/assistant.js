@@ -1,6 +1,7 @@
 import { getDb, rowsToObjects } from './db.js';
 import { getAiConfig, groqChat, groqTranscribeAudio, groqReadImage, geminiTranscribeAudio, geminiReadImage } from './ai.js';
 import { sendText, evoBase, resolveKey, headers } from './evolution.js';
+import { sendTemplateEmail } from './email.js';
 import bcrypt from 'bcryptjs';
 
 // ── Helpers de infraestrutura ────────────────────────────────────────────────
@@ -343,11 +344,12 @@ async function runManageUser(adminUser, userOp, pending) {
     const missing = [];
     if (!f.name) missing.push('nome completo');
     if (!f.email) missing.push('e-mail');
+    if (!f.phone) missing.push('telefone com DDD (obrigatório)');
     if (!f.password) missing.push('senha (mín. 8 caracteres) — ou diga "gerar senha"');
     if (missing.length) {
       return {
         pending: { type: 'admin_user', op: 'create', fields: f, generate: !!(userOp.generate_password || pending?.generate) },
-        answer: `Certo! Para criar o usuário, ainda preciso de: ${missing.join(', ')}. Pode me enviar?${!f.phone && !missing.includes('e-mail') ? ' (o telefone é opcional)' : ''}`,
+        answer: `Certo! Para criar o usuário, ainda preciso de: ${missing.join(', ')}. Pode me enviar?`,
       };
     }
     const r = await createSystemUser(f);
@@ -363,8 +365,10 @@ async function runManageUser(adminUser, userOp, pending) {
         answer: `Não consegui concluir: ${r.error}. Pode me reenviar esse dado corrigido?`,
       };
     }
-    const pwdNote = pending?.generate || userOp.generate_password ? `\nSenha gerada: *${f.password}* (peça ao usuário para trocá-la depois).` : '';
-    return { pending: null, answer: `Pronto! Usuário *${f.name}* (${f.email}) criado com sucesso. ✅${pwdNote}` };
+    return {
+      pending: { type: 'admin_user', op: 'notify_welcome', notify: { name: f.name, email: f.email, password: f.password, phone: f.phone } },
+      answer: `Pronto! Usuário *${f.name}* (${f.email}) criado com sucesso. ✅\nSenha: *${f.password}*\n\nDeseja que eu informe o usuário dos dados de acesso? Vou enviar e-mail e WhatsApp com login, senha e link de acesso. (responda "sim" ou "não")`,
+    };
   }
 
   if (op === 'edit') {
@@ -403,6 +407,32 @@ async function runManageUser(adminUser, userOp, pending) {
   return { pending: null, answer: 'Não entendi a operação de usuário. Você quer criar, editar ou excluir?' };
 }
 
+// Envia os dados de acesso (login, senha, link) ao novo usuário por e-mail e WhatsApp.
+// force=true no e-mail: envio confirmado pelo admin, ignora opt-out.
+async function notifyWelcome(inst, notify) {
+  const appUrl = process.env.APP_URL || 'https://app.lumersbpo.com.br';
+  const vars = { name: notify.name, login: notify.email, password: notify.password, app_url: appUrl };
+  let emailOk = false, waOk = false, emailErr = '';
+  try {
+    const r = await sendTemplateEmail({ to: notify.email, toName: notify.name, systemKey: 'welcome_credentials', vars, force: true });
+    emailOk = !!r.ok;
+    if (!r.ok) emailErr = r.error || 'falha no envio';
+  } catch (e) { emailErr = e?.message || 'erro'; console.error('[assistant] welcome email falhou', e?.message); }
+
+  const wphone = canonicalBrazilPhone(notify.phone);
+  if (wphone) {
+    const waText = `Olá, ${firstName(notify.name)}! 🎉\n\nA sua conta na Lumers Flow foi criada com sucesso.\n\n🔑 *Dados de acesso*\nLogin: ${notify.email}\nSenha: ${notify.password}\nAcesse: ${appUrl}\n\nRecomendamos trocar a senha após o primeiro acesso.`;
+    try { await sendText({ name: inst.name, key: inst.api_key || null, number: wphone, text: waText }); waOk = true; }
+    catch (e) { console.error('[assistant] welcome whatsapp falhou', e?.message); }
+  }
+
+  const parts = [
+    emailOk ? '✅ e-mail enviado' : `⚠️ e-mail não enviado${emailErr ? ` (${emailErr})` : ''}`,
+    wphone ? (waOk ? '✅ WhatsApp enviado' : '⚠️ WhatsApp não enviado') : '',
+  ].filter(Boolean);
+  return { answer: `Notifiquei ${firstName(notify.name)}:\n${parts.join('\n')}` };
+}
+
 // ── Núcleo: classificação de intenção via Groq ───────────────────────────────
 
 function buildSystemPrompt(user, accounts = []) {
@@ -429,7 +459,7 @@ O QUE VOCÊ PODE FAZER:
 3. Responder consultas sobre saldo, receitas, despesas e resumos.
 4. Conversar e orientar sobre o uso.${isAdmin ? `
 5. GESTÃO DE USUÁRIOS DO SISTEMA (apenas admin): criar, editar e excluir contas de usuários do Lumers Flow. Use action "manage_user" e preencha "user_op".
-   - Criar: op="create". Colete nome completo, e-mail e senha (mín. 8 caracteres); telefone é opcional. Se o admin disser "gere/gerar senha", marque generate_password=true. NÃO invente dados: extraia só o que o admin informar; os dados que faltarem serão pedidos automaticamente.
+   - Criar: op="create". Colete nome completo, e-mail, telefone com DDD (OBRIGATÓRIO) e senha (mín. 8 caracteres). Se o admin disser "gere/gerar senha", marque generate_password=true. NÃO invente dados: extraia só o que o admin informar; os dados que faltarem serão pedidos automaticamente. Após criar, o sistema pergunta se deve notificar o novo usuário dos dados de acesso.
    - Editar: op="edit", "target" = e-mail ou nome do usuário; preencha os campos a alterar (name, phone, password).
    - Excluir: op="delete", "target" = e-mail ou nome do usuário.
    Não confunda "usuário do sistema" com "conta/carteira bancária" (create_account).` : ''}
@@ -596,6 +626,12 @@ export async function handleAssistantMessage(msg, instanceName) {
           if (no) { answer = 'Ok, exclusão cancelada. 🙂'; newPending = null; }
           else if (yes) { const r = await runManageUser(user, { op: 'delete', target: conv.pending.target }, conv.pending); answer = r.answer; newPending = r.pending; }
           else { answer = 'Só confirmando: responda "sim" para excluir ou "não" para cancelar.'; newPending = conv.pending; }
+        } else if (conv.pending?.op === 'notify_welcome') {
+          const yes = /\b(sim|confirmo|confirmar|pode|isso|ok|manda[r]?|envia[r]?|quero)\b/i.test(userText || '');
+          const no = /\b(n[ãa]o|deixa|depois|cancela|cancelar|dispensa)\b/i.test(userText || '');
+          if (no) { answer = 'Ok, não vou notificar o usuário agora. Você pode repassar os dados de acesso manualmente. 🙂'; newPending = null; }
+          else if (yes) { const r = await notifyWelcome(inst, conv.pending.notify); answer = r.answer; newPending = null; }
+          else { answer = 'Deseja que eu envie os dados de acesso ao usuário? Responda "sim" ou "não". 🙂'; newPending = conv.pending; }
         } else {
           const r = await runManageUser(user, userOp, conv.pending?.type === 'admin_user' ? conv.pending : null);
           answer = r.answer;
