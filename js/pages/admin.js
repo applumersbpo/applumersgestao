@@ -2084,6 +2084,10 @@ const _SYSLOG_LABELS = {
   'evolution.set_default':     { txt: 'Instância padrão',      color: '#0891b2', bg: '#cffafe' },
   'evolution.update_key':      { txt: 'Chave atualizada',      color: '#d97706', bg: '#fef3c7' },
   'message.campaign_send':     { txt: 'Campanha enviada',      color: '#0891b2', bg: '#cffafe' },
+  'message.scheduled_update':  { txt: 'Agendamento editado',   color: '#d97706', bg: '#fef3c7' },
+  'message.scheduled_send_now':{ txt: 'Disparo imediato',      color: '#0891b2', bg: '#cffafe' },
+  'message.scheduled_delete':  { txt: 'Agendamento excluído',  color: '#dc2626', bg: '#fee2e2' },
+  'improvement.update':        { txt: 'Melhoria atualizada',   color: '#7c3aed', bg: '#ede9fe' },
 };
 
 function _syslogBadge(action) {

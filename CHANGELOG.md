@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.28.1] — 2026-08-05
+
+### Corrigido
+- **Logs do sistema** — as ações de melhorias e de mensagens agendadas (`improvement.update`, `message.scheduled_update`, `message.scheduled_send_now`, `message.scheduled_delete`) agora exibem rótulo colorido e aparecem no filtro por ação, em vez do código bruto. Todas as 21 ações auditadas passam a ter legenda.
+
+---
+
 ## [v1.28.0] — 2026-08-05
 
 ### Adicionado
