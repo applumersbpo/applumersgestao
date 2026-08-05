@@ -3033,121 +3033,135 @@ async function openAdminMessageModal(preSelectedIds = []) {
             </div>
 
             <!-- COLUNA DIREITA: Mensagem + opções -->
-            <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;flex-direction:column;gap:16px">
 
               <!-- Texto -->
               <div class="form-group" style="margin:0">
-                <label class="form-label">Mensagem</label>
-                <textarea id="msg-text" class="form-control" rows="${isDesktop ? 7 : 4}"
-                  placeholder="Digite a mensagem aqui…" style="resize:vertical"></textarea>
-                <div style="font-size:.72rem;color:var(--text-muted);margin-top:3px">
-                  Formatação WhatsApp: *negrito*, _itálico_, ~tachado~
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
+                  <label class="form-label" style="margin:0">Mensagem</label>
+                  <div style="display:flex;gap:6px;align-items:center">
+                    <span id="msg-ai-status" style="font-size:.72rem;color:var(--text-muted)"></span>
+                    <button type="button" class="btn btn-sm btn-primary" id="msg-ai-create" onclick="_msgAiCompose('create')"
+                      title="Descreva o assunto no campo e gere a mensagem" style="font-size:.74rem;padding:4px 10px">
+                      ${icon('sparkles', 12)} Criar</button>
+                    <button type="button" class="btn btn-sm btn-outline" id="msg-ai-improve" onclick="_msgAiCompose('improve')"
+                      title="Melhorar o rascunho atual" style="font-size:.74rem;padding:4px 10px">
+                      ${icon('wand-2', 12)} Melhorar</button>
+                  </div>
                 </div>
+                <textarea id="msg-text" class="form-control" rows="${isDesktop ? 6 : 4}"
+                  placeholder="Digite a mensagem…  (dica: descreva o assunto e clique em Criar)"
+                  style="resize:vertical" oninput="_msgUpdatePreview()"></textarea>
 
-                <!-- Assistente de redação com IA -->
-                <div style="margin-top:10px;background:linear-gradient(135deg,var(--primary-light,#e8f5e9),transparent);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px">
-                  <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:5px">
-                    ${icon('sparkles', 12)} Escrever com IA
-                  </div>
-                  <div style="font-size:.75rem;color:var(--text-muted);line-height:1.5;margin-bottom:8px">
-                    Descreva o assunto e clique em <strong>Criar</strong>, ou escreva um rascunho e clique em <strong>Melhorar</strong>.
-                  </div>
-                  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-                    <button type="button" class="btn btn-sm btn-primary" id="msg-ai-create" onclick="_msgAiCompose('create')" style="font-size:.78rem">
-                      ${icon('sparkles', 13)} Criar com IA
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline" id="msg-ai-improve" onclick="_msgAiCompose('improve')" style="font-size:.78rem">
-                      ${icon('wand-2', 13)} Melhorar com IA
-                    </button>
-                    <span id="msg-ai-status" style="font-size:.74rem;color:var(--text-muted)"></span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Variáveis personalizadas -->
-              <div>
-                <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px">
-                  Variáveis — clique para inserir
-                </div>
-                <div style="display:flex;flex-wrap:wrap;gap:5px">
+                <!-- Barra: variáveis + formatação -->
+                <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:8px">
+                  <span style="font-size:.72rem;color:var(--text-muted);margin-right:2px">Inserir:</span>
                   ${['{nome}','{email}','{telefone}','{status}','{plano}','{saldo}','{ultimo_acesso}'].map(v => `
-                    <button class="btn btn-sm" onclick="_msgInsertVar('${v}')"
-                      style="font-size:.75rem;padding:3px 9px;font-family:monospace;background:var(--surface-alt,#f1f5f9);border:1px solid var(--border)">
-                      ${v}
-                    </button>`).join('')}
+                    <button type="button" onclick="_msgInsertVar('${v}')" title="Inserir variável"
+                      style="font-size:.72rem;padding:2px 9px;font-family:monospace;background:var(--surface-alt,#f1f5f9);border:1px solid var(--border);border-radius:999px;cursor:pointer;color:var(--text)">${v}</button>`).join('')}
+                </div>
+                <div style="font-size:.71rem;color:var(--text-muted);margin-top:6px">
+                  Formatação:
+                  <code style="background:var(--surface-alt,#f1f5f9);padding:0 4px;border-radius:3px">*negrito*</code>
+                  <code style="background:var(--surface-alt,#f1f5f9);padding:0 4px;border-radius:3px">_itálico_</code>
+                  <code style="background:var(--surface-alt,#f1f5f9);padding:0 4px;border-radius:3px">~tachado~</code>
                 </div>
               </div>
 
-              <!-- Variações / Spin Syntax -->
-              <div style="background:var(--surface-alt,#f8fafc);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px">
-                <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px">
-                  ${icon('shuffle', 11)} Variações de texto (spin)
+              <!-- Pré-visualização estilo WhatsApp -->
+              <div>
+                <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:5px">
+                  ${icon('eye', 12)} Pré-visualização
                 </div>
-                <div style="font-size:.78rem;color:var(--text-muted);line-height:1.5">
-                  Use <code style="background:var(--border);padding:1px 5px;border-radius:3px">{opção1|opção2|opção3}</code>
-                  — cada destinatário recebe uma variação aleatória diferente.
-                </div>
-                <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">
-                  ${['{Oi|Olá|Ei}','{Tudo bem?|Como vai?|Tudo certo?}','{Aproveite|Não perca|Confira}'].map(v => `
-                    <button class="btn btn-sm" onclick="_msgInsertVar('${v}')"
-                      style="font-size:.73rem;padding:2px 8px;font-family:monospace;background:var(--surface);border:1px dashed var(--border)">
-                      ${v}
-                    </button>`).join('')}
+                <div style="background:#e5ddd5;border:1px solid var(--border);border-radius:12px;padding:12px 10px;min-height:56px">
+                  <div id="msg-preview"></div>
                 </div>
               </div>
 
-              <!-- Cadência -->
+              <!-- Botões de ação (opcional) -->
               <div class="form-group" style="margin:0">
                 <label class="form-label" style="display:flex;align-items:center;gap:6px">
-                  ${icon('timer', 13)} Cadência (delay entre mensagens)
-                </label>
-                <div style="display:flex;align-items:center;gap:10px">
-                  <input id="msg-delay-range" type="range" min="0" max="30" step="1" value="2"
-                    style="flex:1;accent-color:var(--primary)"
-                    oninput="document.getElementById('msg-delay-val').textContent=this.value">
-                  <span style="font-size:.85rem;font-weight:600;min-width:52px;text-align:right">
-                    <span id="msg-delay-val">2</span> s
-                  </span>
-                </div>
-                <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">
-                  0 = sem delay · recomendado 2–5 s para evitar bloqueios do WhatsApp
-                </div>
-              </div>
-
-              <!-- Agendamento -->
-              <div class="form-group" style="margin:0">
-                <label class="form-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">
-                  <input type="checkbox" id="msg-schedule-toggle" onchange="_msgToggleSchedule(this.checked)"
-                    style="accent-color:var(--primary)">
-                  ${icon('calendar-clock', 13)} Agendar envio
-                </label>
-                <div id="msg-schedule-wrap" style="display:none;margin-top:6px">
-                  <input id="msg-schedule-at" type="datetime-local" class="form-control">
-                  <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">
-                    O envio começa na data/hora escolhida, respeitando a cadência entre mensagens.
-                  </div>
-                </div>
-              </div>
-
-              <!-- Botões -->
-              <div class="form-group" style="margin:0">
-                <label class="form-label" style="display:flex;align-items:center;gap:6px">
-                  ${icon('mouse-pointer-click', 13)} Botões (opcional)
+                  ${icon('mouse-pointer-click', 13)} Botões de ação
+                  <span style="font-weight:400;color:var(--text-muted);font-size:.76rem">(opcional · máx. 3)</span>
                 </label>
                 <div id="msg-buttons-list"></div>
                 <button type="button" id="msg-add-btn" class="btn btn-ghost btn-sm" onclick="_msgAddButton()"
-                  style="margin-top:4px">${icon('plus', 13)} Adicionar botão</button>
-                <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">
-                  Máx. 3 botões. Tipo <strong>Resposta</strong> = resposta rápida; <strong>Link</strong> = abre uma URL.
-                  ⚠️ Em conexões não-oficiais (Baileys) o WhatsApp pode não exibir os botões em alguns aparelhos.
-                  Botões substituem o envio com mídia.
+                  style="margin-top:2px">${icon('plus', 13)} Adicionar botão</button>
+                <div style="font-size:.71rem;color:var(--text-muted);margin-top:5px;line-height:1.5">
+                  <strong>Resposta</strong> = resposta rápida · <strong>Link</strong> = abre uma URL. Substituem o envio de mídia.
+                  <br>⚠️ Em conexões Baileys o WhatsApp pode não exibir botões em alguns aparelhos.
                 </div>
               </div>
 
-              <!-- Mídia -->
-              <div class="form-group" style="margin:0">
-                <label class="form-label">Mídia (opcional)</label>
-                <div id="msg-media-section"></div>
+              <!-- Opções avançadas (recolhível) -->
+              <div style="border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden">
+                <button type="button" onclick="_msgToggleAdvanced()"
+                  style="width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface-alt,#f8fafc);border:none;cursor:pointer;font-size:.8rem;font-weight:600;color:var(--text);text-align:left">
+                  <span id="msg-adv-caret" style="display:inline-flex;transition:transform .2s">${icon('chevron-right', 14)}</span>
+                  ${icon('sliders-horizontal', 13)} Opções avançadas
+                  <span style="margin-left:auto;font-weight:400;font-size:.71rem;color:var(--text-muted)">cadência · agendar · mídia · variações</span>
+                </button>
+                <div id="msg-adv-wrap" style="display:none;flex-direction:column;gap:16px;padding:14px 12px;border-top:1px solid var(--border)">
+
+                  <!-- Cadência -->
+                  <div class="form-group" style="margin:0">
+                    <label class="form-label" style="display:flex;align-items:center;gap:6px">
+                      ${icon('timer', 13)} Cadência (delay entre mensagens)
+                    </label>
+                    <div style="display:flex;align-items:center;gap:10px">
+                      <input id="msg-delay-range" type="range" min="0" max="30" step="1" value="2"
+                        style="flex:1;accent-color:var(--primary)"
+                        oninput="document.getElementById('msg-delay-val').textContent=this.value">
+                      <span style="font-size:.85rem;font-weight:600;min-width:52px;text-align:right">
+                        <span id="msg-delay-val">2</span> s
+                      </span>
+                    </div>
+                    <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">
+                      0 = sem delay · recomendado 2–5 s para evitar bloqueios do WhatsApp
+                    </div>
+                  </div>
+
+                  <!-- Agendamento -->
+                  <div class="form-group" style="margin:0">
+                    <label class="form-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                      <input type="checkbox" id="msg-schedule-toggle" onchange="_msgToggleSchedule(this.checked)"
+                        style="accent-color:var(--primary)">
+                      ${icon('calendar-clock', 13)} Agendar envio
+                    </label>
+                    <div id="msg-schedule-wrap" style="display:none;margin-top:6px">
+                      <input id="msg-schedule-at" type="datetime-local" class="form-control">
+                      <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">
+                        O envio começa na data/hora escolhida, respeitando a cadência entre mensagens.
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Mídia -->
+                  <div class="form-group" style="margin:0">
+                    <label class="form-label" style="display:flex;align-items:center;gap:6px">
+                      ${icon('paperclip', 13)} Mídia (opcional)
+                    </label>
+                    <div id="msg-media-section"></div>
+                  </div>
+
+                  <!-- Variações / Spin Syntax -->
+                  <div style="background:var(--surface,#fff);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px">
+                    <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px;display:flex;align-items:center;gap:5px">
+                      ${icon('shuffle', 11)} Variações de texto (spin)
+                    </div>
+                    <div style="font-size:.76rem;color:var(--text-muted);line-height:1.5">
+                      Use <code style="background:var(--border);padding:1px 5px;border-radius:3px">{opção1|opção2|opção3}</code>
+                      — cada destinatário recebe uma variação aleatória.
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">
+                      ${['{Oi|Olá|Ei}','{Tudo bem?|Como vai?|Tudo certo?}','{Aproveite|Não perca|Confira}'].map(v => `
+                        <button type="button" class="btn btn-sm" onclick="_msgInsertVar('${v}')"
+                          style="font-size:.73rem;padding:2px 8px;font-family:monospace;background:var(--surface-alt,#f8fafc);border:1px dashed var(--border)">
+                          ${v}
+                        </button>`).join('')}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div id="msg-result"></div>
@@ -3170,6 +3184,7 @@ async function openAdminMessageModal(preSelectedIds = []) {
   _renderMsgMediaSection();
   window._msgButtons = [];
   _msgRenderButtons();
+  _msgUpdatePreview();
 }
 
 // Helper to open for a single user (avoids JSON-in-onclick)
@@ -3308,6 +3323,7 @@ async function _adminMsgTemplate(idx) {
   if (!t) return;
   const ta = document.getElementById('msg-text');
   if (ta) ta.value = t.text;
+  _msgUpdatePreview();
 
   // Templates com imagem (ex.: banner de atualização) anexam a mídia automaticamente,
   // que segue como imagem + legenda (o texto acima) no envio pelo WhatsApp.
@@ -3356,6 +3372,7 @@ async function _msgAiCompose(mode) {
     const r = await _api('POST', '/admin/users', { action: 'ai-compose-message', mode, brief });
     if (r?.ok && r.text) {
       ta.value = r.text;
+      _msgUpdatePreview();
       if (status) status.textContent = '✓ Pronto';
       setTimeout(() => { if (status) status.textContent = ''; }, 2500);
     } else {
@@ -3434,6 +3451,7 @@ function _renderMsgMediaSection() {
         Fotos, vídeos, áudios, PDF, Word, Excel… A imagem fica fixada para a próxima mensagem.
       </div>`;
   }
+  _msgUpdatePreview();
 }
 
 function _fileToBase64(file) {
@@ -3472,18 +3490,81 @@ function _msgAddButton() {
   if (window._msgButtons.length >= 3) { toast('Máximo de 3 botões', 'error'); return; }
   window._msgButtons.push({ type: 'reply', label: '', url: '' });
   _msgRenderButtons();
+  _msgUpdatePreview();
 }
 
 function _msgRemoveButton(i) {
   if (!window._msgButtons) return;
   window._msgButtons.splice(i, 1);
   _msgRenderButtons();
+  _msgUpdatePreview();
 }
 
 function _msgBtnChange(i, field, val) {
   if (!window._msgButtons || !window._msgButtons[i]) return;
   window._msgButtons[i][field] = val;
   if (field === 'type') _msgRenderButtons();
+  _msgUpdatePreview();
+}
+
+function _msgToggleAdvanced() {
+  const w = document.getElementById('msg-adv-wrap');
+  const c = document.getElementById('msg-adv-caret');
+  if (!w) return;
+  const open = w.style.display === 'none' || !w.style.display;
+  w.style.display = open ? 'flex' : 'none';
+  if (c) c.style.transform = open ? 'rotate(90deg)' : '';
+}
+
+// Renderiza texto no estilo do WhatsApp (negrito/itálico/tachado/mono) para o preview.
+function _waFormat(t) {
+  let s = _escHtml(t || '');
+  s = s.replace(/```([\s\S]+?)```/g, '<code style="background:rgba(0,0,0,.06);padding:0 3px;border-radius:3px;font-size:.9em">$1</code>');
+  s = s.replace(/(^|[\s(])\*(\S(?:.*?\S)?)\*(?=[\s).,!?]|$)/g, '$1<strong>$2</strong>');
+  s = s.replace(/(^|[\s(])_(\S(?:.*?\S)?)_(?=[\s).,!?]|$)/g, '$1<em>$2</em>');
+  s = s.replace(/(^|[\s(])~(\S(?:.*?\S)?)~(?=[\s).,!?]|$)/g, '$1<del>$2</del>');
+  s = s.replace(/\{[^{}]+\}/g, m => `<span style="background:#fde68a;border-radius:3px;padding:0 2px;color:#78350f">${m}</span>`);
+  s = s.replace(/\n/g, '<br>');
+  return s;
+}
+
+// Atualiza a bolha de pré-visualização com o texto atual e os botões configurados.
+function _msgUpdatePreview() {
+  const el = document.getElementById('msg-preview');
+  if (!el) return;
+  const raw = document.getElementById('msg-text')?.value || '';
+  const hasMedia = !!_stickyMsgMedia;
+  const btns = (window._msgButtons || []).filter(b => (b.label || '').trim());
+  const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  const body = raw.trim()
+    ? _waFormat(raw)
+    : '<span style="color:#8696a0">Sua mensagem aparece aqui…</span>';
+
+  const mediaChip = (hasMedia && !btns.length) ? `
+    <div style="display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.05);border-radius:6px;padding:6px 8px;margin-bottom:6px;font-size:.78rem;color:#3b4a54">
+      ${_stickyMsgMedia.type === 'image' ? icon('image', 13) : icon('paperclip', 13)}
+      ${_escHtml(_stickyMsgMedia.name || 'anexo')}
+    </div>` : '';
+
+  const btnHtml = btns.map(b => `
+    <div style="display:flex;align-items:center;justify-content:center;gap:6px;background:#fff;color:#00a5f4;
+      font-weight:500;font-size:.82rem;padding:8px;border-radius:8px;box-shadow:0 1px 1px rgba(0,0,0,.1)">
+      ${b.type === 'url' ? icon('external-link', 14) : icon('reply', 14)} ${_escHtml((b.label || '').trim())}
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div style="max-width:85%;margin-left:auto">
+      <div style="background:#d9fdd3;border-radius:8px 0 8px 8px;padding:6px 9px 4px;font-size:.85rem;
+        color:#111b21;line-height:1.4;word-break:break-word;box-shadow:0 1px 1px rgba(0,0,0,.1)">
+        ${mediaChip}
+        <span>${body}</span>
+        <span style="float:right;font-size:.65rem;color:#667781;margin:6px 0 0 8px">${now} ✓✓</span>
+        <div style="clear:both"></div>
+      </div>
+      ${btnHtml ? `<div style="display:flex;flex-direction:column;gap:4px;margin-top:4px">${btnHtml}</div>` : ''}
+    </div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [el] });
 }
 
 function _msgRenderButtons() {
@@ -3523,6 +3604,7 @@ function _msgInsertVar(varText) {
   el.value = el.value.slice(0, s) + varText + el.value.slice(e);
   el.selectionStart = el.selectionEnd = s + varText.length;
   el.focus();
+  _msgUpdatePreview();
 }
 
 async function _sendAdminMessage() {

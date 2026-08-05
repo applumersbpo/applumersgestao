@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.25.0] — 2026-08-05
+
+### Melhorado
+- **UX da modal de envio de mensagem redesenhada** — o formulário deixou de ser uma pilha densa de seções com o mesmo peso visual. Agora o fluxo principal fica em destaque: campo de mensagem com os botões de IA (Criar/Melhorar) no topo, chips de variáveis e atalhos de formatação logo abaixo. As opções secundárias (cadência, agendamento, mídia e variações/spin) foram agrupadas em **"Opções avançadas"** recolhível, reduzindo a poluição visual.
+
+### Adicionado
+- **Pré-visualização ao vivo estilo WhatsApp** — uma bolha de mensagem mostra em tempo real como o texto ficará no WhatsApp (negrito, itálico, tachado, variáveis destacadas) junto com os botões de ação e o anexo de mídia, atualizando conforme você digita ou configura os botões.
+
+---
+
 ## [v1.24.0] — 2026-08-05
 
 ### Adicionado
