@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.16.3] — 2026-08-04
+
+### Melhorado
+- **Mensagem clara quando a cota da IA de mídia estoura** — ao receber HTTP 429 (limite de cota/rate limit) do Gemini ao transcrever áudio ou ler print, o assistente agora avisa que é limite momentâneo e sugere tentar de novo em alguns minutos ou mandar por texto, em vez do erro genérico.
+
+---
+
 ## [v1.16.2] — 2026-08-04
 
 ### Corrigido

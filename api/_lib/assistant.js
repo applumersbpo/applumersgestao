@@ -267,8 +267,13 @@ export async function handleAssistantMessage(msg, instanceName) {
     }
   } catch (e) {
     console.error('[assistant] extração de mídia falhou', e?.message);
-    await reply('Tive um problema ao processar sua mensagem. Pode tentar de novo? 🙏');
-    return { handled: true, reason: 'media_error' };
+    const quota = /\b429\b|quota|rate.?limit/i.test(e?.message || '');
+    await reply(
+      quota
+        ? 'A cota da IA de áudio/imagem atingiu o limite momentâneo. Tente de novo em alguns minutos, ou me mande por texto. 🙏'
+        : 'Tive um problema ao processar sua mensagem. Pode tentar de novo? 🙏',
+    );
+    return { handled: true, reason: quota ? 'media_quota' : 'media_error' };
   }
 
   if (!userText && !imageContext) {
