@@ -809,7 +809,7 @@ export async function handleAssistantMessage(msg, instanceName) {
       const t = intent.transaction || {};
       newPending = { type: 'transaction', name: t.name || conv.pending?.name || 'Lançamento', amount: t.amount || conv.pending?.amount || 0 };
       answer = intent.reply || 'Esse valor é uma receita (entrada) ou uma despesa (saída)?';
-    } else if (intent.action === 'manage_user' || conv.pending?.type === 'admin_user') {
+    } else if (intent.action === 'manage_user' || conv.pending?.op === 'delete_confirm' || conv.pending?.op === 'notify_welcome') {
       if (!isAdmin) {
         answer = 'Essa operação é exclusiva para administradores. 🙂';
       } else {

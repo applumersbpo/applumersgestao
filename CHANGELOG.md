@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.22.2] — 2026-08-04
+
+### Corrigido
+- **Conversa do WhatsApp travava repetindo a mesma pergunta** — quando uma operação de gestão de usuário ficava pendente (ex.: "Qual usuário você quer excluir?"), qualquer mensagem seguinte — inclusive um simples "olá" — era forçada de volta para essa operação, repetindo a mesma pergunta e nunca saindo do estado. Agora só os passos de confirmação explícita (sim/não de exclusão e de envio de credenciais) prendem a conversa; uma mensagem comum encerra a operação pendente e volta ao fluxo normal.
+
+---
+
 ## [v1.22.1] — 2026-08-04
 
 ### Corrigido
