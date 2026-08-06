@@ -630,6 +630,13 @@ export async function initDb() {
   if (!aColNames.includes('logo_url')) {
     await db.execute("ALTER TABLE accounts ADD COLUMN logo_url TEXT DEFAULT ''");
   }
+  // accounts — dias de fechamento/vencimento da fatura do cartão (parcelamentos via WhatsApp)
+  if (!aColNames.includes('closing_day')) {
+    await db.execute("ALTER TABLE accounts ADD COLUMN closing_day INTEGER DEFAULT NULL");
+  }
+  if (!aColNames.includes('due_day')) {
+    await db.execute("ALTER TABLE accounts ADD COLUMN due_day INTEGER DEFAULT NULL");
+  }
 
   // evolution_instances — new status/qr columns
   const { rows: eiCols2 } = await db.execute("PRAGMA table_info('evolution_instances')");

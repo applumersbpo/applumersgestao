@@ -28,6 +28,11 @@ async function getMediaBase64(instanceName, key, messageKey) {
   return data.base64 || data.media || '';
 }
 
+// Prompt estruturado para faturas/comprovantes: orienta a IA a extrair conta/cartão,
+// valores, datas de vencimento/fechamento e — crucial — parcelamentos.
+const MEDIA_EXTRACT_PROMPT =
+  'Este é um documento/print financeiro (possivelmente uma FATURA de cartão, boleto, comprovante ou recibo) enviado por um usuário de um app financeiro. Extraia de forma objetiva e estruturada, em português: nome do banco/cartão ou conta; valor(es) em reais; data(s) de vencimento e de fechamento da fatura (se houver); e a descrição do gasto ou recebimento e se aparenta ser RECEITA ou DESPESA. Se identificar uma COMPRA PARCELADA, informe claramente o número de parcelas e o valor total (ex.: "TV — R$ 3.500 em 8x"). Não invente dados que não estão no conteúdo. Se não for financeiro, descreva brevemente o que é. Responda curto.';
+
 // Lê o conteúdo de uma imagem/print tentando Groq (visão) e, em falha, o Gemini.
 // Retorna o texto extraído (não vazio). Se ambos falharem, lança Error com:
 //   .kind = 'tech'  → falha técnica do provedor (API/limite) → função indisponível
@@ -40,8 +45,8 @@ async function readImageContent(cfg, base64, mime) {
   for (const p of providers) {
     try {
       const t = p === 'groq'
-        ? await groqReadImage({ key: cfg.groqKey, base64, mime })
-        : await geminiReadImage({ key: cfg.geminiKey, model: cfg.geminiModel, base64, mime });
+        ? await groqReadImage({ key: cfg.groqKey, base64, mime, prompt: MEDIA_EXTRACT_PROMPT })
+        : await geminiReadImage({ key: cfg.geminiKey, model: cfg.geminiModel, base64, mime, prompt: MEDIA_EXTRACT_PROMPT });
       if (t && t.trim()) return t.trim();
     } catch (e) {
       threw = true;
@@ -51,6 +56,20 @@ async function readImageContent(cfg, base64, mime) {
   const err = new Error('image read failed');
   err.kind = threw ? 'tech' : 'empty';
   throw err;
+}
+
+// Lê o conteúdo de um documento (PDF/fatura). Só o Gemini interpreta PDF via
+// inline_data; a visão do Groq não lê PDF. Mesma semântica de erro de readImageContent.
+async function readDocumentContent(cfg, base64, mime) {
+  if (!cfg.geminiKey) { const err = new Error('no gemini'); err.kind = 'tech'; throw err; }
+  try {
+    const t = await geminiReadImage({ key: cfg.geminiKey, model: cfg.geminiModel, base64, mime, prompt: MEDIA_EXTRACT_PROMPT });
+    if (t && t.trim()) return t.trim();
+  } catch (e) {
+    console.error('[assistant] leitura de documento (gemini) falhou', e?.message);
+    const err = new Error('doc read failed'); err.kind = 'tech'; throw err;
+  }
+  const err = new Error('doc read empty'); err.kind = 'empty'; throw err;
 }
 
 // Heurística: o modelo respondeu, mas dizendo que não consegue ler (borrada/ilegível),
@@ -272,8 +291,43 @@ async function insertAccount(userId, { name, bank_name, initial_balance, type })
 
 async function getUserAccounts(userId) {
   const db = getDb();
-  const { rows } = await db.execute({ sql: 'SELECT id, name, bank_name, initial_balance FROM accounts WHERE user_id=?', args: [userId] });
+  const { rows } = await db.execute({ sql: 'SELECT id, name, bank_name, initial_balance, type, closing_day, due_day FROM accounts WHERE user_id=?', args: [userId] });
   return rowsToObjects(rows);
+}
+
+// Grava os dias de fechamento/vencimento da fatura do cartão na conta, para não
+// precisar perguntar de novo em parcelamentos futuros no mesmo cartão.
+async function setAccountCardDays(accountId, { closing_day, due_day } = {}) {
+  const db = getDb();
+  if (closing_day != null) await db.execute({ sql: 'UPDATE accounts SET closing_day=? WHERE id=?', args: [Number(closing_day), accountId] });
+  if (due_day != null)     await db.execute({ sql: 'UPDATE accounts SET due_day=? WHERE id=?',     args: [Number(due_day), accountId] });
+}
+
+// Cria um parcelamento (compra parcelada no cartão). monthly = total/parcelas.
+async function insertInstallment(userId, { name, total_amount, count, due_day, account_id, category_id, start_month, start_year }) {
+  const db = getDb();
+  const id = crypto.randomUUID();
+  await db.execute({
+    sql: `INSERT INTO installments (id, user_id, name, category_id, total_amount, installments, paid_installments, due_day, notes, account_id, start_month, start_year, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'Registrado via WhatsApp', ?, ?, ?, datetime('now'))`,
+    args: [id, userId, name || 'Parcelamento', category_id || '', Number(total_amount) || 0, Number(count) || 1, Number(due_day) || 1, account_id || '', start_month != null ? Number(start_month) : null, start_year != null ? Number(start_year) : null],
+  });
+  return id;
+}
+
+// Calcula o mês/ano da PRIMEIRA parcela a partir dos dias de fechamento e vencimento
+// da fatura. Se a compra caiu após o fechamento, entra na próxima fatura; se o
+// vencimento é anterior ao fechamento, a fatura vence no mês seguinte ao fechamento.
+function computeInstallmentStart(closingDay, dueDay) {
+  const now = new Date();
+  let m = now.getMonth(); // 0-11
+  let y = now.getFullYear();
+  const day = now.getDate();
+  if (day > Number(closingDay)) m += 1;            // compra após o fechamento → próxima fatura
+  if (Number(dueDay) < Number(closingDay)) m += 1; // vencimento cai no mês seguinte ao fechamento
+  y += Math.floor(m / 12);
+  m = ((m % 12) + 12) % 12;
+  return { start_month: m + 1, start_year: y };
 }
 
 // Casa o nome citado pelo usuário ("no Nubank") com uma conta existente.
@@ -410,6 +464,142 @@ async function runTxFlow(user, pending, raw) {
   }
 
   return { answer: 'Vamos recomeçar: me diga o lançamento (ex.: "gastei 30 com almoço").', pending: null };
+}
+
+// ── Fluxo conversacional de parcelamento (cartão → fechamento/vencimento → registrar) ──
+// Compras parceladas viram um registro em `installments`. Precisamos do cartão/conta e,
+// para saber quando cai a primeira parcela, dos dias de fechamento e vencimento da fatura
+// (perguntados uma vez e guardados na conta).
+
+function _instMonthly(inst) { return (Number(inst.total_amount) || 0) / (Number(inst.count) || 1); }
+function _instSummary(inst) { return `"${inst.name}" (${inst.count}x de ${brl(_instMonthly(inst))}, total ${brl(inst.total_amount)})`; }
+
+async function nextInstallmentStep(user, inst, accounts, categories) {
+  // 1) Cartão/conta — obrigatório
+  if (!inst.accountId) {
+    if (!accounts.length) {
+      const out = `📌 Você ainda não tem *cartão/conta* cadastrado. Para registrar o parcelamento de ${_instSummary(inst)}, me diga o *nome do cartão* (ex.: Nubank, Itaú) que eu cadastro e já registro. 😊\n\n_(ou responda *cancelar* para desistir)_`;
+      return { answer: out, pending: { type: 'installment_flow', step: 'account_create', inst } };
+    }
+    const list = accounts.map((a, i) => `*${i + 1}* — ${a.name}${a.bank_name ? ` (${a.bank_name})` : ''}`).join('\n');
+    const out = `Em qual *cartão/conta* foi o parcelamento de ${_instSummary(inst)}?\n\n${list}\n\nResponda com o *número* ou o *nome*. Para um cartão novo, envie *novo Nome* (ex.: novo Nubank).`;
+    return { answer: out, pending: { type: 'installment_flow', step: 'account', inst, accounts } };
+  }
+
+  const acc = (accounts || []).find((a) => a.id === inst.accountId);
+
+  // 2) Dia de fechamento da fatura — pergunta uma vez e guarda na conta
+  if (acc && (acc.closing_day == null || acc.closing_day === '' || Number(acc.closing_day) < 1)) {
+    const out = `Qual é o *dia de fechamento* da fatura do cartão ${acc.name}? (só o número, ex.: 5)`;
+    return { answer: out, pending: { type: 'installment_flow', step: 'closing_day', inst, accounts } };
+  }
+
+  // 3) Dia de vencimento da fatura — pergunta uma vez e guarda na conta
+  if (acc && (acc.due_day == null || acc.due_day === '' || Number(acc.due_day) < 1)) {
+    const out = `E qual é o *dia de vencimento* da fatura do cartão ${acc.name}? (só o número, ex.: 12)`;
+    return { answer: out, pending: { type: 'installment_flow', step: 'due_day', inst, accounts } };
+  }
+
+  // 4) Categoria — opcional
+  if (!inst.categoryId && !inst.categorySkipped) {
+    const cats = (categories || []).filter((c) => !c.type || c.type === 'expense');
+    if (cats.length) {
+      const list = cats.map((c, i) => `*${i + 1}* — ${c.icon ? c.icon + ' ' : ''}${c.name}`).join('\n');
+      const out = `Quer classificar esse parcelamento numa *categoria*? (melhora seus relatórios)\n\n${list}\n\nResponda com o *número*/*nome*, ou *pular*.`;
+      return { answer: out, pending: { type: 'installment_flow', step: 'category', inst, accounts, categories: cats } };
+    }
+  }
+
+  // 5) Tudo resolvido — registra o parcelamento
+  const closingDay = Number(acc?.closing_day) || 1;
+  const dueDay = Number(acc?.due_day) || 1;
+  const { start_month, start_year } = computeInstallmentStart(closingDay, dueDay);
+  await insertInstallment(user.id, {
+    name: inst.name, total_amount: inst.total_amount, count: inst.count, due_day: dueDay,
+    account_id: inst.accountId, category_id: inst.categoryId, start_month, start_year,
+  });
+  const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const catNote = inst.categoryName ? ` · ${inst.categoryName}` : '';
+  const accNote = acc ? ` no cartão ${acc.name}` : '';
+  const out = `Pronto, ${firstName(user.name)}! Registrei o parcelamento de ${_instSummary(inst)}${accNote}${catNote}. Vence dia ${dueDay}, começando em ${meses[start_month - 1]}/${start_year}. ✅`;
+  return { answer: out, pending: null };
+}
+
+async function runInstallmentFlow(user, pending, raw) {
+  const text = String(raw || '').trim();
+  const low = text.toLowerCase();
+  const inst = pending.inst || {};
+
+  if (/^(cancela|cancelar|deixa|para|parar|desisto|desistir)$/i.test(low)) {
+    return { answer: 'Ok, cancelei o parcelamento. 🙂', pending: null };
+  }
+
+  if (pending.step === 'account_create') {
+    if (!text) return { answer: 'Me diga o *nome do cartão* para eu cadastrar (ex.: Nubank).', pending };
+    const accId = await insertAccount(user.id, { name: text, bank_name: text, initial_balance: 0, type: 'checking' });
+    inst.accountId = accId;
+    const accounts = await getUserAccounts(user.id);
+    return await nextInstallmentStep(user, inst, accounts, await getUserCategories(user.id));
+  }
+
+  if (pending.step === 'account') {
+    let accounts = pending.accounts || await getUserAccounts(user.id);
+    const mNew = text.match(/^novo\s+(.+)/i);
+    if (mNew) {
+      const bankName = mNew[1].trim();
+      const accId = await insertAccount(user.id, { name: bankName, bank_name: bankName, initial_balance: 0, type: 'checking' });
+      inst.accountId = accId;
+      accounts = await getUserAccounts(user.id);
+      return await nextInstallmentStep(user, inst, accounts, await getUserCategories(user.id));
+    }
+    let acc = null;
+    const num = parseInt(low, 10);
+    if (!isNaN(num) && num >= 1 && num <= accounts.length) acc = accounts[num - 1];
+    if (!acc) acc = findAccountByName(accounts, text);
+    if (!acc) {
+      const list = accounts.map((a, i) => `*${i + 1}* — ${a.name}${a.bank_name ? ` (${a.bank_name})` : ''}`).join('\n');
+      return { answer: `Não identifiquei o cartão. Escolha pelo *número* ou *nome*:\n\n${list}\n\nOu envie *novo Nome* para cadastrar.`, pending };
+    }
+    inst.accountId = acc.id;
+    return await nextInstallmentStep(user, inst, accounts, await getUserCategories(user.id));
+  }
+
+  if (pending.step === 'closing_day') {
+    const d = parseInt(low.replace(/\D/g, ''), 10);
+    if (isNaN(d) || d < 1 || d > 31) return { answer: 'Me diga só o *dia de fechamento* da fatura (número de 1 a 31).', pending };
+    await setAccountCardDays(inst.accountId, { closing_day: d });
+    const accounts = await getUserAccounts(user.id);
+    return await nextInstallmentStep(user, inst, accounts, await getUserCategories(user.id));
+  }
+
+  if (pending.step === 'due_day') {
+    const d = parseInt(low.replace(/\D/g, ''), 10);
+    if (isNaN(d) || d < 1 || d > 31) return { answer: 'Me diga só o *dia de vencimento* da fatura (número de 1 a 31).', pending };
+    await setAccountCardDays(inst.accountId, { due_day: d });
+    const accounts = await getUserAccounts(user.id);
+    return await nextInstallmentStep(user, inst, accounts, await getUserCategories(user.id));
+  }
+
+  if (pending.step === 'category') {
+    const cats = pending.categories || [];
+    const accounts = pending.accounts || await getUserAccounts(user.id);
+    if (/^(pular|pula|sem|nenhuma|nao|não|skip)$/i.test(low)) {
+      inst.categorySkipped = true;
+      return await nextInstallmentStep(user, inst, accounts, cats);
+    }
+    let cat = null;
+    const num = parseInt(low, 10);
+    if (!isNaN(num) && num >= 1 && num <= cats.length) cat = cats[num - 1];
+    if (!cat) cat = findCategoryByName(cats, text);
+    if (!cat) {
+      const list = cats.map((c, i) => `*${i + 1}* — ${c.name}`).join('\n');
+      return { answer: `Não identifiquei a categoria. Escolha pelo *número*/*nome* ou envie *pular*:\n\n${list}`, pending };
+    }
+    inst.categoryId = cat.id; inst.categoryName = cat.name;
+    return await nextInstallmentStep(user, inst, accounts, cats);
+  }
+
+  return { answer: 'Vamos recomeçar: me diga a compra parcelada (ex.: "comprei uma TV por 3500 em 8x").', pending: null };
 }
 
 // ── Gestão de usuários do sistema (somente admin) ────────────────────────────
@@ -1129,6 +1319,15 @@ async function handleWaCommands({ user, isAdmin, phone, userText, inType, reply,
     return { handled: true, reason: 'tx_flow_step' };
   }
 
+  // Continuação do fluxo de parcelamento (cartão, fechamento/vencimento e categoria)
+  if (conv.pending?.type === 'installment_flow') {
+    const r = await runInstallmentFlow(user, conv.pending, raw);
+    await reply(r.answer);
+    await saveConversation(phone, user.id, r.pending, conv.history || []);
+    await logInteraction({ phone, user, inType, inText: raw, outText: r.answer, action: 'installment_flow_step' });
+    return { handled: true, reason: 'installment_flow_step' };
+  }
+
   return { handled: false };
 }
 
@@ -1153,7 +1352,7 @@ REGRAS DE ACESSO:
 - Administrador: pode usar query_scope "all_users" quando perguntar sobre todos os usuários/base.
 
 O QUE VOCÊ PODE FAZER:
-1. Registrar lançamentos (receitas e despesas) a partir de texto, áudio (já transcrito) ou print (já descrito).
+1. Registrar lançamentos (receitas e despesas) a partir de texto, áudio (já transcrito), print ou documento/fatura (já descrito). Se o conteúdo de um documento/print vier no fim da mensagem entre colchetes, use-o como base para o lançamento (valores, descrição, conta/cartão, parcelas).
 2. Criar contas/carteiras bancárias (ex.: "cadastre a carteira Nubank com saldo de R$200"). Um SALDO informado ao criar uma conta é o SALDO INICIAL da conta — NÃO é uma receita/lançamento.
 3. Responder consultas sobre saldo, receitas, despesas e resumos.
 4. Conversar e orientar sobre o uso.${isAdmin ? `
@@ -1166,12 +1365,13 @@ O QUE VOCÊ PODE FAZER:
 REGRAS DE CLASSIFICAÇÃO (siga com atenção):
 - CRIAR CONTA/CARTEIRA: se o usuário pedir para "criar/cadastrar/adicionar/abrir" uma "conta", "carteira", "banco" (ex.: Nubank, Itaú, PicPay) — mesmo mencionando um saldo — use action "create_account" e preencha "account" com { name, bank_name, initial_balance, type }. NUNCA registre isso como receita. Se o nome for de um banco conhecido, use-o também em bank_name. type: "checking" (conta corrente, padrão), "savings" (poupança) ou "wallet" (carteira/dinheiro).
 - REGISTRAR LANÇAMENTO: use action "register" com type "income" (receita/entrada) ou "expense" (despesa/saída). Se o usuário citar uma conta ("no Nubank", "pelo Itaú"), preencha transaction.account_name com esse nome. Se ele indicar que é fixo/recorrente ou variável/avulso, preencha transaction.kind ("fixed" ou "variable"); na dúvida deixe null. Se der para inferir a categoria pelo contexto (ex.: "almoço" → Alimentação; "salário" → Salário; "uber" → Transporte), preencha transaction.category_name; na dúvida deixe null. NÃO pergunte sobre banco/conta nem categoria no "reply": o próprio sistema conduz essas perguntas depois.
+- COMPRA PARCELADA (parcelamento no cartão): se o usuário disser que comprou algo PARCELADO ("em 8x", "8 vezes", "parcelei", "10 parcelas"), use action "register", type "expense", preencha transaction.amount com o valor TOTAL da compra (não o valor da parcela) e transaction.installments com o NÚMERO de parcelas (inteiro ≥ 2). Ex.: "comprei uma TV por 3500 em 8x" → amount=3500, installments=8. Se só souber o valor da parcela, ainda assim informe installments; o sistema pergunta o resto. NÃO pergunte sobre fechamento/vencimento do cartão no "reply": o sistema conduz isso depois. Compras à vista NÃO levam installments (deixe 0 ou null).
 - Se o usuário quer registrar um valor mas NÃO está claro se é RECEITA ou DESPESA (e não é criação de conta), use action "clarify" e pergunte gentilmente.
 
 Responda SEMPRE em JSON válido com este formato exato:
 {
   "action": "register" | "create_account" | "manage_user" | "clarify" | "query" | "answer",
-  "transaction": { "name": "string curta do lançamento", "amount": number, "type": "income" | "expense" | null, "kind": "fixed" | "variable" | null, "account_name": "string" | null, "category_name": "string" | null },
+  "transaction": { "name": "string curta do lançamento", "amount": number, "type": "income" | "expense" | null, "kind": "fixed" | "variable" | null, "installments": number | null, "account_name": "string" | null, "category_name": "string" | null },
   "account": { "name": "string", "bank_name": "string", "initial_balance": number, "type": "checking" | "savings" | "wallet" | null },
   "user_op": { "op": "create" | "edit" | "delete" | null, "name": "string" | null, "email": "string" | null, "password": "string" | null, "phone": "string" | null, "target": "string" | null, "generate_password": boolean },
   "query_scope": "self" | "all_users",
@@ -1285,6 +1485,34 @@ export async function handleAssistantMessage(msg, instanceName) {
         await reply('Não consegui *entender* o conteúdo dessa imagem — a leitura ficou ruim. Reenvie o recibo mais nítido e bem enquadrado, ou me diga os dados por texto. 🙂');
         return { handled: true, reason: 'image_unreadable' };
       }
+    } else if (m.documentMessage || m.documentWithCaptionMessage) {
+      // Documentos (PDF/fatura). Só o Gemini interpreta PDF.
+      const docMsg = m.documentMessage || m.documentWithCaptionMessage?.message?.documentMessage || {};
+      userText = docMsg.caption || '';
+      if (!cfg.geminiKey) {
+        await reply('A *leitura de documentos (PDF)* precisa do Gemini configurado. Me envie os dados por texto que eu registro (ex.: "comprei uma TV por 3500 em 8x"). 🙂');
+        return { handled: true, reason: 'doc_unavailable' };
+      }
+      const b64 = await getMediaBase64(inst.name, inst.api_key, msg.key);
+      if (!b64) {
+        await reply('Não consegui baixar o documento que você enviou. Pode reenviar ou me mandar os dados por texto? 🙂');
+        return { handled: true, reason: 'doc_download_failed' };
+      }
+      const mime = docMsg.mimetype || 'application/pdf';
+      try {
+        imageContext = await readDocumentContent(cfg, b64, mime);
+      } catch (e) {
+        if (e.kind === 'tech') {
+          await reply('A *leitura de documentos está temporariamente indisponível*. Tente novamente em alguns minutos ou me envie os dados por texto. 🙏');
+          return { handled: true, reason: 'doc_tech_unavailable' };
+        }
+        await reply('Não consegui *entender* esse documento. Se for uma fatura, reenvie o PDF ou me diga os dados por texto (ex.: "comprei uma TV por 3500 em 8x"). 🙂');
+        return { handled: true, reason: 'doc_unreadable' };
+      }
+      if (imageLooksUnreadable(imageContext)) {
+        await reply('Não consegui *entender* esse documento — a leitura ficou ruim. Reenvie a fatura ou me diga os dados por texto. 🙂');
+        return { handled: true, reason: 'doc_unreadable' };
+      }
     }
   } catch (e) {
     console.error('[assistant] extração de mídia falhou', e?.message);
@@ -1333,7 +1561,7 @@ export async function handleAssistantMessage(msg, instanceName) {
 
   // Monta a mensagem para o classificador, incluindo contexto pendente e de imagem
   let combined = userText || '';
-  if (imageContext) combined += `\n\n[Conteúdo extraído do print enviado]: ${imageContext}`;
+  if (imageContext) combined += `\n\n[Conteúdo extraído do documento/print enviado]: ${imageContext}`;
   if (conv.pending?.type === 'transaction') {
     combined = `[CONTEXTO: o usuário estava registrando "${conv.pending.name}" no valor de ${brl(conv.pending.amount)} e você perguntou se é RECEITA ou DESPESA. A mensagem atual provavelmente responde isso.]\n\n${combined}`;
   } else if (conv.pending?.type === 'admin_user') {
@@ -1407,9 +1635,23 @@ export async function handleAssistantMessage(msg, instanceName) {
       const type = t.type === 'income' ? 'income' : 'expense';
       const amount = Number(t.amount) || Number(conv.pending?.amount) || 0;
       const name = t.name || conv.pending?.name || 'Lançamento';
+      const installCount = Math.floor(Number(t.installments) || 0);
       if (!amount) {
         newPending = { type: 'transaction', name, amount: 0 };
         answer = 'Entendi o lançamento, mas não peguei o valor. Qual é o valor?';
+      } else if (installCount >= 2) {
+        // Compra parcelada → fluxo de parcelamento (cartão + fechamento/vencimento)
+        const acc = findAccountByName(accounts, t.account_name);
+        const categories = await getUserCategories(user.id);
+        const cat = findCategoryByName(categories.filter((c) => !c.type || c.type === 'expense'), t.category_name);
+        const inst = {
+          name, total_amount: amount, count: installCount,
+          accountId: acc?.id || null,
+          categoryId: cat?.id || null, categoryName: cat?.name || null,
+        };
+        const step = await nextInstallmentStep(user, inst, accounts, categories);
+        answer = step.answer;
+        newPending = step.pending;
       } else {
         // Fluxo guiado: resolve banco/conta (pergunta ou cria) e categoria (opcional)
         const acc = findAccountByName(accounts, t.account_name);

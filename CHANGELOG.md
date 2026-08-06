@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.32.0] — 2026-08-06
+
+### Adicionado
+- **Leitura de documentos/faturas (PDF) no WhatsApp** — o assistente agora entende documentos enviados (PDF de fatura de cartão, boleto, comprovante), roteando a leitura para o Gemini. A extração passou a ser estruturada, focada em faturas: banco/cartão, valores, datas de vencimento/fechamento e compras parceladas.
+- **Registro de compras parceladas** — quando o usuário informa uma compra parcelada (ex.: por texto/áudio "comprei uma TV por 3500 em 8x", ou a partir de uma fatura), o assistente registra um parcelamento (valor total ÷ nº de parcelas). Ele conduz o fluxo perguntando o cartão/conta e, na primeira vez, o *dia de fechamento* e o *dia de vencimento* da fatura — guardados na conta para não perguntar de novo — e calcula o mês da primeira parcela a partir desses dias.
+
+### Melhorado
+- **Leitura de imagens/prints** — passou a usar o mesmo prompt estruturado de faturas, melhorando a extração de valores, datas e parcelamentos de recibos e prints.
+
+---
+
 ## [v1.31.0] — 2026-08-05
 
 ### Adicionado
