@@ -31,7 +31,7 @@ async function getMediaBase64(instanceName, key, messageKey) {
 // Prompt estruturado para faturas/comprovantes: orienta a IA a extrair conta/cartão,
 // valores, datas de vencimento/fechamento e — crucial — parcelamentos.
 const MEDIA_EXTRACT_PROMPT =
-  'Este é um documento/print financeiro (possivelmente uma FATURA de cartão, boleto, comprovante ou recibo) enviado por um usuário de um app financeiro. Extraia de forma objetiva e estruturada, em português: nome do banco/cartão ou conta; valor(es) em reais; data(s) de vencimento e de fechamento da fatura (se houver); e a descrição do gasto ou recebimento e se aparenta ser RECEITA ou DESPESA. Se identificar uma COMPRA PARCELADA, informe claramente o número de parcelas e o valor total (ex.: "TV — R$ 3.500 em 8x"). Não invente dados que não estão no conteúdo. Se não for financeiro, descreva brevemente o que é. Responda curto.';
+  'Este é um documento/print financeiro (possivelmente uma FATURA de cartão, boleto, comprovante ou recibo) enviado por um usuário de um app financeiro. Extraia de forma objetiva e estruturada, em português: nome do banco/cartão ou conta; valor(es) em reais; data(s) de vencimento e de fechamento da fatura (se houver); e a descrição do gasto ou recebimento e se aparenta ser RECEITA ou DESPESA. Se houver VÁRIAS despesas/compras (ex.: fatura de cartão com vários lançamentos), LISTE CADA UMA separadamente, com a descrição e o valor de cada compra. Se identificar uma COMPRA PARCELADA, informe claramente o número de parcelas e o valor total (ex.: "TV — R$ 3.500 em 8x"). Não invente dados que não estão no conteúdo. Se não for financeiro, descreva brevemente o que é. Responda curto.';
 
 // Lê o conteúdo de uma imagem/print tentando Groq (visão) e, em falha, o Gemini.
 // Retorna o texto extraído (não vazio). Se ambos falharem, lança Error com:
@@ -293,16 +293,28 @@ function brl(v) {
 
 // ── Registro de lançamento ───────────────────────────────────────────────────
 
-async function insertTransaction(userId, { name, amount, type, kind, accountId, categoryId }) {
+// Registra uma transação. Datas (opcionais, formato 'YYYY-MM-DD'):
+//   competenceDate → data de competência (quando o gasto/recebimento ocorreu);
+//                    define competence_date e o mês/ano de referência.
+//   dueDate        → data de vencimento (define due_date). Padrão: a competência.
+//   status         → 'paid' (padrão) ou 'pending' (conta a pagar/receber futura).
+// Sem datas, mantém o comportamento antigo: tudo "hoje" e status 'paid'.
+async function insertTransaction(userId, { name, amount, type, kind, accountId, categoryId, competenceDate, dueDate, status }) {
   const db = getDb();
   const id = crypto.randomUUID();
   const now = new Date();
   const iso = now.toISOString();
   const today = iso.slice(0, 10);
+  const comp = competenceDate || today;       // competência (regime)
+  const due = dueDate || comp;                // vencimento
+  const st = status === 'pending' ? 'pending' : 'paid';
+  const paid = st === 'paid' ? comp : '';     // pago → paid/cash na competência
+  const cy = parseInt(String(comp).slice(0, 4), 10) || now.getFullYear();
+  const cm = parseInt(String(comp).slice(5, 7), 10) || now.getMonth() + 1;
   await db.execute({
-    sql: `INSERT INTO transactions (id, user_id, name, amount, transaction_type, kind, status, due_date, paid_date, cash_date, month, year, notes, category_id, template_id, account_id, source, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, 'Registrado via WhatsApp', ?, '', ?, 'whatsapp', ?)`,
-    args: [id, userId, name || 'Lançamento', Number(amount) || 0, type === 'income' ? 'income' : 'expense', kind === 'fixed' ? 'fixed' : 'variable', today, today, today, now.getMonth() + 1, now.getFullYear(), categoryId || '', accountId || '', iso],
+    sql: `INSERT INTO transactions (id, user_id, name, amount, transaction_type, kind, status, due_date, paid_date, cash_date, competence_date, month, year, notes, category_id, template_id, account_id, source, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Registrado via WhatsApp', ?, '', ?, 'whatsapp', ?)`,
+    args: [id, userId, name || 'Lançamento', Number(amount) || 0, type === 'income' ? 'income' : 'expense', kind === 'fixed' ? 'fixed' : 'variable', st, due, paid, paid, comp, cm, cy, categoryId || '', accountId || '', iso],
   });
   return id;
 }
@@ -496,6 +508,233 @@ async function runTxFlow(user, pending, raw) {
   }
 
   return { answer: 'Vamos recomeçar: me diga o lançamento (ex.: "gastei 30 com almoço").', pending: null };
+}
+
+// ── Fluxo de MÚLTIPLOS lançamentos (imagem/fatura com vários gastos) ───────────
+// Quando um print/fatura traz várias despesas, o texto extraído pela IA é
+// estruturado numa lista de itens. O usuário escolhe quais cadastrar, informa a
+// conta e CONFIRMA (valores, descrições, categoria, conta) antes de registrar.
+
+// Normaliza uma data em texto (dd/mm/aaaa, dd/mm, aaaa-mm-dd) para 'YYYY-MM-DD'.
+// Retorna null se não reconhecer. Assume ano corrente quando o ano vier ausente.
+function _normalizeDate(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2,4}))?$/);
+  if (m) {
+    const d = String(m[1]).padStart(2, '0');
+    const mo = String(m[2]).padStart(2, '0');
+    let y = m[3] ? m[3] : String(new Date().getFullYear());
+    if (y.length === 2) y = '20' + y;
+    if (Number(mo) >= 1 && Number(mo) <= 12 && Number(d) >= 1 && Number(d) <= 31) return `${y}-${mo}-${d}`;
+  }
+  return null;
+}
+
+// Formata 'YYYY-MM-DD' como dd/mm/aaaa para exibição. Vazio → '—'.
+function _fmtDate(iso) {
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '—';
+}
+
+// Estrutura o texto extraído de uma imagem/documento numa LISTA de lançamentos.
+// Retorna { items, dueDate } — items: { name, amount, type, category_name, date }
+// (date = data da compra/competência); dueDate = vencimento da fatura (se houver).
+async function extractLineItems(cfg, contextText) {
+  if (!cfg.groqKey || !contextText) return { items: [], dueDate: null };
+  try {
+    const raw = await groqChat({
+      key: cfg.groqKey,
+      model: cfg.groqModel,
+      jsonMode: true,
+      messages: [
+        { role: 'system', content: 'Você extrai lançamentos financeiros de um texto que descreve um print/fatura/comprovante enviado por um usuário. Responda SOMENTE JSON no formato {"items":[{"name":"descrição curta (use o NOME DO ESTABELECIMENTO quando houver)","amount":number,"type":"income"|"expense","category_name":string|null,"date":"YYYY-MM-DD"|null}],"due_date":"YYYY-MM-DD"|null}. Liste CADA despesa/compra/recebimento individual como um item separado, com o valor em reais (apenas número, sem "R$"). Em "name" prefira o NOME DO ESTABELECIMENTO/loja. Em "date" coloque a DATA DA COMPRA/lançamento do item (competência) se aparecer. Em "due_date" (nível raiz) coloque a DATA DE VENCIMENTO da fatura, se for uma fatura de cartão. NÃO invente dados que não estejam no texto — use null quando não houver. IGNORE totais, subtotais, saldos, limites, pagamentos de fatura e juros — inclua apenas lançamentos individuais. Se houver apenas um lançamento, retorne um único item. Se não houver lançamento claro, retorne items vazio.' },
+        { role: 'user', content: contextText },
+      ],
+    });
+    const parsed = safeParse(raw) || {};
+    const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
+    const items = rawItems
+      .map((it) => ({
+        name: String(it.name || '').trim() || 'Lançamento',
+        amount: Number(it.amount) || 0,
+        type: it.type === 'income' ? 'income' : 'expense',
+        category_name: it.category_name || null,
+        date: _normalizeDate(it.date),
+      }))
+      .filter((it) => it.amount > 0);
+    return { items, dueDate: _normalizeDate(parsed.due_date) };
+  } catch (e) {
+    console.error('[assistant] extração de itens falhou', e?.message);
+    return { items: [], dueDate: null };
+  }
+}
+
+function _multiListText(user, items) {
+  const lines = items
+    .map((it, i) => `*${i + 1}* — ${it.name} · ${brl(it.amount)}${it.date ? ` · ${_fmtDate(it.date)}` : ''}${it.type === 'income' ? ' (receita)' : ''}`)
+    .join('\n');
+  return `Encontrei estes lançamentos, ${firstName(user.name)}:\n\n${lines}\n\nQuais você quer cadastrar? Responda *todos*, os *números* (ex.: 1,3,4) ou *nenhum*.`;
+}
+
+// Interpreta a seleção do usuário. Retorna array de índices (0-based), [] para
+// "nenhum"/cancelar, ou null se não deu para entender (re-perguntar).
+function _parseSelection(raw, n) {
+  const low = String(raw || '').trim().toLowerCase();
+  if (/^(todos|todas|tudo|all)$/.test(low)) return [...Array(n).keys()];
+  if (/^(nenhum|nenhuma|nada|cancelar|cancela)$/.test(low)) return [];
+  const nums = (low.match(/\d+/g) || []).map((s) => parseInt(s, 10)).filter((x) => x >= 1 && x <= n);
+  if (nums.length) return [...new Set(nums)].map((x) => x - 1);
+  return null;
+}
+
+function _multiConfirmText(user, items, accName) {
+  const lines = items
+    .map((it, i) => `*${i + 1}* — ${it.name} · ${brl(it.amount)} · ${it.categoryName || 'sem categoria'} · comp ${_fmtDate(it.competenceDate)} · venc ${_fmtDate(it.dueDate)}${it.type === 'income' ? ' · receita' : ''}`)
+    .join('\n');
+  const total = items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+  return `Confere se está tudo certo antes de eu registrar${accName ? ` na conta *${accName}*` : ''}:\n\n${lines}\n\n*Total:* ${brl(total)}\n\n_(comp = competência · venc = vencimento)_\n\nResponda *sim* para registrar, ou *não* para cancelar.`;
+}
+
+async function _multiAskAccount(user, items, accounts, dueDate) {
+  if (!accounts.length) {
+    return {
+      answer: `📌 Você ainda não tem *banco/conta* cadastrado. Me diga o *nome do banco/cartão* (ex.: Nubank) para eu criar e registrar os ${items.length} lançamentos. 😊\n\n_(ou responda *cancelar*)_`,
+      pending: { type: 'multi_tx', step: 'account', items, dueDate },
+    };
+  }
+  const list = accounts.map((a, i) => `*${i + 1}* — ${a.name}${a.bank_name ? ` (${a.bank_name})` : ''}`).join('\n');
+  return {
+    answer: `Em qual *banco/conta/cartão* registro esses *${items.length}* lançamentos?\n\n${list}\n\nResponda com o *número* ou o *nome*. Para um novo, envie *novo Nome* (ex.: novo Nubank).`,
+    pending: { type: 'multi_tx', step: 'account', items, accounts, dueDate },
+  };
+}
+
+// Resolve a competência e o vencimento de cada item. forced = data única (ISO)
+// escolhida pelo usuário; se null, usa as datas da imagem (competência = data do
+// item; vencimento = vencimento da fatura, com fallbacks). Sem nada, cai em hoje.
+function _applyDates(items, invoiceDue, forced) {
+  const today = new Date().toISOString().slice(0, 10);
+  return items.map((it) => {
+    const comp = forced || it.date || invoiceDue || today;
+    const due = forced || invoiceDue || it.date || today;
+    return { ...it, competenceDate: comp, dueDate: due };
+  });
+}
+
+// Pergunta sobre as datas antes de confirmar: usar as datas da imagem ou uma nova.
+async function _multiAskDates(user, items, invoiceDue, accountName) {
+  const hasItemDates = items.some((it) => it.date);
+  let info;
+  if (invoiceDue && hasItemDates) info = `competência = data de cada compra na imagem · vencimento da fatura = ${_fmtDate(invoiceDue)}`;
+  else if (invoiceDue) info = `vencimento da fatura = ${_fmtDate(invoiceDue)}`;
+  else if (hasItemDates) info = 'datas das compras conforme a imagem';
+  else info = 'não identifiquei datas na imagem';
+  return {
+    answer: `📅 Sobre as *datas* (${info}).\n\nQuer registrar com as *datas da imagem* ou usar uma *nova data*?\n\nResponda *imagem* (usa as datas do documento), *hoje* (data de hoje) ou envie uma data (ex.: 15/08/2026).`,
+    pending: { type: 'multi_tx', step: 'date', items, dueDate: invoiceDue, accountName },
+  };
+}
+
+// Processa a resposta do usuário em cada passo do fluxo de múltiplos lançamentos.
+async function runMultiTxFlow(user, pending, raw) {
+  const text = String(raw || '').trim();
+  const low = text.toLowerCase();
+  if (/^(cancela|cancelar|deixa|para|parar|desisto|desistir)$/i.test(low)) {
+    return { answer: 'Ok, cancelei o cadastro. 🙂', pending: null };
+  }
+
+  if (pending.step === 'select') {
+    const items = pending.items || [];
+    const sel = _parseSelection(text, items.length);
+    if (sel === null) {
+      return { answer: 'Não entendi. Responda *todos*, os *números* (ex.: 1,3) ou *nenhum*.', pending };
+    }
+    if (!sel.length) {
+      return { answer: 'Ok, não vou cadastrar nenhum. 🙂', pending: null };
+    }
+    const chosen = sel.map((i) => items[i]);
+    // Casa a categoria sugerida de cada item com as categorias do usuário.
+    const categories = await getUserCategories(user.id);
+    for (const it of chosen) {
+      const cat = it.category_name
+        ? findCategoryByName(categories.filter((c) => !c.type || c.type === it.type), it.category_name)
+        : null;
+      it.categoryId = cat?.id || null;
+      it.categoryName = cat?.name || null;
+    }
+    const accounts = await getUserAccounts(user.id);
+    return await _multiAskAccount(user, chosen, accounts, pending.dueDate);
+  }
+
+  if (pending.step === 'account') {
+    let accounts = pending.accounts || await getUserAccounts(user.id);
+    const items = pending.items || [];
+    let acc = null;
+    const mNew = text.match(/^novo\s+(.+)/i);
+    if (mNew) {
+      const bankName = mNew[1].trim();
+      const accId = await insertAccount(user.id, { name: bankName, bank_name: bankName, initial_balance: 0, type: 'checking' });
+      accounts = await getUserAccounts(user.id);
+      acc = accounts.find((a) => a.id === accId);
+    } else if (!accounts.length) {
+      if (!text) return { answer: 'Me diga o *nome do banco/cartão* para eu criar a conta (ex.: Nubank).', pending };
+      const accId = await insertAccount(user.id, { name: text, bank_name: text, initial_balance: 0, type: 'checking' });
+      accounts = await getUserAccounts(user.id);
+      acc = accounts.find((a) => a.id === accId);
+    } else {
+      const num = parseInt(low, 10);
+      if (!isNaN(num) && num >= 1 && num <= accounts.length) acc = accounts[num - 1];
+      if (!acc) acc = findAccountByName(accounts, text);
+    }
+    if (!acc) {
+      const list = accounts.map((a, i) => `*${i + 1}* — ${a.name}${a.bank_name ? ` (${a.bank_name})` : ''}`).join('\n');
+      return { answer: `Não identifiquei a conta. Escolha pelo *número* ou *nome*:\n\n${list}\n\nOu envie *novo Nome* para criar uma.`, pending: { type: 'multi_tx', step: 'account', items, accounts, dueDate: pending.dueDate } };
+    }
+    const withAcc = items.map((it) => ({ ...it, accountId: acc.id }));
+    return await _multiAskDates(user, withAcc, pending.dueDate, acc.name);
+  }
+
+  if (pending.step === 'date') {
+    const items = pending.items || [];
+    let forced = null;
+    if (/^(imagem|documento|da imagem|do documento|sim|manter|mesma|mesmas|mantem|manten)/i.test(low)) {
+      forced = null; // usa as datas da imagem
+    } else if (/^(hoje|hj|agora|atual)/i.test(low)) {
+      forced = new Date().toISOString().slice(0, 10);
+    } else {
+      const d = _normalizeDate(text);
+      if (!d) return { answer: 'Não entendi a data. Responda *imagem*, *hoje*, ou envie uma data (ex.: 15/08/2026).', pending };
+      forced = d;
+    }
+    const withDates = _applyDates(items, pending.dueDate, forced);
+    return { answer: _multiConfirmText(user, withDates, pending.accountName), pending: { type: 'multi_tx', step: 'confirm', items: withDates, accountName: pending.accountName } };
+  }
+
+  if (pending.step === 'confirm') {
+    const yes = /^(sim|s|confirmo|confirmar|pode|isso|ok|certo|correto|registrar|cadastrar)\b/i.test(low);
+    const no = /^(n[ãa]o|nao|n|cancela|cancelar|errado|corrigir|deixa)\b/i.test(low);
+    if (no) return { answer: 'Ok, cancelei o cadastro. Se quiser, me reenvie os dados corrigidos por texto. 🙂', pending: null };
+    if (!yes) return { answer: 'Só confirmando: responda *sim* para registrar tudo, ou *não* para cancelar.', pending };
+    const today = new Date().toISOString().slice(0, 10);
+    let count = 0; let total = 0;
+    for (const it of (pending.items || [])) {
+      // Vencimento no futuro → lançamento fica como "a pagar/receber" (pending).
+      const status = it.dueDate && it.dueDate > today ? 'pending' : 'paid';
+      await insertTransaction(user.id, {
+        name: it.name, amount: it.amount, type: it.type, kind: it.kind || null,
+        accountId: it.accountId || null, categoryId: it.categoryId || null,
+        competenceDate: it.competenceDate || null, dueDate: it.dueDate || null, status,
+      });
+      count += 1; total += Number(it.amount) || 0;
+    }
+    const accNote = pending.accountName ? ` na conta *${pending.accountName}*` : '';
+    return { answer: `Pronto, ${firstName(user.name)}! Registrei *${count}* lançamento(s)${accNote}, total de ${brl(total)}. ✅`, pending: null };
+  }
+
+  return { answer: 'Vamos recomeçar: me envie o print/fatura ou os dados por texto. 🙂', pending: null };
 }
 
 // ── Fluxo conversacional de parcelamento (cartão → fechamento/vencimento → registrar) ──
@@ -1360,6 +1599,15 @@ async function handleWaCommands({ user, isAdmin, phone, userText, inType, reply,
     return { handled: true, reason: 'installment_flow_step' };
   }
 
+  // Continuação do fluxo de MÚLTIPLOS lançamentos (seleção → conta → datas → confirmar)
+  if (conv.pending?.type === 'multi_tx') {
+    const r = await runMultiTxFlow(user, conv.pending, raw);
+    await reply(r.answer);
+    await saveConversation(phone, user.id, r.pending, conv.history || []);
+    await logInteraction({ phone, user, inType, inText: raw, outText: r.answer, action: 'multi_tx_step' });
+    return { handled: true, reason: 'multi_tx_step' };
+  }
+
   return { handled: false };
 }
 
@@ -1649,6 +1897,21 @@ export async function handleAssistantMessage(msg, instanceName) {
   // pendentes — tratados antes do classificador de IA.
   const cmd = await handleWaCommands({ user, isAdmin, phone, userText, inType, reply, inst, conv, cfg });
   if (cmd?.handled) return cmd;
+
+  // Imagem/documento com VÁRIOS lançamentos (ex.: fatura de cartão): em vez de
+  // registrar direto um único gasto, conduz um fluxo de seleção + confirmação.
+  if (imageContext && (m.imageMessage || m.documentMessage || m.documentWithCaptionMessage)) {
+    const { items, dueDate } = await extractLineItems(cfg, imageContext);
+    if (items.length >= 2) {
+      const answer = _multiListText(user, items);
+      const pending = { type: 'multi_tx', step: 'select', items, dueDate };
+      await reply(answer);
+      const history = [...(conv.history || []), { role: 'user', content: `[${items.length} lançamentos extraídos de ${inType === 'image' ? 'imagem' : 'documento'}]` }, { role: 'assistant', content: answer }];
+      await saveConversation(phone, user.id, pending, history);
+      await logInteraction({ phone, user, inType, inText: imageContext, outText: answer, action: 'multi_tx_start' });
+      return { handled: true, action: 'multi_tx_start' };
+    }
+  }
 
   // Monta a mensagem para o classificador, incluindo contexto pendente e de imagem
   let combined = userText || '';

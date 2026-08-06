@@ -5,6 +5,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.34.0] — 2026-08-06
+
+### Adicionado
+- **Cadastro de múltiplos lançamentos a partir de uma imagem/fatura** — quando um print ou fatura de cartão traz VÁRIAS despesas, o assistente agora lista cada lançamento (descrição/estabelecimento, valor e data), pergunta *quais* o usuário quer cadastrar (todos, números ou nenhum), pede em qual banco/conta/cartão registrar e mostra uma *tela de confirmação* com valores, descrições, categoria, conta e datas antes de gravar.
+- **Datas de competência e vencimento nos lançamentos** — o assistente observa as datas e o nome do estabelecimento na imagem e pergunta se deve registrar com as *datas do documento* ou uma *nova data*. Cada lançamento passa a gravar a *data de competência* (quando o gasto ocorreu) e a *data de vencimento*; vencimentos futuros entram como "a pagar/receber" (pendente).
+
+---
+
 ## [v1.33.1] — 2026-08-06
 
 ### Adicionado
