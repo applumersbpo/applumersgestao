@@ -5,6 +5,18 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.33.0] — 2026-08-06
+
+### Adicionado
+- **Trava de interação — só responde a quem está cadastrado** — o assistente agora só envia mensagens automáticas para números cadastrados no Lumers Flow. Números desconhecidos (inclusive contatos captados de outras instâncias) são ignorados silenciosamente, eliminando disparos indevidos e loops de bot. O fluxo de auto-cadastro fica desligado por padrão e pode ser reativado por configuração (`wa_signup_enabled`).
+- **Guarda anti-loop/anti-bot** — se um mesmo número dispara muitas mensagens em sequência (mais de 8 em 1 minuto), o assistente pausa o atendimento e envia *uma única* mensagem de reativação com um código aleatório. O atendimento só é retomado se a pessoa responder exatamente com aquele código — barrando conversas automáticas entre bots sem afetar usuários reais.
+- **Interações via WhatsApp no perfil do usuário** — a tela de perfil do usuário (admin) agora mostra as interações do assistente via WhatsApp (data, tipo, mensagem e resposta), separadas do "Último acesso" à plataforma.
+
+### Melhorado
+- **Modelo de visão do Groq configurável** — o modelo usado para leitura de imagens/prints via Groq passou a ser configurável no painel (`ai_groq_vision_model`), evitando quebra quando o Groq descontinua/renomeia modelos (erro 404 model_not_found). Padrão atualizado para um modelo suportado.
+
+---
+
 ## [v1.32.0] — 2026-08-06
 
 ### Adicionado

@@ -45,7 +45,7 @@ async function readImageContent(cfg, base64, mime) {
   for (const p of providers) {
     try {
       const t = p === 'groq'
-        ? await groqReadImage({ key: cfg.groqKey, base64, mime, prompt: MEDIA_EXTRACT_PROMPT })
+        ? await groqReadImage({ key: cfg.groqKey, model: cfg.groqVisionModel, base64, mime, prompt: MEDIA_EXTRACT_PROMPT })
         : await geminiReadImage({ key: cfg.geminiKey, model: cfg.geminiModel, base64, mime, prompt: MEDIA_EXTRACT_PROMPT });
       if (t && t.trim()) return t.trim();
     } catch (e) {
@@ -152,6 +152,26 @@ async function saveConversation(phone, userId, pending, history) {
 
 function safeParse(s) {
   try { return JSON.parse(s); } catch { return null; }
+}
+
+// ── Guarda anti-loop/anti-bot ────────────────────────────────────────────────
+// Lê/grava só a coluna `guard` de wa_conversations, sem tocar em pending/history
+// (a linha pode nem existir ainda → upsert que só mexe em guard).
+async function getGuard(phone) {
+  const db = getDb();
+  const { rows } = await db.execute({ sql: 'SELECT guard FROM wa_conversations WHERE phone = ?', args: [phone] });
+  const row = rowsToObjects(rows)[0];
+  return (row && row.guard) ? (safeParse(row.guard) || {}) : {};
+}
+
+async function saveGuard(phone, guard) {
+  const db = getDb();
+  await db.execute({
+    sql: `INSERT INTO wa_conversations (phone, guard, updated_at)
+          VALUES (?, ?, datetime('now'))
+          ON CONFLICT(phone) DO UPDATE SET guard=excluded.guard, updated_at=excluded.updated_at`,
+    args: [phone, guard && Object.keys(guard).length ? JSON.stringify(guard) : ''],
+  });
 }
 
 // Registra a interação (entrada + resposta) no painel (tabela wa_interactions).
@@ -1404,12 +1424,59 @@ export async function handleAssistantMessage(msg, instanceName) {
   const inType = m.audioMessage ? 'audio' : m.imageMessage ? 'image' : m.videoMessage ? 'video' : 'text';
   const quickText = m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || '';
 
-  // Número não cadastrado → fluxo de solicitação de acesso (aprovação por admin).
+  const isAdmin = !!user && (user.is_admin === 1 || user.role === 'admin' || user.role === 'super_admin');
+
+  // ── Trava de interação: só responde a usuários cadastrados ──────────────────
+  // A instância do WhatsApp recebe mensagens de MUITOS contatos (inclusive de outras
+  // conversas/instâncias). Para não disparar mensagem automática a quem não é do
+  // Lumers Flow (spam e loops entre bots), números não cadastrados são ignorados em
+  // silêncio. O fluxo de auto-cadastro só roda se explicitamente habilitado no painel.
   if (!user) {
-    return handleUnknownUser({ phone, text: quickText, inType, reply, inst });
+    if (cfg.signupEnabled) {
+      return handleUnknownUser({ phone, text: quickText, inType, reply, inst });
+    }
+    return { handled: true, reason: 'unregistered_ignored' };
   }
 
-  const isAdmin = user.is_admin === 1 || user.role === 'admin' || user.role === 'super_admin';
+  // ── Guarda anti-loop/anti-bot ──────────────────────────────────────────────
+  // Protege contra o cenário em que o outro lado também é um bot/IA: cada resposta
+  // nossa dispara outra mensagem dele, gerando um loop infinito de mensagens.
+  // Aplica-se a usuários cadastrados não-admin (admins são isentos).
+  if (!isAdmin) {
+    const nowMs = Date.now();
+    const WINDOW_MS = 60 * 1000;   // janela de contagem
+    const MAX_IN_WINDOW = 8;       // > 8 mensagens em 60s → provável bot/loop
+    const guard = await getGuard(phone);
+
+    // Já mudo (bot suspeito): só o código exato de reativação retoma o atendimento.
+    if (guard.muted) {
+      const given = String(quickText || '').trim().replace(/\s+/g, '');
+      if (guard.code && given === String(guard.code)) {
+        await saveGuard(phone, {});
+        const out = 'Tudo certo, reativei o atendimento! 🙂 Como posso te ajudar?';
+        await reply(out);
+        await logInteraction({ phone, user, inType, inText: quickText, outText: out, action: 'reactivated' });
+        return { handled: true, reason: 'reactivated' };
+      }
+      // Continua em silêncio para quebrar o loop — não responde nem envia nada.
+      return { handled: true, reason: 'muted' };
+    }
+
+    // Janela deslizante: conta mensagens recebidas; se estourar, entra em mute.
+    let winStart = guard.windowStart ? Date.parse(guard.windowStart) : 0;
+    let count = Number(guard.count) || 0;
+    if (!winStart || nowMs - winStart > WINDOW_MS) { winStart = nowMs; count = 0; }
+    count += 1;
+    if (count > MAX_IN_WINDOW) {
+      const code = String(Math.floor(1000 + Math.random() * 9000)); // 4 dígitos
+      await saveGuard(phone, { muted: true, code, mutedAt: new Date().toISOString() });
+      const out = `Percebi *muitas mensagens automáticas* nesta conversa, então vou pausar o atendimento para evitar um loop. 🤖\n\nSe você é uma *pessoa* e quer continuar, responda *exatamente* com este código:\n\n*${code}*`;
+      await reply(out);
+      await logInteraction({ phone, user, inType, inText: quickText, outText: out, action: 'auto_muted' });
+      return { handled: true, reason: 'auto_muted' };
+    }
+    await saveGuard(phone, { windowStart: new Date(winStart).toISOString(), count });
+  }
 
   // Acesso ao assistente bloqueado por moderação (somente não-admin é bloqueável).
   if (!isAdmin && user.wa_blocked === 1) {

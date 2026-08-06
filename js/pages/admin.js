@@ -927,6 +927,19 @@ async function renderAdminUserProfile(userId) {
         </div>
       </div>
 
+      <!-- Interações via WhatsApp (assistente) — separadas dos acessos da plataforma -->
+      <div class="card" style="margin-bottom:16px" id="user-wa-card">
+        <div class="card-title" style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
+          ${icon('messages-square',14)} Interações via WhatsApp
+          <span style="font-size:.72rem;font-weight:500;color:var(--text-muted)">(assistente de IA — distinto do acesso à plataforma)</span>
+        </div>
+        <div id="user-wa-body">
+          <div style="text-align:center;padding:24px;color:var(--text-muted)">
+            <div class="spinner" style="margin:0 auto 10px"></div>Carregando interações…
+          </div>
+        </div>
+      </div>
+
       <!-- KPIs financeiros -->
       <div class="summary-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:16px">
         <div class="summary-card income-card">
@@ -1035,6 +1048,7 @@ async function renderAdminUserProfile(userId) {
     `;
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
+    _loadUserWaInteractions(user.id);
   } catch(e) {
     content.innerHTML = `
       ${_adminNavBar('users')}
@@ -1043,6 +1057,71 @@ async function renderAdminUserProfile(userId) {
       </button>
       <div class="empty-state"><p style="color:var(--expense)">Erro ao carregar perfil: ${_escHtml(e.message)}</p></div>`;
     if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+}
+
+// Carrega as interações do assistente via WhatsApp de um usuário específico e as
+// renderiza no card do perfil — separadas do "Último acesso" (login na plataforma).
+async function _loadUserWaInteractions(userId) {
+  const bodyEl = document.getElementById('user-wa-body');
+  if (!bodyEl) return;
+  try {
+    const data = await _api('GET', `/admin/users?resource=wa-interactions&user_id=${encodeURIComponent(userId)}&limit=30`);
+    const logs  = data.logs  || [];
+    const total = data.total || 0;
+    if (!logs.length) {
+      bodyEl.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:.85rem">
+        ${icon('inbox',24)}<div style="margin-top:8px">Nenhuma interação via WhatsApp registrada.</div></div>`;
+      if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [bodyEl] });
+      return;
+    }
+    const fmtD = d => {
+      if (!d) return '—';
+      const dt = new Date(d);
+      return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    };
+    const last = logs[0];
+    bodyEl.innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <span style="font-size:.78rem;padding:3px 9px;border-radius:20px;background:var(--bg-subtle);color:var(--text-muted)">
+          ${icon('message-circle',11)} ${total} interaç${total !== 1 ? 'ões' : 'ão'} no WhatsApp
+        </span>
+        <span style="font-size:.78rem;padding:3px 9px;border-radius:20px;background:var(--bg-subtle);color:var(--text-muted)">
+          ${icon('clock',11)} Última: ${fmtD(last.created_at)}
+        </span>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:420px">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border);text-align:left">
+              <th style="padding:6px 10px;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;white-space:nowrap">Data/Hora</th>
+              <th style="padding:6px 10px;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;white-space:nowrap">Tipo</th>
+              <th style="padding:6px 10px;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase">Mensagem</th>
+              <th style="padding:6px 10px;font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase">Resposta</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${logs.map((l, idx) => `
+              <tr style="border-bottom:1px solid var(--border);${idx % 2 === 1 ? 'background:var(--bg-subtle)' : ''}">
+                <td style="padding:7px 10px;white-space:nowrap;color:var(--text-muted);font-size:.76rem">${fmtD(l.created_at)}</td>
+                <td style="padding:7px 10px;white-space:nowrap">
+                  <span style="font-size:.74rem;display:inline-flex;align-items:center;gap:4px;color:var(--primary-600)">
+                    ${icon((typeof _WA_TYPE_ICON !== 'undefined' && _WA_TYPE_ICON[l.in_type]) || 'type', 12)} ${_escHtml(l.in_type || 'text')}
+                  </span>
+                </td>
+                <td style="padding:7px 10px;max-width:240px">
+                  <div style="font-size:.8rem;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word" title="${_escHtml(l.in_text || '')}">${_escHtml(l.in_text || '—')}</div>
+                </td>
+                <td style="padding:7px 10px;max-width:240px">
+                  <div style="font-size:.8rem;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word" title="${_escHtml(l.out_text || '')}">${_escHtml(l.out_text || '—')}</div>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [bodyEl] });
+  } catch (e) {
+    bodyEl.innerHTML = `<div style="padding:16px;color:var(--text-muted);font-size:.82rem">Não foi possível carregar as interações: ${_escHtml(e.message)}</div>`;
   }
 }
 
@@ -1077,6 +1156,7 @@ async function renderAdminSystem() {
       enabled:      sysCfg.ai_enabled === '1',
       groqKey:      sysCfg.ai_groq_key || '',
       groqModel:    sysCfg.ai_groq_model || 'llama-3.3-70b-versatile',
+      groqVisionModel: sysCfg.ai_groq_vision_model || 'meta-llama/llama-4-maverick-17b-128e-instruct',
       geminiKey:    sysCfg.ai_gemini_key || '',
       geminiModel:  sysCfg.ai_gemini_model || 'gemini-2.0-flash',
     };
@@ -1544,7 +1624,14 @@ function _renderAiSection(cfg = {}) {
         <label class="form-label" style="font-size:.78rem">Modelo Groq</label>
         <input id="ai-groq-model" type="text" class="form-input"
           placeholder="llama-3.3-70b-versatile" value="${_escHtml(cfg.groqModel || '')}"
-          style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:6px">
+          style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:10px">
+        <label class="form-label" style="font-size:.78rem">Modelo Groq de visão (imagens/prints)</label>
+        <input id="ai-groq-vision-model" type="text" class="form-input"
+          placeholder="meta-llama/llama-4-maverick-17b-128e-instruct" value="${_escHtml(cfg.groqVisionModel || '')}"
+          style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:4px">
+        <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:6px">
+          Modelo multimodal do Groq para ler imagens. Troque aqui se o Groq retornar 404 (modelo descontinuado/renomeado).
+        </div>
       </div>
 
       <!-- Gemini (áudio + imagem) -->
@@ -1662,6 +1749,7 @@ async function _aiSaveConfig() {
   const enabled     = document.getElementById('ai-enabled-toggle')?.checked ? '1' : '0';
   const groqKey     = (document.getElementById('ai-groq-key')?.value || '').trim();
   const groqModel   = (document.getElementById('ai-groq-model')?.value || '').trim() || 'llama-3.3-70b-versatile';
+  const groqVisionModel = (document.getElementById('ai-groq-vision-model')?.value || '').trim() || 'meta-llama/llama-4-maverick-17b-128e-instruct';
   const geminiKey   = (document.getElementById('ai-gemini-key')?.value || '').trim();
   const geminiModel = (document.getElementById('ai-gemini-model')?.value || '').trim() || 'gemini-2.0-flash';
 
@@ -1677,6 +1765,7 @@ async function _aiSaveConfig() {
       ai_enabled: enabled,
       ai_groq_key: groqKey,
       ai_groq_model: groqModel,
+      ai_groq_vision_model: groqVisionModel,
       ai_gemini_key: geminiKey,
       ai_gemini_model: geminiModel,
     });

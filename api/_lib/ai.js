@@ -3,19 +3,27 @@ import { getSystemSetting } from './db.js';
 // Lê a configuração de IA do painel (system_settings). Groq = texto/raciocínio,
 // Gemini = multimodal (áudio + imagem/print). Chaves ficam vazias até o admin colar.
 export async function getAiConfig() {
-  const [enabled, groqKey, groqModel, geminiKey, geminiModel] = await Promise.all([
+  const [enabled, groqKey, groqModel, groqVisionModel, geminiKey, geminiModel, signupEnabled] = await Promise.all([
     getSystemSetting('ai_enabled'),
     getSystemSetting('ai_groq_key'),
     getSystemSetting('ai_groq_model'),
+    getSystemSetting('ai_groq_vision_model'),
     getSystemSetting('ai_gemini_key'),
     getSystemSetting('ai_gemini_model'),
+    getSystemSetting('wa_signup_enabled'),
   ]);
   return {
     enabled: enabled === '1' || enabled === 'true',
     groqKey: groqKey || '',
     groqModel: groqModel || 'llama-3.3-70b-versatile',
+    // Modelo de visão do Groq (multimodal). Configurável no painel porque o Groq
+    // descontinua/renomeia esses modelos periodicamente (ex.: 404 model_not_found).
+    groqVisionModel: groqVisionModel || 'meta-llama/llama-4-maverick-17b-128e-instruct',
     geminiKey: geminiKey || '',
     geminiModel: geminiModel || 'gemini-2.0-flash',
+    // Trava de onboarding: por padrão o assistente só responde a usuários já
+    // cadastrados. Só faz o fluxo de solicitação de acesso se explicitamente ligado.
+    signupEnabled: signupEnabled === '1' || signupEnabled === 'true',
   };
 }
 

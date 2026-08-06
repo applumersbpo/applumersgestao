@@ -680,6 +680,12 @@ export async function initDb() {
   // message_followups index for the cron scan
   await db.execute("CREATE INDEX IF NOT EXISTS idx_message_followups_status ON message_followups(status, last_sent_at)");
 
+  // wa_conversations — guarda anti-loop/anti-bot (janela de flood + mute + código de reativação)
+  const { rows: wcCols } = await db.execute("PRAGMA table_info('wa_conversations')");
+  if (!(wcCols || []).map(r => r.name).includes('guard')) {
+    await db.execute("ALTER TABLE wa_conversations ADD COLUMN guard TEXT DEFAULT ''");
+  }
+
   // Seed default system settings (INSERT OR IGNORE keeps existing values)
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('allow_registration', '0')", args: [] });
 
@@ -699,6 +705,11 @@ export async function initDb() {
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_groq_model', 'llama-3.3-70b-versatile')", args: [] });
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_gemini_key', '')", args: [] });
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_gemini_model', 'gemini-2.0-flash')", args: [] });
+  // Modelo de visão do Groq (multimodal). Configurável porque o Groq descontinua/renomeia
+  // esses modelos (ex.: 404 model_not_found no llama-4-scout). Admin pode ajustar no painel.
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_groq_vision_model', 'meta-llama/llama-4-maverick-17b-128e-instruct')", args: [] });
+  // Trava de onboarding via WhatsApp: '0' = só responde a usuários cadastrados (padrão).
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('wa_signup_enabled', '0')", args: [] });
   // Número WhatsApp da instância padrão (só dígitos, com DDI). Usado no popup de
   // onboarding para montar o link wa.me de teste. Vazio até o admin configurar no painel.
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('wa_assistant_number', '')", args: [] });

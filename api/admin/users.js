@@ -9,7 +9,7 @@ import {
 import { groqChat, geminiGenerate } from '../_lib/ai.js';
 import bcrypt from 'bcryptjs';
 
-const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret', 'n8n_webhook_url', 'n8n_secret', 'ai_enabled', 'ai_groq_key', 'ai_groq_model', 'ai_gemini_key', 'ai_gemini_model', 'wa_assistant_number'];
+const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret', 'n8n_webhook_url', 'n8n_secret', 'ai_enabled', 'ai_groq_key', 'ai_groq_model', 'ai_groq_vision_model', 'ai_gemini_key', 'ai_gemini_model', 'wa_assistant_number', 'wa_signup_enabled'];
 
 // Normaliza um telefone BR para o formato canônico: 55 + DDD(2) + 9 + 8 dígitos (celular).
 // Insere o 9º dígito quando ausente (regra padrão: local de 10 dígitos cujo assinante
@@ -105,18 +105,35 @@ export default async function handler(req, res) {
     }
 
     // Interações do assistente de IA via WhatsApp (entradas + respostas)
+    // Filtro opcional por usuário: ?user_id= (casa por user_id OU pelo telefone
+    // cadastrado do usuário, cobrindo interações antigas sem user_id gravado).
     if (req.query.resource === 'wa-interactions') {
       const page  = Math.max(1, parseInt(req.query.page  || '1',  10));
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '50', 10)));
       const offset = (page - 1) * limit;
-      const { rows: totalRows } = await db.execute({ sql: 'SELECT COUNT(*) as total FROM wa_interactions', args: [] });
+
+      const where = [];
+      const filterArgs = [];
+      if (req.query.user_id) {
+        const uid = String(req.query.user_id);
+        const { rows: uRows } = await db.execute({ sql: 'SELECT phone FROM users WHERE id = ?', args: [uid] });
+        const uPhone = String(rowsToObjects(uRows)[0]?.phone || '').replace(/\D/g, '');
+        if (uPhone) { where.push('(user_id = ? OR phone = ?)'); filterArgs.push(uid, uPhone); }
+        else { where.push('user_id = ?'); filterArgs.push(uid); }
+      } else if (req.query.phone) {
+        const p = String(req.query.phone).replace(/\D/g, '');
+        where.push('phone = ?'); filterArgs.push(p);
+      }
+      const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+      const { rows: totalRows } = await db.execute({ sql: `SELECT COUNT(*) as total FROM wa_interactions ${whereSql}`, args: filterArgs });
       const total = rowsToObjects(totalRows)[0]?.total || 0;
       const { rows } = await db.execute({
         sql: `SELECT id, phone, user_id, user_name, in_type, in_text, out_text, action, created_at
-              FROM wa_interactions
+              FROM wa_interactions ${whereSql}
               ORDER BY created_at DESC
               LIMIT ? OFFSET ?`,
-        args: [limit, offset],
+        args: [...filterArgs, limit, offset],
       });
       return res.status(200).json({ logs: rowsToObjects(rows), total, page, limit });
     }
