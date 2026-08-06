@@ -6,10 +6,10 @@ import {
   connectionState, connectQr, deleteInstance, setSettings, setWebhook,
   createInstance, deriveWebhookUrl, sendText,
 } from '../_lib/evolution.js';
-import { groqChat, geminiGenerate } from '../_lib/ai.js';
+import { groqChat, geminiGenerate, openaiChat } from '../_lib/ai.js';
 import bcrypt from 'bcryptjs';
 
-const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret', 'n8n_webhook_url', 'n8n_secret', 'ai_enabled', 'ai_groq_key', 'ai_groq_model', 'ai_groq_vision_model', 'ai_gemini_key', 'ai_gemini_model', 'wa_assistant_number', 'wa_signup_enabled'];
+const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret', 'n8n_webhook_url', 'n8n_secret', 'ai_enabled', 'ai_groq_key', 'ai_groq_model', 'ai_groq_vision_model', 'ai_gemini_key', 'ai_gemini_model', 'ai_openai_key', 'ai_openai_vision_model', 'ai_openai_audio_model', 'wa_assistant_number', 'wa_signup_enabled'];
 
 // Normaliza um telefone BR para o formato canônico: 55 + DDD(2) + 9 + 8 dígitos (celular).
 // Insere o 9º dígito quando ausente (regra padrão: local de 10 dígitos cujo assinante
@@ -397,8 +397,8 @@ export default async function handler(req, res) {
       // Testa as chaves de IA (Groq e/ou Gemini) com uma chamada mínima real.
       // Usa as chaves enviadas no corpo (permite testar antes de salvar).
       if (action === 'test-ai-connection') {
-        const { groq_key, groq_model, gemini_key, gemini_model } = req.body || {};
-        const result = { groq: null, gemini: null };
+        const { groq_key, groq_model, gemini_key, gemini_model, openai_key, openai_model } = req.body || {};
+        const result = { groq: null, gemini: null, openai: null };
         if (groq_key) {
           try {
             const out = await groqChat({ key: groq_key, model: groq_model || 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: 'Responda apenas com a palavra: ok' }], temperature: 0 });
@@ -410,6 +410,12 @@ export default async function handler(req, res) {
             const out = await geminiGenerate({ key: gemini_key, model: gemini_model || 'gemini-2.0-flash', parts: [{ text: 'Responda apenas com a palavra: ok' }] });
             result.gemini = { ok: true, sample: (out || '').trim().slice(0, 40) };
           } catch (e) { result.gemini = { ok: false, error: String(e?.message || e).slice(0, 200) }; }
+        }
+        if (openai_key) {
+          try {
+            const out = await openaiChat({ key: openai_key, model: openai_model || 'gpt-4o-mini', messages: [{ role: 'user', content: 'Responda apenas com a palavra: ok' }], temperature: 0 });
+            result.openai = { ok: true, sample: (out || '').trim().slice(0, 40) };
+          } catch (e) { result.openai = { ok: false, error: String(e?.message || e).slice(0, 200) }; }
         }
         return res.status(200).json(result);
       }

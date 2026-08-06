@@ -5,6 +5,18 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.33.1] — 2026-08-06
+
+### Adicionado
+- **Conexão ChatGPT (OpenAI) para ler imagens e documentos** — o assistente passou a usar a OpenAI como provedor primário de visão (imagens/prints) e leitura de documentos (PDF de fatura/boleto/comprovante). Basta colar a chave da OpenAI no painel (Sistema → Assistente de IA).
+- **Seleção de modelo por IA em lista suspensa** — cada provedor (Groq texto, Groq visão, OpenAI visão, OpenAI áudio, Gemini) agora tem um seletor com os modelos disponíveis, cada opção indicando sua função e custo/velocidade. Valores personalizados já configurados são preservados.
+
+### Melhorado
+- **Roteamento de áudio/imagem tirado do Gemini** — imagens: OpenAI → Groq → Gemini; documentos: OpenAI → Gemini; áudio: Groq → OpenAI → Gemini. O Gemini passa a ser apenas fallback de última instância.
+- **Modelo de visão do Groq corrigido** — padrão atualizado para `qwen/qwen3.6-27b` (Llama-4 Scout/Maverick foram descontinuados pelo Groq), com migração auto-corretiva de valores antigos.
+
+---
+
 ## [v1.33.0] — 2026-08-06
 
 ### Adicionado

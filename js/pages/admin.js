@@ -1156,7 +1156,7 @@ async function renderAdminSystem() {
       enabled:      sysCfg.ai_enabled === '1',
       groqKey:      sysCfg.ai_groq_key || '',
       groqModel:    sysCfg.ai_groq_model || 'llama-3.3-70b-versatile',
-      groqVisionModel: sysCfg.ai_groq_vision_model || 'meta-llama/llama-4-maverick-17b-128e-instruct',
+      groqVisionModel: sysCfg.ai_groq_vision_model || 'qwen/qwen3.6-27b',
       geminiKey:    sysCfg.ai_gemini_key || '',
       geminiModel:  sysCfg.ai_gemini_model || 'gemini-2.0-flash',
     };
@@ -1574,10 +1574,54 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUr
     </div>`;
 }
 
+// Listas de modelos por provedor, com a função de cada um "na frente" do nome.
+const _AI_MODEL_OPTIONS = {
+  groqText: [
+    { v: 'llama-3.3-70b-versatile', label: 'llama-3.3-70b-versatile — texto e raciocínio (recomendado)' },
+    { v: 'llama-3.1-8b-instant',    label: 'llama-3.1-8b-instant — texto rápido e barato' },
+    { v: 'openai/gpt-oss-120b',     label: 'gpt-oss-120b — texto avançado' },
+    { v: 'openai/gpt-oss-20b',      label: 'gpt-oss-20b — texto leve' },
+  ],
+  groqVision: [
+    { v: 'qwen/qwen3.6-27b', label: 'qwen3.6-27b — visão / leitura de imagens' },
+  ],
+  openaiVision: [
+    { v: 'gpt-4o-mini', label: 'gpt-4o-mini — imagens + documentos (PDF), rápido e barato (recomendado)' },
+    { v: 'gpt-4o',      label: 'gpt-4o — imagens + documentos (PDF), alta qualidade' },
+    { v: 'gpt-4.1-mini', label: 'gpt-4.1-mini — imagens + documentos, econômico' },
+    { v: 'gpt-4.1',     label: 'gpt-4.1 — imagens + documentos, alta qualidade' },
+  ],
+  openaiAudio: [
+    { v: 'whisper-1',             label: 'whisper-1 — transcrição de áudio (recomendado)' },
+    { v: 'gpt-4o-mini-transcribe', label: 'gpt-4o-mini-transcribe — transcrição de áudio, rápido' },
+    { v: 'gpt-4o-transcribe',     label: 'gpt-4o-transcribe — transcrição de áudio, alta qualidade' },
+  ],
+  gemini: [
+    { v: 'gemini-2.0-flash', label: 'gemini-2.0-flash — multimodal (áudio, imagem, PDF)' },
+    { v: 'gemini-2.5-flash', label: 'gemini-2.5-flash — multimodal, mais recente' },
+    { v: 'gemini-1.5-flash', label: 'gemini-1.5-flash — multimodal (legado)' },
+  ],
+};
+
+// Monta um <select> de modelo com rótulos que indicam a função. Se o valor salvo
+// não estiver na lista curada, adiciona-o como opção "(personalizado)" selecionada,
+// para nunca perder uma escolha que o admin já tenha feito e que esteja funcionando.
+function _aiModelSelect(id, current, optionsKey) {
+  const opts = (_AI_MODEL_OPTIONS[optionsKey] || []).slice();
+  const cur = String(current || '').trim();
+  if (cur && !opts.some(o => o.v === cur)) {
+    opts.unshift({ v: cur, label: `${cur} — (personalizado)` });
+  }
+  const html = opts.map(o =>
+    `<option value="${_escHtml(o.v)}" ${o.v === cur ? 'selected' : ''}>${_escHtml(o.label)}</option>`
+  ).join('');
+  return `<select id="${id}" class="form-input" style="width:100%;font-size:.83rem;margin-bottom:10px">${html}</select>`;
+}
+
 // ── Render seção do Assistente de IA no WhatsApp ──────────────────────────────
 // Quando ligado, o "cérebro" roda no próprio app: entende nível de acesso, nome do
 // usuário (pelo número), registra lançamentos por texto/áudio/print, pergunta quando
-// não sabe se é receita ou despesa. Groq = texto/raciocínio, Gemini = áudio + imagem.
+// não sabe se é receita ou despesa. Groq = texto/raciocínio; OpenAI = imagens/PDF; Gemini = fallback.
 function _renderAiSection(cfg = {}) {
   const enabled = !!cfg.enabled;
   return `
@@ -1621,33 +1665,43 @@ function _renderAiSection(cfg = {}) {
         <input id="ai-groq-key" type="password" class="form-input"
           placeholder="gsk_…" value="${_escHtml(cfg.groqKey || '')}"
           style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:10px">
-        <label class="form-label" style="font-size:.78rem">Modelo Groq</label>
-        <input id="ai-groq-model" type="text" class="form-input"
-          placeholder="llama-3.3-70b-versatile" value="${_escHtml(cfg.groqModel || '')}"
-          style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:10px">
-        <label class="form-label" style="font-size:.78rem">Modelo Groq de visão (imagens/prints)</label>
-        <input id="ai-groq-vision-model" type="text" class="form-input"
-          placeholder="meta-llama/llama-4-maverick-17b-128e-instruct" value="${_escHtml(cfg.groqVisionModel || '')}"
-          style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:4px">
+        <label class="form-label" style="font-size:.78rem">Modelo Groq (texto)</label>
+        ${_aiModelSelect('ai-groq-model', cfg.groqModel, 'groqText')}
+        <label class="form-label" style="font-size:.78rem">Modelo Groq de visão (fallback de imagens)</label>
+        ${_aiModelSelect('ai-groq-vision-model', cfg.groqVisionModel, 'groqVision')}
         <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:6px">
-          Modelo multimodal do Groq para ler imagens. Troque aqui se o Groq retornar 404 (modelo descontinuado/renomeado).
+          Usado como fallback de leitura de imagens quando a OpenAI não estiver disponível.
         </div>
       </div>
 
-      <!-- Gemini (áudio + imagem) -->
+      <!-- OpenAI / ChatGPT (imagens + documentos) -->
       <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px">
-        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('image', 13)} Gemini — áudio e imagens/prints</div>
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('image', 13)} ChatGPT (OpenAI) — imagens e documentos</div>
         <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px">
-          Chave da API Gemini (aistudio.google.com). Usada para transcrever áudios e interpretar prints.
+          Chave da API OpenAI (platform.openai.com). Provedor <b>primário</b> para ler imagens/prints e documentos (PDF de fatura/boleto), e fallback de transcrição de áudio.
+        </div>
+        <label class="form-label" style="font-size:.78rem">Chave da API OpenAI</label>
+        <input id="ai-openai-key" type="password" class="form-input"
+          placeholder="sk-…" value="${_escHtml(cfg.openaiKey || '')}"
+          style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:10px">
+        <label class="form-label" style="font-size:.78rem">Modelo OpenAI (imagens + documentos)</label>
+        ${_aiModelSelect('ai-openai-vision-model', cfg.openaiVisionModel, 'openaiVision')}
+        <label class="form-label" style="font-size:.78rem">Modelo OpenAI (transcrição de áudio)</label>
+        ${_aiModelSelect('ai-openai-audio-model', cfg.openaiAudioModel, 'openaiAudio')}
+      </div>
+
+      <!-- Gemini (fallback) -->
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px">
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('image', 13)} Gemini — fallback (áudio, imagem e PDF)</div>
+        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px">
+          Chave da API Gemini (aistudio.google.com). Opcional — usado apenas como fallback se a OpenAI/Groq falharem.
         </div>
         <label class="form-label" style="font-size:.78rem">Chave da API Gemini</label>
         <input id="ai-gemini-key" type="password" class="form-input"
           placeholder="AIza…" value="${_escHtml(cfg.geminiKey || '')}"
           style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:10px">
         <label class="form-label" style="font-size:.78rem">Modelo Gemini</label>
-        <input id="ai-gemini-model" type="text" class="form-input"
-          placeholder="gemini-2.0-flash" value="${_escHtml(cfg.geminiModel || '')}"
-          style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:6px">
+        ${_aiModelSelect('ai-gemini-model', cfg.geminiModel, 'gemini')}
       </div>
 
       <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
@@ -1749,7 +1803,10 @@ async function _aiSaveConfig() {
   const enabled     = document.getElementById('ai-enabled-toggle')?.checked ? '1' : '0';
   const groqKey     = (document.getElementById('ai-groq-key')?.value || '').trim();
   const groqModel   = (document.getElementById('ai-groq-model')?.value || '').trim() || 'llama-3.3-70b-versatile';
-  const groqVisionModel = (document.getElementById('ai-groq-vision-model')?.value || '').trim() || 'meta-llama/llama-4-maverick-17b-128e-instruct';
+  const groqVisionModel = (document.getElementById('ai-groq-vision-model')?.value || '').trim() || 'qwen/qwen3.6-27b';
+  const openaiKey   = (document.getElementById('ai-openai-key')?.value || '').trim();
+  const openaiVisionModel = (document.getElementById('ai-openai-vision-model')?.value || '').trim() || 'gpt-4o-mini';
+  const openaiAudioModel  = (document.getElementById('ai-openai-audio-model')?.value || '').trim() || 'whisper-1';
   const geminiKey   = (document.getElementById('ai-gemini-key')?.value || '').trim();
   const geminiModel = (document.getElementById('ai-gemini-model')?.value || '').trim() || 'gemini-2.0-flash';
 
@@ -1766,6 +1823,9 @@ async function _aiSaveConfig() {
       ai_groq_key: groqKey,
       ai_groq_model: groqModel,
       ai_groq_vision_model: groqVisionModel,
+      ai_openai_key: openaiKey,
+      ai_openai_vision_model: openaiVisionModel,
+      ai_openai_audio_model: openaiAudioModel,
       ai_gemini_key: geminiKey,
       ai_gemini_model: geminiModel,
     });
@@ -1792,11 +1852,13 @@ async function _aiTestConnection() {
   const fb  = document.getElementById('ai-feedback');
   const groqKey     = (document.getElementById('ai-groq-key')?.value || '').trim();
   const groqModel   = (document.getElementById('ai-groq-model')?.value || '').trim() || 'llama-3.3-70b-versatile';
+  const openaiKey   = (document.getElementById('ai-openai-key')?.value || '').trim();
+  const openaiModel = (document.getElementById('ai-openai-vision-model')?.value || '').trim() || 'gpt-4o-mini';
   const geminiKey   = (document.getElementById('ai-gemini-key')?.value || '').trim();
   const geminiModel = (document.getElementById('ai-gemini-model')?.value || '').trim() || 'gemini-2.0-flash';
 
-  if (!groqKey && !geminiKey) {
-    toast('Informe ao menos uma chave (Groq ou Gemini) para testar.', 'error');
+  if (!groqKey && !openaiKey && !geminiKey) {
+    toast('Informe ao menos uma chave (Groq, OpenAI ou Gemini) para testar.', 'error');
     return;
   }
 
@@ -1808,6 +1870,8 @@ async function _aiTestConnection() {
       action: 'test-ai-connection',
       groq_key: groqKey,
       groq_model: groqModel,
+      openai_key: openaiKey,
+      openai_model: openaiModel,
       gemini_key: geminiKey,
       gemini_model: geminiModel,
     });
@@ -1818,8 +1882,9 @@ async function _aiTestConnection() {
       return `<div style="color:#dc2626">✗ ${label}: falhou — ${_escHtml(r.error || 'erro desconhecido')}</div>`;
     };
     rows.push(line('Groq (texto)', res.groq));
-    rows.push(line('Gemini (áudio/imagem)', res.gemini));
-    const allTestedOk = [res.groq, res.gemini].filter(Boolean).every(r => r.ok);
+    rows.push(line('OpenAI (imagens/documentos)', res.openai));
+    rows.push(line('Gemini (fallback)', res.gemini));
+    const allTestedOk = [res.groq, res.openai, res.gemini].filter(Boolean).every(r => r.ok);
     if (fb) {
       fb.innerHTML = `<div style="background:${allTestedOk ? 'var(--income-light,#dcfce7)' : '#fef2f2'};
         border-radius:var(--r-md);padding:8px 12px;line-height:1.7">${rows.join('')}</div>`;

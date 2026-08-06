@@ -1,5 +1,5 @@
 import { getDb, rowsToObjects } from './db.js';
-import { getAiConfig, groqChat, groqTranscribeAudio, groqReadImage, geminiTranscribeAudio, geminiReadImage } from './ai.js';
+import { getAiConfig, groqChat, groqTranscribeAudio, groqReadImage, geminiTranscribeAudio, geminiReadImage, openaiReadImage, openaiReadDocument, openaiTranscribeAudio } from './ai.js';
 import { sendText, evoBase, resolveKey, headers } from './evolution.js';
 import { sendTemplateEmail } from './email.js';
 import bcrypt from 'bcryptjs';
@@ -37,14 +37,18 @@ const MEDIA_EXTRACT_PROMPT =
 // Retorna o texto extraído (não vazio). Se ambos falharem, lança Error com:
 //   .kind = 'tech'  → falha técnica do provedor (API/limite) → função indisponível
 //   .kind = 'empty' → provedor respondeu vazio → conteúdo não compreendido
+// Lê o conteúdo de uma imagem/print. Ordem: OpenAI (primário) → Groq → Gemini (fallback).
 async function readImageContent(cfg, base64, mime) {
   let threw = false;
   const providers = [];
+  if (cfg.openaiKey) providers.push('openai');
   if (cfg.groqKey)   providers.push('groq');
   if (cfg.geminiKey) providers.push('gemini');
   for (const p of providers) {
     try {
-      const t = p === 'groq'
+      const t = p === 'openai'
+        ? await openaiReadImage({ key: cfg.openaiKey, model: cfg.openaiVisionModel, base64, mime, prompt: MEDIA_EXTRACT_PROMPT })
+        : p === 'groq'
         ? await groqReadImage({ key: cfg.groqKey, model: cfg.groqVisionModel, base64, mime, prompt: MEDIA_EXTRACT_PROMPT })
         : await geminiReadImage({ key: cfg.geminiKey, model: cfg.geminiModel, base64, mime, prompt: MEDIA_EXTRACT_PROMPT });
       if (t && t.trim()) return t.trim();
@@ -58,18 +62,26 @@ async function readImageContent(cfg, base64, mime) {
   throw err;
 }
 
-// Lê o conteúdo de um documento (PDF/fatura). Só o Gemini interpreta PDF via
-// inline_data; a visão do Groq não lê PDF. Mesma semântica de erro de readImageContent.
+// Lê o conteúdo de um documento (PDF/fatura). OpenAI (primário) lê PDF via parte
+// "file"; Gemini via inline_data (fallback). A visão do Groq não lê PDF.
 async function readDocumentContent(cfg, base64, mime) {
-  if (!cfg.geminiKey) { const err = new Error('no gemini'); err.kind = 'tech'; throw err; }
-  try {
-    const t = await geminiReadImage({ key: cfg.geminiKey, model: cfg.geminiModel, base64, mime, prompt: MEDIA_EXTRACT_PROMPT });
-    if (t && t.trim()) return t.trim();
-  } catch (e) {
-    console.error('[assistant] leitura de documento (gemini) falhou', e?.message);
-    const err = new Error('doc read failed'); err.kind = 'tech'; throw err;
+  let threw = false;
+  const providers = [];
+  if (cfg.openaiKey) providers.push('openai');
+  if (cfg.geminiKey) providers.push('gemini');
+  if (!providers.length) { const err = new Error('no doc provider'); err.kind = 'tech'; throw err; }
+  for (const p of providers) {
+    try {
+      const t = p === 'openai'
+        ? await openaiReadDocument({ key: cfg.openaiKey, model: cfg.openaiVisionModel, base64, mime, prompt: MEDIA_EXTRACT_PROMPT })
+        : await geminiReadImage({ key: cfg.geminiKey, model: cfg.geminiModel, base64, mime, prompt: MEDIA_EXTRACT_PROMPT });
+      if (t && t.trim()) return t.trim();
+    } catch (e) {
+      threw = true;
+      console.error(`[assistant] leitura de documento (${p}) falhou`, e?.message);
+    }
   }
-  const err = new Error('doc read empty'); err.kind = 'empty'; throw err;
+  const err = new Error('doc read failed'); err.kind = threw ? 'tech' : 'empty'; throw err;
 }
 
 // Heurística: o modelo respondeu, mas dizendo que não consegue ler (borrada/ilegível),
@@ -1514,20 +1526,32 @@ export async function handleAssistantMessage(msg, instanceName) {
     } else if (m.extendedTextMessage?.text) {
       userText = m.extendedTextMessage.text;
     } else if (m.audioMessage) {
-      // Áudio é transcrito pelo Groq Whisper (cota própria, separada do Gemini).
-      // Fallback para o Gemini caso só a chave do Gemini esteja configurada.
-      if (!cfg.groqKey && !cfg.geminiKey) { await reply('Recebi seu áudio, mas a interpretação de áudio ainda não está configurada. Pode me mandar por texto? 🙂'); return { handled: true, reason: 'no_audio_provider' }; }
+      // Áudio: Groq Whisper (primário) → OpenAI Whisper → Gemini (fallback).
+      if (!cfg.groqKey && !cfg.openaiKey && !cfg.geminiKey) { await reply('Recebi seu áudio, mas a interpretação de áudio ainda não está configurada. Pode me mandar por texto? 🙂'); return { handled: true, reason: 'no_audio_provider' }; }
       const b64 = await getMediaBase64(inst.name, inst.api_key, msg.key);
       const mime = m.audioMessage.mimetype || 'audio/ogg';
       if (b64) {
-        userText = cfg.groqKey
-          ? await groqTranscribeAudio({ key: cfg.groqKey, base64: b64, mime })
-          : await geminiTranscribeAudio({ key: cfg.geminiKey, model: cfg.geminiModel, base64: b64, mime });
+        const audioProviders = [];
+        if (cfg.groqKey)   audioProviders.push('groq');
+        if (cfg.openaiKey) audioProviders.push('openai');
+        if (cfg.geminiKey) audioProviders.push('gemini');
+        for (const p of audioProviders) {
+          try {
+            userText = p === 'groq'
+              ? await groqTranscribeAudio({ key: cfg.groqKey, base64: b64, mime })
+              : p === 'openai'
+              ? await openaiTranscribeAudio({ key: cfg.openaiKey, model: cfg.openaiAudioModel, base64: b64, mime })
+              : await geminiTranscribeAudio({ key: cfg.geminiKey, model: cfg.geminiModel, base64: b64, mime });
+            if (userText && userText.trim()) break;
+          } catch (e) {
+            console.error(`[assistant] transcrição de áudio (${p}) falhou`, e?.message);
+          }
+        }
       }
     } else if (m.imageMessage) {
       userText = m.imageMessage.caption || '';
       // Sem nenhum provedor de visão configurado → função indisponível.
-      if (!cfg.groqKey && !cfg.geminiKey) {
+      if (!cfg.openaiKey && !cfg.groqKey && !cfg.geminiKey) {
         await reply('A *leitura de imagens não está disponível* no momento. Me envie os dados por texto (ex.: "gastei 30 no mercado") que eu registro. 🙂');
         return { handled: true, reason: 'image_unavailable' };
       }
@@ -1553,11 +1577,11 @@ export async function handleAssistantMessage(msg, instanceName) {
         return { handled: true, reason: 'image_unreadable' };
       }
     } else if (m.documentMessage || m.documentWithCaptionMessage) {
-      // Documentos (PDF/fatura). Só o Gemini interpreta PDF.
+      // Documentos (PDF/fatura): OpenAI (primário) ou Gemini (fallback) leem PDF.
       const docMsg = m.documentMessage || m.documentWithCaptionMessage?.message?.documentMessage || {};
       userText = docMsg.caption || '';
-      if (!cfg.geminiKey) {
-        await reply('A *leitura de documentos (PDF)* precisa do Gemini configurado. Me envie os dados por texto que eu registro (ex.: "comprei uma TV por 3500 em 8x"). 🙂');
+      if (!cfg.openaiKey && !cfg.geminiKey) {
+        await reply('A *leitura de documentos (PDF)* precisa da OpenAI ou do Gemini configurados. Me envie os dados por texto que eu registro (ex.: "comprei uma TV por 3500 em 8x"). 🙂');
         return { handled: true, reason: 'doc_unavailable' };
       }
       const b64 = await getMediaBase64(inst.name, inst.api_key, msg.key);

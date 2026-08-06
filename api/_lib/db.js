@@ -707,7 +707,16 @@ export async function initDb() {
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_gemini_model', 'gemini-2.0-flash')", args: [] });
   // Modelo de visão do Groq (multimodal). Configurável porque o Groq descontinua/renomeia
   // esses modelos (ex.: 404 model_not_found no llama-4-scout). Admin pode ajustar no painel.
-  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_groq_vision_model', 'meta-llama/llama-4-maverick-17b-128e-instruct')", args: [] });
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_groq_vision_model', 'qwen/qwen3.6-27b')", args: [] });
+  // Auto-cura: os Llama-4 Scout/Maverick foram descontinuados no Groq (404). Se o valor
+  // salvo ainda for um deles, migra para o modelo de visão atual — sem sobrescrever uma
+  // escolha custom que o admin tenha feito no painel.
+  await db.execute({ sql: "UPDATE system_settings SET value='qwen/qwen3.6-27b' WHERE key='ai_groq_vision_model' AND value IN ('meta-llama/llama-4-maverick-17b-128e-instruct','meta-llama/llama-4-scout-17b-16e-instruct')", args: [] });
+  // OpenAI (ChatGPT) — provedor primário de leitura de imagens e documentos (PDF)
+  // e fallback de transcrição de áudio. Chave vazia até o admin configurar no painel.
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_openai_key', '')", args: [] });
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_openai_vision_model', 'gpt-4o-mini')", args: [] });
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_openai_audio_model', 'whisper-1')", args: [] });
   // Trava de onboarding via WhatsApp: '0' = só responde a usuários cadastrados (padrão).
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('wa_signup_enabled', '0')", args: [] });
   // Número WhatsApp da instância padrão (só dígitos, com DDI). Usado no popup de
