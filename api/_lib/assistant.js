@@ -394,6 +394,18 @@ async function getUserCategories(userId) {
   return rowsToObjects(rows);
 }
 
+// Cria uma categoria de receita/despesa do usuário (via WhatsApp).
+async function insertCategory(userId, { name, type, icon }) {
+  const db = getDb();
+  const id = crypto.randomUUID();
+  await db.execute({
+    sql: `INSERT INTO categories (id, user_id, name, type, icon, created_at)
+          VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+    args: [id, userId, name || 'Categoria', type === 'income' ? 'income' : 'expense', icon || '📦'],
+  });
+  return id;
+}
+
 // Casa o nome citado ("mercado", "salário") com uma categoria existente.
 function findCategoryByName(categories, name) {
   if (!name) return null;
@@ -403,6 +415,59 @@ function findCategoryByName(categories, name) {
     const cn = String(c.name || '').toLowerCase();
     return cn === n || (cn && (cn.includes(n) || n.includes(cn)));
   }) || null;
+}
+
+// ── Baixa de contas a pagar (via WhatsApp) ────────────────────────────────────
+// Busca despesas pendentes (status='pending') do usuário, opcionalmente filtradas
+// por nome. Usado quando o usuário responde que já pagou uma conta do lembrete.
+async function findPendingBills(userId, name) {
+  const db = getDb();
+  const { rows } = await db.execute({
+    sql: `SELECT t.id, t.name, t.amount, t.due_date, c.name AS cat_name, a.name AS acc_name
+          FROM transactions t
+          LEFT JOIN categories c ON c.id = t.category_id
+          LEFT JOIN accounts a ON a.id = t.account_id
+          WHERE t.user_id=? AND t.transaction_type='expense' AND t.status='pending'
+          ORDER BY t.due_date ASC`,
+    args: [userId],
+  });
+  let bills = rowsToObjects(rows);
+  const n = String(name || '').trim().toLowerCase();
+  if (n) {
+    const filtered = bills.filter((b) => {
+      const bn = String(b.name || '').toLowerCase();
+      return bn === n || bn.includes(n) || n.includes(bn);
+    });
+    if (filtered.length) bills = filtered;
+  }
+  return bills;
+}
+
+// Dá baixa numa conta: status='paid', paid_date/cash_date na data informada.
+async function markBillPaid(txId, paidDateISO) {
+  const db = getDb();
+  const paid = paidDateISO || new Date().toISOString().slice(0, 10);
+  await db.execute({
+    sql: `UPDATE transactions SET status='paid', paid_date=?, cash_date=? WHERE id=?`,
+    args: [paid, paid, txId],
+  });
+}
+
+// Continuação quando há mais de uma conta pendente com o mesmo nome: o usuário
+// escolhe pelo número qual pagou (ou cancela).
+async function runPayBillSelect(user, pending, raw) {
+  const bills = pending.bills || [];
+  const txt = String(raw || '').trim().toLowerCase();
+  if (/^(n[ãa]o|cancela|cancelar|deixa|nenhum)/.test(txt)) {
+    return { answer: 'Ok, não dei baixa em nenhuma conta. 🙂', pending: null };
+  }
+  const idx = parseInt(txt.replace(/\D/g, ''), 10);
+  const bill = bills[idx - 1];
+  if (!bill) {
+    return { answer: `Não entendi. Responda com o *número* da conta que você pagou (1 a ${bills.length}), ou *cancelar*.`, pending };
+  }
+  await markBillPaid(bill.id, pending.paidDate);
+  return { answer: `Pronto, ${firstName(user.name)}! Dei baixa em *${bill.name}* (${brl(bill.amount)}) como paga em ${_fmtDate(pending.paidDate)}. ✅`, pending: null };
 }
 
 // ── Fluxo conversacional de lançamento (conta → categoria → registrar) ─────────
@@ -1608,6 +1673,15 @@ async function handleWaCommands({ user, isAdmin, phone, userText, inType, reply,
     return { handled: true, reason: 'multi_tx_step' };
   }
 
+  // Continuação da baixa de conta (escolha qual conta pendente foi paga)
+  if (conv.pending?.type === 'pay_bill') {
+    const r = await runPayBillSelect(user, conv.pending, raw);
+    await reply(r.answer);
+    await saveConversation(phone, user.id, r.pending, conv.history || []);
+    await logInteraction({ phone, user, inType, inText: raw, outText: r.answer, action: 'pay_bill_step' });
+    return { handled: true, reason: 'pay_bill_step' };
+  }
+
   return { handled: false };
 }
 
@@ -1634,9 +1708,11 @@ REGRAS DE ACESSO:
 O QUE VOCÊ PODE FAZER:
 1. Registrar lançamentos (receitas e despesas) a partir de texto, áudio (já transcrito), print ou documento/fatura (já descrito). Se o conteúdo de um documento/print vier no fim da mensagem entre colchetes, use-o como base para o lançamento (valores, descrição, conta/cartão, parcelas).
 2. Criar contas/carteiras bancárias (ex.: "cadastre a carteira Nubank com saldo de R$200"). Um SALDO informado ao criar uma conta é o SALDO INICIAL da conta — NÃO é uma receita/lançamento.
-3. Responder consultas sobre saldo, receitas, despesas e resumos.
-4. Conversar e orientar sobre o uso.${isAdmin ? `
-5. GESTÃO DE USUÁRIOS DO SISTEMA (apenas admin): criar, editar e excluir contas de usuários do Lumers Flow. Use action "manage_user" e preencha "user_op".
+3. Criar categorias de receita/despesa (ex.: "cria a categoria Pets", "adicione uma categoria de despesa chamada Academia"). Use action "create_category".
+4. Dar baixa em contas a pagar já pagas (ex.: "já paguei a conta de luz ontem", "paguei o aluguel dia 05 no valor de 1200"). Use action "pay_bill".
+5. Responder consultas sobre saldo, receitas, despesas e resumos.
+6. Conversar e orientar sobre o uso.${isAdmin ? `
+7. GESTÃO DE USUÁRIOS DO SISTEMA (apenas admin): criar, editar e excluir contas de usuários do Lumers Flow. Use action "manage_user" e preencha "user_op".
    - Criar: op="create". Colete nome completo, e-mail, telefone com DDD (OBRIGATÓRIO) e senha (mín. 8 caracteres). Se o admin disser "gere/gerar senha", marque generate_password=true. NÃO invente dados: extraia só o que o admin informar; os dados que faltarem serão pedidos automaticamente. Após criar, o sistema pergunta se deve notificar o novo usuário dos dados de acesso.
    - Editar: op="edit", "target" = e-mail ou nome do usuário; preencha os campos a alterar (name, phone, password).
    - Excluir: op="delete", "target" = e-mail ou nome do usuário.
@@ -1646,19 +1722,25 @@ REGRAS DE CLASSIFICAÇÃO (siga com atenção):
 - CRIAR CONTA/CARTEIRA: se o usuário pedir para "criar/cadastrar/adicionar/abrir" uma "conta", "carteira", "banco" (ex.: Nubank, Itaú, PicPay) — mesmo mencionando um saldo — use action "create_account" e preencha "account" com { name, bank_name, initial_balance, type }. NUNCA registre isso como receita. Se o nome for de um banco conhecido, use-o também em bank_name. type: "checking" (conta corrente, padrão), "savings" (poupança) ou "wallet" (carteira/dinheiro).
 - REGISTRAR LANÇAMENTO: use action "register" com type "income" (receita/entrada) ou "expense" (despesa/saída). Se o usuário citar uma conta ("no Nubank", "pelo Itaú"), preencha transaction.account_name com esse nome. Se ele indicar que é fixo/recorrente ou variável/avulso, preencha transaction.kind ("fixed" ou "variable"); na dúvida deixe null. Se der para inferir a categoria pelo contexto (ex.: "almoço" → Alimentação; "salário" → Salário; "uber" → Transporte), preencha transaction.category_name; na dúvida deixe null. NÃO pergunte sobre banco/conta nem categoria no "reply": o próprio sistema conduz essas perguntas depois.
 - COMPRA PARCELADA (parcelamento no cartão): se o usuário disser que comprou algo PARCELADO ("em 8x", "8 vezes", "parcelei", "10 parcelas"), use action "register", type "expense", preencha transaction.amount com o valor TOTAL da compra (não o valor da parcela) e transaction.installments com o NÚMERO de parcelas (inteiro ≥ 2). Ex.: "comprei uma TV por 3500 em 8x" → amount=3500, installments=8. Se só souber o valor da parcela, ainda assim informe installments; o sistema pergunta o resto. NÃO pergunte sobre fechamento/vencimento do cartão no "reply": o sistema conduz isso depois. Compras à vista NÃO levam installments (deixe 0 ou null).
+- CRIAR CATEGORIA: se o usuário pedir para "criar/cadastrar/adicionar" uma "categoria" (ex.: "cria a categoria Pets", "adiciona categoria de receita Freelance"), use action "create_category" e preencha "category" com { name, type, icon }. type: "expense" (padrão) ou "income" se ele indicar que é de receita/entrada. Escolha um "icon" (1 emoji) que combine com o nome; na dúvida use "📦". NÃO confunda com criar conta/carteira.
+- DAR BAIXA EM CONTA PAGA: se o usuário disser que JÁ PAGOU uma conta a pagar (ex.: "paguei a conta de luz", "quitei o aluguel ontem", "já paguei a fatura dia 05 de 1200"), use action "pay_bill" e preencha "pay_bill" com { name, date, amount }. name = descrição da conta que ele pagou; date = data do pagamento em "YYYY-MM-DD" (se ele disser "hoje"/"ontem" ou uma data, converta; se não disser, deixe null = hoje); amount = valor, se citado (senão null). Isso é diferente de registrar um novo lançamento: aqui a despesa já existia como "a pagar".
 - Se o usuário quer registrar um valor mas NÃO está claro se é RECEITA ou DESPESA (e não é criação de conta), use action "clarify" e pergunte gentilmente.
 
 Responda SEMPRE em JSON válido com este formato exato:
 {
-  "action": "register" | "create_account" | "manage_user" | "clarify" | "query" | "answer",
+  "action": "register" | "create_account" | "create_category" | "pay_bill" | "manage_user" | "clarify" | "query" | "answer",
   "transaction": { "name": "string curta do lançamento", "amount": number, "type": "income" | "expense" | null, "kind": "fixed" | "variable" | null, "installments": number | null, "account_name": "string" | null, "category_name": "string" | null },
   "account": { "name": "string", "bank_name": "string", "initial_balance": number, "type": "checking" | "savings" | "wallet" | null },
+  "category": { "name": "string", "type": "income" | "expense", "icon": "string (1 emoji)" },
+  "pay_bill": { "name": "string" | null, "date": "YYYY-MM-DD" | null, "amount": number | null },
   "user_op": { "op": "create" | "edit" | "delete" | null, "name": "string" | null, "email": "string" | null, "password": "string" | null, "phone": "string" | null, "target": "string" | null, "generate_password": boolean },
   "query_scope": "self" | "all_users",
   "reply": "texto para enviar ao usuário no WhatsApp"
 }
 - Em "register": preencha transaction e um "reply" confirmando.
 - Em "create_account": preencha account e um "reply" confirmando a criação.
+- Em "create_category": preencha category e um "reply" confirmando a criação.
+- Em "pay_bill": preencha pay_bill; o sistema encontra a conta pendente e dá baixa.
 - Em "manage_user" (apenas admin): preencha user_op; o sistema conduz a coleta e responde.
 - Em "clarify": "reply" deve ser a pergunta (ex.: isso é uma receita ou uma despesa?).
 - Em "query": defina query_scope; "reply" pode ficar vazio (será preenchido depois com os dados).
@@ -1984,6 +2066,38 @@ export async function handleAssistantMessage(msg, instanceName) {
       await insertAccount(user.id, { name, bank_name: a.bank_name, initial_balance: a.initial_balance, type: a.type });
       const bal = Number(a.initial_balance) || 0;
       answer = intent.reply || `Pronto, ${firstName(user.name)}! Criei a conta "${name}"${bal ? ` com saldo inicial de ${brl(bal)}` : ''}. ✅`;
+    } else if (intent.action === 'create_category') {
+      const c = intent.category || {};
+      const name = (c.name || '').trim();
+      if (!name) {
+        answer = 'Qual o *nome* da categoria que você quer criar? E é de *receita* ou *despesa*?';
+      } else {
+        const type = c.type === 'income' ? 'income' : 'expense';
+        const existing = await getUserCategories(user.id);
+        const dup = findCategoryByName(existing.filter((x) => !x.type || x.type === type), name);
+        if (dup) {
+          answer = `Você já tem a categoria *${dup.name}* (${type === 'income' ? 'receita' : 'despesa'}). 🙂`;
+        } else {
+          await insertCategory(user.id, { name, type, icon: c.icon });
+          answer = intent.reply || `Pronto, ${firstName(user.name)}! Criei a categoria *${name}* (${type === 'income' ? 'receita' : 'despesa'}). ✅`;
+        }
+      }
+    } else if (intent.action === 'pay_bill') {
+      const pb = intent.pay_bill || {};
+      const paidDate = _normalizeDate(pb.date) || new Date().toISOString().slice(0, 10);
+      const bills = await findPendingBills(user.id, pb.name);
+      if (bills.length === 0) {
+        answer = pb.name
+          ? `Não encontrei nenhuma conta a pagar pendente com "${pb.name}". 🤔 Se quiser, me diga que quer *registrar* como uma nova despesa.`
+          : 'Você não tem contas a pagar pendentes no momento. 🎉';
+      } else if (bills.length === 1) {
+        await markBillPaid(bills[0].id, paidDate);
+        answer = `Pronto, ${firstName(user.name)}! Dei baixa em *${bills[0].name}* (${brl(bills[0].amount)}) como paga em ${_fmtDate(paidDate)}. ✅`;
+      } else {
+        const list = bills.map((b, i) => `*${i + 1}* — ${b.name} · ${brl(b.amount)}${b.due_date ? ` · venc ${_fmtDate(String(b.due_date).slice(0, 10))}` : ''}`).join('\n');
+        answer = `Encontrei mais de uma conta pendente. Qual você pagou?\n\n${list}\n\nResponda com o *número*.`;
+        newPending = { type: 'pay_bill', bills, paidDate };
+      }
     } else if (intent.action === 'register') {
       const t = intent.transaction || {};
       const type = t.type === 'income' ? 'income' : 'expense';

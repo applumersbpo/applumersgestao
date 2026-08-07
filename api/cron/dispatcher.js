@@ -781,6 +781,151 @@ export default async function handler(req, res) {
       console.error('[dispatcher] daily_summary block error', blockEErr && blockEErr.message);
     }
 
+    // ===================================================================
+    // BLOCK F — lembrete diário de contas a pagar (8h BRT)
+    // ===================================================================
+    // Todo dia, às 8h (horário de Brasília), avisamos o usuário sobre as contas
+    // que VENCEM HOJE: despesas pendentes (status='pending') com vencimento na
+    // data de hoje + parcelas de parcelamentos cujo dia de vencimento é hoje. Se
+    // não houver nenhuma, mandamos um "bom dia" avisando que não há contas.
+    // Dedupe: 1 envio por dia por usuário (marca em notification_rule_sends com
+    // rule_id='daily_bills'). Opt-out via user_notification_prefs 'daily_bills'.
+    let dailyBillsSends = 0;
+    try {
+      const nowBRT = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+      const hourBRT = nowBRT.getHours();
+
+      if (hourBRT === 8) {
+        const yBRT = nowBRT.getFullYear();
+        const mBRT = nowBRT.getMonth() + 1;
+        const dBRT = nowBRT.getDate();
+        const pad = (n) => String(n).padStart(2, '0');
+        const todayISO = `${yBRT}-${pad(mBRT)}-${pad(dBRT)}`;
+        // Início do dia BRT (00:00) expresso em UTC = 03:00Z da mesma data.
+        const dayStartUtc = new Date(Date.UTC(yBRT, mBRT - 1, dBRT, 3, 0, 0)).toISOString();
+        const brl = (n) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        // Instância padrão conectada (canal WhatsApp).
+        const { rows: dbInstRows } = await db.execute("SELECT name, api_key, connection_status FROM evolution_instances WHERE is_default=1 LIMIT 1");
+        const dbInst = rowsToObjects(dbInstRows)[0] || null;
+
+        if (dbInst && dbInst.connection_status === 'connected') {
+          // Usuários elegíveis: plano ativo + telefone + não optaram por sair.
+          const { rows: dbUserRows } = await db.execute({
+            sql: `SELECT u.id AS user_id, u.name, u.phone
+                  FROM users u
+                  JOIN user_plans p ON p.user_id = u.id
+                  LEFT JOIN user_notification_prefs np
+                         ON np.user_id = u.id AND np.notif_key = 'daily_bills'
+                  WHERE p.active = 1
+                    AND u.phone IS NOT NULL AND u.phone != ''
+                    AND (np.enabled IS NULL OR np.enabled = 1)
+                  LIMIT 500`,
+          });
+          const dbUsers = rowsToObjects(dbUserRows);
+          const DB_MAX = 200;
+
+          for (const u of dbUsers) {
+            if (dailyBillsSends >= DB_MAX) break;
+
+            // Dedupe: já enviou hoje?
+            const { rows: dupRows } = await db.execute({
+              sql: `SELECT 1 FROM notification_rule_sends
+                    WHERE rule_id='daily_bills' AND user_id=? AND sent_at >= ? LIMIT 1`,
+              args: [u.user_id, dayStartUtc],
+            });
+            if (rowsToObjects(dupRows).length > 0) continue;
+
+            // Despesas pendentes que vencem hoje.
+            const { rows: billRows } = await db.execute({
+              sql: `SELECT t.name, t.amount, c.name AS cat_name, a.name AS acc_name
+                    FROM transactions t
+                    LEFT JOIN categories c ON c.id = t.category_id
+                    LEFT JOIN accounts a ON a.id = t.account_id
+                    WHERE t.user_id=? AND t.transaction_type='expense'
+                      AND t.status='pending' AND substr(t.due_date,1,10)=?`,
+              args: [u.user_id, todayISO],
+            });
+            const bills = rowsToObjects(billRows).map((b) => ({
+              name: b.name, amount: Number(b.amount) || 0,
+              cat: b.cat_name || '', acc: b.acc_name || '',
+            }));
+
+            // Parcelas de parcelamentos cujo dia de vencimento é hoje.
+            const { rows: instRows2 } = await db.execute({
+              sql: `SELECT i.name, i.total_amount, i.installments, i.paid_installments,
+                           i.due_day, i.start_month, i.start_year, i.created_at,
+                           c.name AS cat_name, a.name AS acc_name
+                    FROM installments i
+                    LEFT JOIN categories c ON c.id = i.category_id
+                    LEFT JOIN accounts a ON a.id = i.account_id
+                    WHERE i.user_id=? AND i.paid_installments < i.installments
+                      AND i.due_day = ?`,
+              args: [u.user_id, dBRT],
+            });
+            for (const it of rowsToObjects(instRows2)) {
+              const total = Number(it.installments) || 1;
+              // Mês/ano da primeira parcela (fallback = created_at).
+              let sm = Number(it.start_month), sy = Number(it.start_year);
+              if (!sm || !sy) {
+                const rawCr = String(it.created_at || '');
+                const cr = new Date(/[TZ]/.test(rawCr) ? rawCr : rawCr.replace(' ', 'T') + 'Z');
+                if (!isNaN(cr.getTime())) { sm = cr.getUTCMonth() + 1; sy = cr.getUTCFullYear(); }
+              }
+              if (!sm || !sy) continue;
+              const monthsElapsed = (yBRT - sy) * 12 + (mBRT - sm);
+              if (monthsElapsed < 0 || monthsElapsed >= total) continue; // fora do período do parcelamento
+              const parcelaNum = monthsElapsed + 1;
+              if (parcelaNum <= Number(it.paid_installments)) continue;   // parcela já paga
+              const parcelaValor = (Number(it.total_amount) || 0) / total;
+              bills.push({
+                name: `${it.name} (parcela ${parcelaNum}/${total})`,
+                amount: parcelaValor,
+                cat: it.cat_name || '', acc: it.acc_name || '',
+              });
+            }
+
+            const nome = (u.name || '').trim().split(/\s+/)[0] || '';
+            let text;
+            if (bills.length === 0) {
+              text = `Bom dia${nome ? ', ' + nome : ''}! ☀️\n\nHoje você não tem nenhuma conta a pagar lançada. Tenha um ótimo dia! 🎉`;
+            } else {
+              const totalDia = bills.reduce((s, b) => s + b.amount, 0);
+              const linhas = bills.map((b, i) => {
+                let l = `*${i + 1}.* ${b.name} — *${brl(b.amount)}*`;
+                const extra = [b.cat, b.acc].filter(Boolean).join(' · ');
+                if (extra) l += `\n   _${extra}_`;
+                return l;
+              }).join('\n');
+              text =
+                `Bom dia${nome ? ', ' + nome : ''}! ☀️\n\n` +
+                `Hoje você tem *${bills.length}* conta${bills.length > 1 ? 's' : ''} a pagar:\n\n` +
+                `${linhas}\n\n` +
+                `💰 *Total do dia:* ${brl(totalDia)}\n\n` +
+                `Se você já pagou alguma dessas, me avise qual, a data e o valor que eu dou baixa por aqui. 😉`;
+            }
+
+            let ok = false, errMsg = '';
+            try {
+              const sr = await evo.sendText({ name: dbInst.name, key: dbInst.api_key || null, number: (u.phone || '').replace(/\D/g, ''), text });
+              ok = !!sr.ok;
+              if (!ok) errMsg = evo.parseEvoError(sr?.data, sr?.status);
+            } catch (e) { errMsg = e.message || 'erro'; }
+
+            // Marca o envio (sucesso ou falha) para não reprocessar no mesmo dia.
+            await db.execute({
+              sql: `INSERT INTO notification_rule_sends (id, rule_id, user_id, channel, status, error, sent_at)
+                    VALUES (?, 'daily_bills', ?, 'whatsapp', ?, ?, ?)`,
+              args: [crypto.randomUUID(), u.user_id, ok ? 'sent' : 'failed', errMsg, new Date().toISOString()],
+            });
+            if (ok) dailyBillsSends++;
+          }
+        }
+      }
+    } catch (blockFErr) {
+      console.error('[dispatcher] daily_bills block error', blockFErr && blockFErr.message);
+    }
+
     return res.status(200).json({
       ok: true,
       whatsapp: processed.length,
@@ -789,6 +934,7 @@ export default async function handler(req, res) {
       rule_sends: ruleSends,
       followup_sends: followupSends,
       daily_summary_sends: dailySummarySends,
+      daily_bills_sends: dailyBillsSends,
       processed: processed.length,
       details: processed,
     });

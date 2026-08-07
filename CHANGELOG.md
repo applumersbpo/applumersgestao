@@ -5,6 +5,15 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.35.0] — 2026-08-07
+
+### Adicionado
+- **Lembrete diário de contas a pagar (8h)** — todo dia às 8h (horário de Brasília) o usuário recebe no WhatsApp um "bom dia" com as contas que *vencem hoje*: despesas pendentes com vencimento na data e parcelas de parcelamentos cujo dia de vencimento é hoje. Cada conta mostra descrição, valor, categoria e conta, mais o *total do dia*. Se não houver nada, avisa "hoje você não tem nenhuma conta a pagar lançada". Respeita opt-out (`daily_bills`) e envia no máximo 1x por dia por usuário.
+- **Baixa de contas pagas pelo WhatsApp** — a partir do lembrete, o usuário pode responder que já pagou uma conta ("paguei a conta de luz ontem", "quitei o aluguel dia 05"); o assistente encontra a despesa pendente e dá baixa (status pago, data do pagamento). Havendo mais de uma conta com o mesmo nome, ele lista e pergunta qual foi paga.
+- **Criação de categorias de receita/despesa pelo WhatsApp** — o usuário pode pedir "cria a categoria Pets" ou "adiciona categoria de receita Freelance" e o assistente cria a categoria (com emoji sugerido), evitando duplicar categorias já existentes do mesmo tipo.
+
+---
+
 ## [v1.34.0] — 2026-08-06
 
 ### Adicionado
