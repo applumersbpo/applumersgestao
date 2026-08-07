@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.35.1] — 2026-08-07
+
+### Melhorado
+- **Assistente do WhatsApp mais fluido e humano** — o "cérebro" de entendimento foi reescrito para captar a *intenção* por trás da mensagem em vez de depender de palavras-chave exatas. Agora entende gírias, erros de digitação, áudio transcrito torto, mensagens curtas ou com várias coisas juntas, e escolhe sozinho a rota certa (registrar, dar baixa, criar conta/categoria, consultar ou conversar), perguntando só o essencial. As respostas ficaram mais naturais e calorosas (menos "robô"), com exemplos de intenção guiando a classificação e um pouco mais de variação no tom.
+
+---
+
 ## [v1.35.0] — 2026-08-07
 
 ### Adicionado
