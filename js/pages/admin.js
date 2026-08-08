@@ -1160,6 +1160,14 @@ async function renderAdminSystem() {
       geminiKey:    sysCfg.ai_gemini_key || '',
       geminiModel:  sysCfg.ai_gemini_model || 'gemini-2.0-flash',
     };
+    const cwCfg        = {
+      enabled:    sysCfg.chatwoot_enabled === '1',
+      url:        sysCfg.chatwoot_url || '',
+      token:      sysCfg.chatwoot_token || '',
+      accountId:  sysCfg.chatwoot_account_id || '',
+      inboxId:    sysCfg.chatwoot_inbox_id || '',
+    };
+    const aiRules      = sysCfg.ai_rules || '';
 
     content.innerHTML = `
       ${_adminNavBar('system')}
@@ -1189,12 +1197,122 @@ async function renderAdminSystem() {
         <div id="toggle-reg-feedback" style="font-size:.8rem;margin-top:10px;display:none"></div>
       </div>
       ${await _renderEvolutionSection(evoGlobalKey, cronSecret, n8nUrl, n8nSecret, sysCfg.wa_assistant_number || '')}
+      ${_renderChatwootSection(cwCfg)}
+      ${_renderRulesSection(aiRules)}
       ${_renderAiSection(aiCfg)}`;
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
+    _kbLoad();
   } catch(e) {
     content.innerHTML = `<p style="color:var(--expense);padding:16px">Erro: ${e.message}</p>`;
   }
+}
+
+// ── Render seção Chatwoot (canal de atendimento) ──────────────────────────────
+// Guarda os pontos de conexão do Chatwoot no painel. O n8n lê essas credenciais
+// via api/n8n.js (op getConnections) e envia respostas via op sendChatwoot.
+function _renderChatwootSection(cfg = {}) {
+  const enabled = !!cfg.enabled;
+  return `
+    <div class="card" style="margin-bottom:20px" id="chatwoot-section">
+      <div class="card-title" style="margin-bottom:4px">${icon('messages-square', 14)} Chatwoot — canal de atendimento</div>
+      <p style="font-size:.78rem;color:var(--text-muted);margin:0 0 16px;line-height:1.5">
+        Pontos de conexão do Chatwoot. O <strong>n8n lê estas credenciais</strong> (via <code>getConnections</code>)
+        para receber e responder conversas, e o app envia respostas via <code>sendChatwoot</code>. Nada fica fixo no fluxo do n8n.
+      </p>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px">
+        <div>
+          <div style="font-weight:600;font-size:.9rem">Integração ativa</div>
+          <div style="font-size:.8rem;color:var(--text-muted);margin-top:2px">Sinaliza ao n8n que o canal Chatwoot está habilitado.</div>
+        </div>
+        <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer;flex-shrink:0">
+          <input type="checkbox" id="cw-enabled" ${enabled ? 'checked' : ''} onchange="_cwToggleVisual(this.checked)" style="width:0;height:0;opacity:0;position:absolute">
+          <div id="cw-enabled-track" style="width:46px;height:26px;border-radius:13px;transition:background .2s;
+            background:${enabled ? 'var(--primary-600)' : 'var(--border)'};position:relative">
+            <div style="position:absolute;top:3px;left:${enabled ? '23px' : '3px'};width:20px;height:20px;border-radius:50%;
+              background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s" id="cw-enabled-knob"></div>
+          </div>
+        </label>
+      </div>
+
+      <label class="form-label" style="font-size:.78rem">URL base do Chatwoot</label>
+      <input id="cw-url" type="text" class="form-input" placeholder="https://app.chatwoot.com"
+        value="${_escHtml(cfg.url)}" style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:10px">
+
+      <label class="form-label" style="font-size:.78rem">Access Token (header <code>api_access_token</code>)</label>
+      <input id="cw-token" type="password" class="form-input" placeholder="Token do agente/bot"
+        value="${_escHtml(cfg.token)}" style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:10px">
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:140px">
+          <label class="form-label" style="font-size:.78rem">Account ID</label>
+          <input id="cw-account" type="text" class="form-input" placeholder="1"
+            value="${_escHtml(cfg.accountId)}" style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:10px">
+        </div>
+        <div style="flex:1;min-width:140px">
+          <label class="form-label" style="font-size:.78rem">Inbox ID (opcional)</label>
+          <input id="cw-inbox" type="text" class="form-input" placeholder="ex: 2"
+            value="${_escHtml(cfg.inboxId)}" style="width:100%;font-size:.85rem;font-family:monospace;margin-bottom:10px">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-primary" onclick="_chatwootSaveConfig()" id="cw-save-btn" style="font-size:.83rem">
+          ${icon('save', 14)} Salvar
+        </button>
+        <div id="cw-feedback" style="font-size:.78rem"></div>
+      </div>
+    </div>`;
+}
+
+// ── Render seção Regras & Base de conhecimento ────────────────────────────────
+// ai_rules = instruções livres do admin (injetadas no prompt). A base de
+// conhecimento (knowledge_docs) guarda documentos/regras que o n8n consome via
+// getRules — texto agora, pronto para RAG (busca semântica) depois.
+function _renderRulesSection(rules = '') {
+  return `
+    <div class="card" style="margin-bottom:20px" id="rules-section">
+      <div class="card-title" style="margin-bottom:4px">${icon('book-open', 14)} Regras & Base de conhecimento</div>
+      <p style="font-size:.78rem;color:var(--text-muted);margin:0 0 16px;line-height:1.5">
+        Instruções que o assistente deve seguir e documentos de apoio. O n8n lê tudo via <code>getRules</code>
+        para injetar no prompt (e indexar em RAG no futuro).
+      </p>
+
+      <label class="form-label" style="font-size:.78rem">Regras gerais (instruções livres)</label>
+      <textarea id="rules-text" class="form-input" rows="6"
+        placeholder="Ex.: Sempre confirme o valor antes de registrar. Nunca dê conselhos de investimento específicos. Trate o cliente pelo primeiro nome."
+        style="width:100%;font-size:.85rem;line-height:1.5;margin-bottom:10px;resize:vertical">${_escHtml(rules)}</textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:20px">
+        <button class="btn btn-primary" onclick="_rulesSave()" id="rules-save-btn" style="font-size:.83rem">
+          ${icon('save', 14)} Salvar regras
+        </button>
+        <div id="rules-feedback" style="font-size:.78rem"></div>
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:10px">${icon('files', 13)} Documentos da base</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <input id="kb-title" type="text" class="form-input" placeholder="Título (ex: Política de reembolso)"
+            style="flex:2;min-width:180px;font-size:.85rem">
+          <select id="kb-type" class="form-input" style="flex:0 0 130px;font-size:.83rem">
+            <option value="rule">Regra</option>
+            <option value="doc">Documento</option>
+            <option value="faq">FAQ</option>
+          </select>
+        </div>
+        <textarea id="kb-content" class="form-input" rows="4" placeholder="Conteúdo do documento…"
+          style="width:100%;font-size:.85rem;line-height:1.5;margin-bottom:8px;resize:vertical"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
+          <button class="btn btn-primary" onclick="_kbAdd()" id="kb-add-btn" style="font-size:.83rem">
+            ${icon('plus', 14)} Adicionar documento
+          </button>
+          <div id="kb-add-feedback" style="font-size:.78rem"></div>
+        </div>
+
+        <div id="kb-list"><div style="font-size:.8rem;color:var(--text-muted)">Carregando documentos…</div></div>
+      </div>
+    </div>`;
 }
 
 // ── Render Admin Improvements (sugestões dos usuários via /melhorias) ─────────
@@ -1566,9 +1684,12 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUr
             ${icon('copy', 14)} Copiar
           </button>
         </div>
-        <div style="font-size:.72rem;color:var(--text-muted);margin-top:8px;line-height:1.5">
-          Operações aceitas (POST com header <code>x-n8n-secret</code>):
-          <code>userByPhone</code>, <code>addTransaction</code>, <code>addInstallment</code>.
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:8px;line-height:1.6">
+          Operações aceitas (POST com header <code>x-n8n-secret</code>):<br>
+          <strong>Conexões/regras:</strong> <code>getConnections</code>, <code>getRules</code><br>
+          <strong>Contexto:</strong> <code>userByPhone</code>, <code>getUserContext</code>, <code>getMediaBase64</code>, <code>getAudioBase64</code><br>
+          <strong>Ações:</strong> <code>addTransaction</code>, <code>addInstallment</code>, <code>createCategory</code>, <code>createAccount</code>, <code>markBillPaid</code><br>
+          <strong>Canais:</strong> <code>sendMessage</code> (WhatsApp), <code>sendChatwoot</code> (Chatwoot)
         </div>
       </div>
     </div>`;
@@ -2523,6 +2644,157 @@ async function _n8nSaveConfig() {
     btn.innerHTML = icon('save', 14) + ' Salvar';
     if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
   }
+}
+
+// ── Chatwoot ──────────────────────────────────────────────────────────────────
+
+function _cwToggleVisual(on) {
+  const track = document.getElementById('cw-enabled-track');
+  const knob  = document.getElementById('cw-enabled-knob');
+  if (track) track.style.background = on ? 'var(--primary-600)' : 'var(--border)';
+  if (knob)  knob.style.left = on ? '23px' : '3px';
+}
+
+async function _chatwootSaveConfig() {
+  const url     = (document.getElementById('cw-url')?.value || '').trim();
+  const token   = (document.getElementById('cw-token')?.value || '').trim();
+  const account = (document.getElementById('cw-account')?.value || '').trim();
+  const inbox   = (document.getElementById('cw-inbox')?.value || '').trim();
+  const enabled = !!document.getElementById('cw-enabled')?.checked;
+  const btn = document.getElementById('cw-save-btn');
+  const fb  = document.getElementById('cw-feedback');
+
+  if (url && !/^https?:\/\//i.test(url)) { toast('A URL do Chatwoot deve começar com http:// ou https://', 'error'); return; }
+  if (enabled && (!url || !token || !account)) { toast('Para ativar, preencha URL, token e account ID', 'error'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = icon('loader', 14) + ' Salvando…';
+  try {
+    await _api('PUT', '/admin/users?resource=system-settings', {
+      chatwoot_enabled: enabled ? '1' : '0',
+      chatwoot_url: url,
+      chatwoot_token: token,
+      chatwoot_account_id: account,
+      chatwoot_inbox_id: inbox,
+    });
+    if (fb) {
+      fb.innerHTML = `<span style="color:var(--income-text,#16a34a)">✓ Chatwoot salvo.</span>`;
+      setTimeout(() => { if (fb) fb.innerHTML = ''; }, 3000);
+    }
+    toast('Chatwoot salvo', 'success');
+  } catch(e) {
+    if (fb) fb.innerHTML = `<span style="color:#dc2626">Erro: ${_escHtml(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = icon('save', 14) + ' Salvar';
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
+  }
+}
+
+// ── Regras & Base de conhecimento ─────────────────────────────────────────────
+
+async function _rulesSave() {
+  const text = document.getElementById('rules-text')?.value || '';
+  const btn  = document.getElementById('rules-save-btn');
+  const fb   = document.getElementById('rules-feedback');
+  btn.disabled = true;
+  btn.innerHTML = icon('loader', 14) + ' Salvando…';
+  try {
+    await _api('PUT', '/admin/users?resource=system-settings', { ai_rules: text });
+    if (fb) {
+      fb.innerHTML = `<span style="color:var(--income-text,#16a34a)">✓ Regras salvas.</span>`;
+      setTimeout(() => { if (fb) fb.innerHTML = ''; }, 3000);
+    }
+    toast('Regras salvas', 'success');
+  } catch(e) {
+    if (fb) fb.innerHTML = `<span style="color:#dc2626">Erro: ${_escHtml(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = icon('save', 14) + ' Salvar regras';
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
+  }
+}
+
+const _KB_TYPE_LABEL = { rule: 'Regra', doc: 'Documento', faq: 'FAQ' };
+
+async function _kbLoad() {
+  const list = document.getElementById('kb-list');
+  if (!list) return;
+  try {
+    const { docs = [] } = await _api('GET', '/admin/users?resource=knowledge');
+    if (!docs.length) {
+      list.innerHTML = `<div style="font-size:.8rem;color:var(--text-muted)">Nenhum documento ainda. Adicione o primeiro acima.</div>`;
+      return;
+    }
+    list.innerHTML = docs.map(d => {
+      const on = d.enabled === 1 || d.enabled === '1' || d.enabled === true;
+      const idJs = _escHtml(d.id);
+      return `
+        <div class="card" style="margin-bottom:8px;padding:12px 14px" id="kb-${idJs}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+            <div style="min-width:0;flex:1">
+              <div style="font-weight:600;font-size:.85rem;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                ${_escHtml(d.title)}
+                <span style="font-size:.68rem;background:var(--bg-subtle);border:1px solid var(--border);border-radius:999px;padding:1px 8px;color:var(--text-muted)">${_KB_TYPE_LABEL[d.type] || d.type}</span>
+                ${on ? '' : '<span style="font-size:.68rem;color:#dc2626">(desativado)</span>'}
+              </div>
+              <div style="font-size:.78rem;color:var(--text-muted);margin-top:4px;white-space:pre-wrap;max-height:80px;overflow:auto">${_escHtml(d.content || '')}</div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="btn btn-outline" onclick="_kbToggle('${idJs}', ${on ? 0 : 1})" style="font-size:.75rem;padding:4px 8px" title="${on ? 'Desativar' : 'Ativar'}">
+                ${icon(on ? 'eye-off' : 'eye', 13)}
+              </button>
+              <button class="btn btn-outline" onclick="_kbDelete('${idJs}')" style="font-size:.75rem;padding:4px 8px;color:#dc2626" title="Excluir">
+                ${icon('trash-2', 13)}
+              </button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [list] });
+  } catch(e) {
+    list.innerHTML = `<div style="font-size:.8rem;color:#dc2626">Erro ao carregar: ${_escHtml(e.message)}</div>`;
+  }
+}
+
+async function _kbAdd() {
+  const title   = (document.getElementById('kb-title')?.value || '').trim();
+  const content = document.getElementById('kb-content')?.value || '';
+  const type    = document.getElementById('kb-type')?.value || 'rule';
+  const btn = document.getElementById('kb-add-btn');
+  const fb  = document.getElementById('kb-add-feedback');
+  if (!title) { toast('Informe um título', 'error'); return; }
+  btn.disabled = true;
+  btn.innerHTML = icon('loader', 14) + ' Adicionando…';
+  try {
+    await _api('POST', '/admin/users?resource=knowledge', { title, content, type });
+    document.getElementById('kb-title').value = '';
+    document.getElementById('kb-content').value = '';
+    if (fb) { fb.innerHTML = `<span style="color:var(--income-text,#16a34a)">✓ Adicionado.</span>`; setTimeout(() => { if (fb) fb.innerHTML = ''; }, 2500); }
+    toast('Documento adicionado', 'success');
+    _kbLoad();
+  } catch(e) {
+    if (fb) fb.innerHTML = `<span style="color:#dc2626">Erro: ${_escHtml(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = icon('plus', 14) + ' Adicionar documento';
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [btn] });
+  }
+}
+
+async function _kbToggle(id, enabled) {
+  try {
+    await _api('PUT', '/admin/users?resource=knowledge', { id, enabled });
+    _kbLoad();
+  } catch(e) { toast('Erro: ' + e.message, 'error'); }
+}
+
+async function _kbDelete(id) {
+  if (!confirm('Excluir este documento da base?')) return;
+  try {
+    await _api('DELETE', `/admin/users?resource=knowledge&id=${encodeURIComponent(id)}`);
+    _kbLoad();
+  } catch(e) { toast('Erro: ' + e.message, 'error'); }
 }
 
 async function _evoCreateInstance() {

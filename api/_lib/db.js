@@ -184,6 +184,21 @@ export async function initDb() {
       value TEXT DEFAULT '',
       updated_at TEXT DEFAULT (datetime('now'))
     )`,
+    // Base de conhecimento / regras do assistente. 'type' = 'rule' | 'doc' | 'faq'.
+    // A coluna 'embedding' fica reservada para busca semântica (RAG) futura — o n8n
+    // pode preenchê-la com o vetor (JSON) quando um vector store for plugado.
+    `CREATE TABLE IF NOT EXISTS knowledge_docs (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      content TEXT DEFAULT '',
+      type TEXT DEFAULT 'rule',
+      tags TEXT DEFAULT '',
+      enabled INTEGER DEFAULT 1,
+      embedding TEXT DEFAULT '',
+      source TEXT DEFAULT 'panel',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )`,
     `CREATE TABLE IF NOT EXISTS plan_templates (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,

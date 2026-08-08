@@ -157,6 +157,180 @@ export default async function handler(req, res) {
       return res.status(201).json({ id, ok: true });
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ops do "cérebro no n8n": pontos de conexão, regras/documentos, contexto do
+    // usuário, ações completas e leitura de mídia. O n8n lê as conexões do painel
+    // (getConnections) e nunca precisa ter credenciais fixas no fluxo.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Devolve todos os pontos de conexão configurados no painel para o n8n se
+    // auto-configurar (Chatwoot, Evolution padrão e chaves/modelos de IA).
+    if (op === 'getConnections') {
+      const keys = [
+        'chatwoot_enabled', 'chatwoot_url', 'chatwoot_token', 'chatwoot_account_id', 'chatwoot_inbox_id',
+        'ai_enabled', 'ai_groq_key', 'ai_groq_model', 'ai_groq_vision_model', 'ai_gemini_key', 'ai_gemini_model',
+        'ai_openai_key', 'ai_openai_vision_model', 'ai_openai_audio_model', 'wa_assistant_number',
+      ];
+      const cfg = {};
+      for (const k of keys) cfg[k] = await getSystemSetting(k).catch(() => null);
+      const inst = await getDefaultInstance();
+      return res.status(200).json({
+        chatwoot: {
+          enabled: cfg.chatwoot_enabled === '1',
+          url: cfg.chatwoot_url || '',
+          token: cfg.chatwoot_token || '',
+          account_id: cfg.chatwoot_account_id || '',
+          inbox_id: cfg.chatwoot_inbox_id || '',
+        },
+        evolution: inst ? {
+          instance: inst.name,
+          api_key: inst.api_key || '',
+          base: evoBase(),
+          connection_status: inst.connection_status || null,
+        } : null,
+        ai: {
+          enabled: cfg.ai_enabled === '1',
+          groq_key: cfg.ai_groq_key || '',
+          groq_model: cfg.ai_groq_model || '',
+          groq_vision_model: cfg.ai_groq_vision_model || '',
+          gemini_key: cfg.ai_gemini_key || '',
+          gemini_model: cfg.ai_gemini_model || '',
+          openai_key: cfg.ai_openai_key || '',
+          openai_vision_model: cfg.ai_openai_vision_model || '',
+          openai_audio_model: cfg.ai_openai_audio_model || '',
+        },
+        wa_assistant_number: cfg.wa_assistant_number || '',
+      });
+    }
+
+    // Regras (texto livre do admin) + documentos ativos da base de conhecimento,
+    // para injeção no prompt do assistente e/ou indexação em RAG pelo n8n.
+    if (op === 'getRules') {
+      const rules = await getSystemSetting('ai_rules').catch(() => null);
+      const { rows } = await db.execute(
+        'SELECT id, title, content, type, tags FROM knowledge_docs WHERE enabled=1 ORDER BY type ASC, updated_at DESC'
+      );
+      return res.status(200).json({ rules: rules || '', docs: rowsToObjects(rows) });
+    }
+
+    // Contexto financeiro do usuário: contas, categorias, contas a pagar pendentes,
+    // metas e totais do mês corrente (pagos). Dá ao n8n visão para responder melhor.
+    if (op === 'getUserContext') {
+      let uid = userId;
+      if (!uid && phone) {
+        const { rows } = await db.execute({ sql: 'SELECT id FROM users WHERE phone = ?', args: [phone] });
+        uid = rowsToObjects(rows)[0]?.id;
+      }
+      if (!uid) return res.status(404).json({ error: 'user não encontrado' });
+      const now = new Date();
+      const [uRes, accRes, catRes, pendRes, goalRes, aggRes] = await Promise.all([
+        db.execute({ sql: 'SELECT id, name, email, phone FROM users WHERE id = ?', args: [uid] }),
+        db.execute({ sql: 'SELECT id, name, bank_name, type, initial_balance, closing_day, due_day FROM accounts WHERE user_id = ?', args: [uid] }),
+        db.execute({ sql: 'SELECT id, name, type, icon FROM categories WHERE user_id = ?', args: [uid] }),
+        db.execute({
+          sql: `SELECT t.id, t.name, t.amount, t.due_date, c.name AS category, a.name AS account
+                FROM transactions t
+                LEFT JOIN categories c ON c.id = t.category_id
+                LEFT JOIN accounts a ON a.id = t.account_id
+                WHERE t.user_id = ? AND t.transaction_type='expense' AND t.status='pending'
+                ORDER BY t.due_date ASC`,
+          args: [uid],
+        }),
+        db.execute({ sql: 'SELECT id, name, target_amount, current_amount, deadline FROM goals WHERE user_id = ?', args: [uid] }).catch(() => ({ rows: [] })),
+        db.execute({
+          sql: `SELECT
+                  COALESCE(SUM(CASE WHEN transaction_type='income' THEN amount ELSE 0 END),0) AS income,
+                  COALESCE(SUM(CASE WHEN transaction_type IN ('expense','general','daily','installment') THEN amount ELSE 0 END),0) AS expense
+                FROM transactions WHERE user_id = ? AND status='paid' AND month = ? AND year = ?`,
+          args: [uid, now.getMonth() + 1, now.getFullYear()],
+        }).catch(() => ({ rows: [] })),
+      ]);
+      const agg = rowsToObjects(aggRes.rows)[0] || { income: 0, expense: 0 };
+      return res.status(200).json({
+        user: rowsToObjects(uRes.rows)[0] || null,
+        accounts: rowsToObjects(accRes.rows),
+        categories: rowsToObjects(catRes.rows),
+        pending_bills: rowsToObjects(pendRes.rows),
+        goals: rowsToObjects(goalRes.rows),
+        month_totals: { income: Number(agg.income) || 0, expense: Number(agg.expense) || 0 },
+      });
+    }
+
+    // Cria categoria de receita/despesa.
+    if (op === 'createCategory') {
+      if (!userId || !record?.name) return res.status(400).json({ error: 'userId e record.name obrigatórios' });
+      const id = crypto.randomUUID();
+      await db.execute({
+        sql: `INSERT INTO categories (id, user_id, name, type, icon, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+        args: [id, userId, record.name, record.type === 'income' ? 'income' : 'expense', record.icon || '📦'],
+      });
+      return res.status(201).json({ id, ok: true });
+    }
+
+    // Cria conta/carteira.
+    if (op === 'createAccount') {
+      if (!userId || !record?.name) return res.status(400).json({ error: 'userId e record.name obrigatórios' });
+      const id = crypto.randomUUID();
+      const today = new Date().toISOString().slice(0, 10);
+      await db.execute({
+        sql: `INSERT INTO accounts (id, user_id, name, bank_name, type, currency, initial_balance, initial_balance_date, notes, created_at)
+              VALUES (?, ?, ?, ?, ?, 'BRL', ?, ?, 'Criada via n8n', datetime('now'))`,
+        args: [id, userId, record.name, record.bank_name || '', record.type || 'checking', Number(record.initial_balance) || 0, today],
+      });
+      return res.status(201).json({ id, ok: true });
+    }
+
+    // Dá baixa numa conta a pagar (status='paid' + data de pagamento).
+    if (op === 'markBillPaid') {
+      const txId = record?.txId || req.body?.txId;
+      if (!txId) return res.status(400).json({ error: 'txId obrigatório' });
+      const paid = record?.paidDate || req.body?.paidDate || new Date().toISOString().slice(0, 10);
+      await db.execute({
+        sql: `UPDATE transactions SET status='paid', paid_date=?, cash_date=? WHERE id=?`,
+        args: [paid, paid, txId],
+      });
+      return res.status(200).json({ ok: true });
+    }
+
+    // Baixa qualquer mídia (áudio, imagem, documento) de uma mensagem, em base64,
+    // para o n8n transcrever/ler o conteúdo (OCR, PDF, etc.).
+    if (op === 'getMediaBase64') {
+      const { messageKey } = req.body || {};
+      if (!messageKey) return res.status(400).json({ error: 'messageKey required' });
+      const inst = await getDefaultInstance();
+      if (!inst) return res.status(400).json({ error: 'Nenhuma instância padrão definida' });
+      const base = evoBase();
+      const k = await resolveKey(inst.api_key || null);
+      const r = await fetch(`${base}/chat/getBase64FromMediaMessage/${encodeURIComponent(inst.name)}`, {
+        method: 'POST',
+        headers: headers(k),
+        body: JSON.stringify({ message: { key: messageKey }, convertToMp4: false }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return res.status(502).json({ error: 'Evolution getBase64 falhou', detail: data });
+      return res.status(200).json({ base64: data.base64 || data.media || '', mimetype: data.mimetype || '' });
+    }
+
+    // Envia mensagem de volta a uma conversa do Chatwoot, usando as credenciais do painel.
+    if (op === 'sendChatwoot') {
+      const { conversationId, text } = req.body || {};
+      const isPrivate = (req.body || {}).private === true;
+      if (!conversationId || !text) return res.status(400).json({ error: 'conversationId e text obrigatórios' });
+      const cwUrl = await getSystemSetting('chatwoot_url').catch(() => null);
+      const cwToken = await getSystemSetting('chatwoot_token').catch(() => null);
+      const cwAccount = await getSystemSetting('chatwoot_account_id').catch(() => null);
+      if (!cwUrl || !cwToken || !cwAccount) return res.status(400).json({ error: 'Chatwoot não configurado no painel' });
+      const endpoint = `${cwUrl.replace(/\/$/, '')}/api/v1/accounts/${cwAccount}/conversations/${conversationId}/messages`;
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', api_access_token: cwToken },
+        body: JSON.stringify({ content: text, message_type: 'outgoing', private: isPrivate }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return res.status(502).json({ error: 'Chatwoot send falhou', detail: data });
+      return res.status(200).json({ ok: true, id: data.id || null });
+    }
+
     return res.status(400).json({ error: 'op inválido' });
   } catch (err) {
     console.error(err);

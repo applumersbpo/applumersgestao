@@ -5,6 +5,19 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.36.0] — 2026-08-08
+
+### Adicionado
+- **Fundação para assistente de IA no n8n (cérebro externo) + Chatwoot** — preparado todo o lado do app para o n8n orquestrar um assistente mais completo (leitura de documentos, ações mais amplas, melhor entendimento) e para conectar o Chatwoot como canal de atendimento. Sem novos arquivos de função serverless (mantém o limite 12/12): tudo entra como novos `op` na ponte `api/n8n.js` e novos ajustes no painel.
+- **Pontos de conexão pelo painel** — nova seção *Chatwoot* (URL base, access token, account ID, inbox ID e chave liga/desliga) na área de sistema. O n8n lê essas credenciais via `getConnections` e responde conversas via `sendChatwoot`, sem credenciais fixas no fluxo.
+- **Regras & Base de conhecimento** — nova seção no painel com *regras gerais* em texto livre (injetadas no prompt) e uma *base de documentos* (regras/documentos/FAQ) com adicionar, ativar/desativar e excluir. Consumida pelo n8n via `getRules`. Estrutura pronta para RAG (busca semântica) no futuro — a tabela `knowledge_docs` já reserva coluna de embedding.
+- **Novos `op` na ponte `api/n8n.js`** — `getConnections` (pontos de conexão do painel), `getRules` (regras + documentos ativos), `getUserContext` (contas, categorias, contas a pagar, metas e totais do mês), `createCategory`, `createAccount`, `markBillPaid` (ações completas), `getMediaBase64` (leitura de imagem/PDF/áudio) e `sendChatwoot` (resposta no Chatwoot).
+
+### Melhorado
+- **Documentação dos workflows n8n** atualizada para a nova arquitetura (n8n como cérebro, app como provedor de dados/ações e canais).
+
+---
+
 ## [v1.35.1] — 2026-08-07
 
 ### Melhorado

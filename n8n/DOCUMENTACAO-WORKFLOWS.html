@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Documentação — Workflows n8n (Visibill / Lumers Flow)</title>
+<style>
+  :root{
+    --bg:#0f1220; --card:#1a1f35; --card2:#222842; --ink:#eef1f8; --muted:#9aa3c0;
+    --brand:#6c8cff; --brand2:#8b5cf6; --green:#34d399; --amber:#fbbf24; --red:#f87171;
+    --line:#2c3352;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(160deg,#0f1220,#141a30);color:var(--ink);
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;line-height:1.6}
+  .wrap{max-width:980px;margin:0 auto;padding:32px 20px 80px}
+  header.hero{text-align:center;padding:28px 20px 8px}
+  .hero h1{font-size:2rem;margin:.2em 0;background:linear-gradient(90deg,var(--brand),var(--brand2));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{color:var(--muted);max-width:620px;margin:8px auto}
+  .badge{display:inline-block;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;
+    background:var(--card2);border:1px solid var(--line);color:var(--muted);
+    padding:3px 10px;border-radius:999px;margin:4px 3px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin:24px 0}
+  .mini{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .mini .ico{font-size:1.6rem}
+  .mini h3{margin:.4em 0 .2em;font-size:1rem}
+  .mini small{color:var(--muted)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
+    padding:24px;margin:22px 0;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+  .card h2{margin:0 0 4px;display:flex;align-items:center;gap:10px;font-size:1.35rem}
+  .tag{font-size:.7rem;padding:2px 9px;border-radius:999px;font-weight:600}
+  .tag.trigger{background:rgba(108,140,255,.15);color:var(--brand);border:1px solid rgba(108,140,255,.4)}
+  .tag.cron{background:rgba(251,191,36,.12);color:var(--amber);border:1px solid rgba(251,191,36,.35)}
+  .sub{color:var(--muted);margin:2px 0 16px;font-size:.95rem}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0;
+    background:var(--card2);border-radius:12px;padding:12px}
+  .step{background:#151a30;border:1px solid var(--line);border-radius:9px;
+    padding:6px 11px;font-size:.82rem;white-space:nowrap}
+  .arrow{color:var(--brand);font-weight:700}
+  ul.feat{list-style:none;padding:0;margin:14px 0}
+  ul.feat li{padding:9px 0 9px 30px;border-bottom:1px dashed var(--line);position:relative}
+  ul.feat li:last-child{border-bottom:none}
+  ul.feat li::before{content:"›";position:absolute;left:8px;top:8px;color:var(--brand);font-weight:800}
+  .k{color:var(--green);font-weight:600}
+  .msg{background:#0c1730;border:1px solid #23345e;border-left:4px solid var(--green);
+    border-radius:10px;padding:12px 14px;margin:12px 0;font-size:.9rem;white-space:pre-line;color:#dbe6ff}
+  .note{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.35);
+    border-radius:14px;padding:18px 20px;margin:26px 0}
+  .note h2{color:var(--red)}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:.9rem}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+  code{background:#0c1024;border:1px solid var(--line);padding:1px 6px;border-radius:6px;
+    font-size:.85em;color:#b9c6ff}
+  footer{text-align:center;color:var(--muted);font-size:.82rem;margin-top:40px}
+  .pill-row{margin:6px 0 2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1>Workflows de Automação — Visibill</h1>
+    <p>Documentação simples das automações em n8n que integram o app financeiro
+       ao <strong>WhatsApp</strong>. Base de dados em PocketBase, IA via Groq (Llama 3.3)
+       e envio de mensagens pela Evolution API.</p>
+    <div class="pill-row">
+      <span class="badge">n8n</span>
+      <span class="badge">WhatsApp / Evolution API</span>
+      <span class="badge">PocketBase</span>
+      <span class="badge">Groq · Llama 3.3</span>
+      <span class="badge">Whisper (áudio)</span>
+    </div>
+  </header>
+
+  <!-- ============ 0. ARQUITETURA ATUAL (2026) ============ -->
+  <section class="card">
+    <h2>🧠 Arquitetura atual — n8n como cérebro <span class="tag trigger">Lumers Gestão</span></h2>
+    <p class="sub">Nesta versão, o <strong>n8n orquestra o assistente</strong> (IA + leitura de documentos + regras)
+       e o app Lumers é o <strong>provedor de dados e ações</strong> via a ponte <code>api/n8n.js</code>.
+       O WhatsApp (Evolution) e o Chatwoot são apenas canais. Os pontos de conexão ficam no
+       <strong>painel do sistema</strong> e o n8n os lê em tempo de execução — nada de credencial fixa no fluxo.</p>
+
+    <div class="flow">
+      <span class="step">WhatsApp / Chatwoot</span><span class="arrow">→</span>
+      <span class="step">Webhook → n8n</span><span class="arrow">→</span>
+      <span class="step">n8n: IA + regras + documentos</span><span class="arrow">→</span>
+      <span class="step">api/n8n.js (dados/ações)</span><span class="arrow">→</span>
+      <span class="step">Responde no canal</span>
+    </div>
+
+    <p><strong>Ponte <code>api/n8n.js</code></strong> — POST com header <code>x-n8n-secret</code>. Operações:</p>
+    <table>
+      <tr><th>op</th><th>O que faz</th></tr>
+      <tr><td><code>getConnections</code></td><td>Devolve os pontos de conexão do painel (Chatwoot, Evolution padrão, chaves/modelos de IA) para o n8n se auto-configurar</td></tr>
+      <tr><td><code>getRules</code></td><td>Regras gerais (texto do admin) + documentos ativos da base de conhecimento (para prompt/RAG)</td></tr>
+      <tr><td><code>userByPhone</code></td><td>Encontra o usuário pelo número de WhatsApp</td></tr>
+      <tr><td><code>getUserContext</code></td><td>Contexto financeiro: contas, categorias, contas a pagar pendentes, metas e totais do mês</td></tr>
+      <tr><td><code>getMediaBase64</code> / <code>getAudioBase64</code></td><td>Baixa mídia (imagem/PDF/áudio) em base64 para OCR/transcrição/leitura</td></tr>
+      <tr><td><code>addTransaction</code> / <code>addInstallment</code></td><td>Registra lançamento avulso / parcelamento</td></tr>
+      <tr><td><code>createCategory</code> / <code>createAccount</code></td><td>Cria categoria de receita/despesa / conta-carteira</td></tr>
+      <tr><td><code>markBillPaid</code></td><td>Dá baixa numa conta a pagar (status pago + data)</td></tr>
+      <tr><td><code>sendMessage</code> / <code>sendChatwoot</code></td><td>Responde no WhatsApp (Evolution) / no Chatwoot</td></tr>
+    </table>
+
+    <p><strong>Configuração no painel</strong> (Admin → Sistema): seção <em>Integração n8n</em> (URL do webhook + secret),
+       seção <em>Chatwoot</em> (URL, token, account/inbox) e seção <em>Regras & Base de conhecimento</em>.</p>
+  </section>
+
+  <p style="color:var(--muted);font-size:.85rem;margin:26px 0 4px">Abaixo, os workflows legados do Visibill (referência de padrões):</p>
+
+  <div class="grid">
+    <div class="mini"><div class="ico">🤖</div><h3>Automação v2</h3><small>O assistente principal — entende texto e áudio no WhatsApp</small></div>
+    <div class="mini"><div class="ico">⚠️</div><h3>Alertas</h3><small>Avisos diários de vencimento, saldo e fechamento</small></div>
+    <div class="mini"><div class="ico">🎉</div><h3>Parabéns de Meta</h3><small>Comemora 50% e 100% das metas de economia</small></div>
+    <div class="mini"><div class="ico">☀️</div><h3>Resumo Semanal</h3><small>Retrospectiva toda segunda de manhã</small></div>
+  </div>
+
+  <!-- ============ 1. AUTOMAÇÃO V2 ============ -->
+  <section class="card">
+    <h2>🤖 Automação Visibill v2 <span class="tag trigger">Webhook (tempo real)</span></h2>
+    <p class="sub">O cérebro do sistema. Recebe cada mensagem que o usuário manda no WhatsApp,
+       entende a intenção com IA e responde — registrando gastos, respondendo dúvidas ou conversando.</p>
+
+    <div class="flow">
+      <span class="step">Mensagem no WhatsApp</span><span class="arrow">→</span>
+      <span class="step">Filtra (ignora grupos/próprias)</span><span class="arrow">→</span>
+      <span class="step">É áudio? Transcreve (Whisper)</span><span class="arrow">→</span>
+      <span class="step">IA interpreta a intenção</span><span class="arrow">→</span>
+      <span class="step">Executa a ação certa</span><span class="arrow">→</span>
+      <span class="step">Responde no WhatsApp</span>
+    </div>
+
+    <p><strong>O que o usuário pode fazer só mandando mensagem (ou áudio):</strong></p>
+    <ul class="feat">
+      <li><span class="k">Registrar gasto/receita</span> — "gastei 50 no mercado", "recebi 2000 de salário". A IA classifica automaticamente em receita, despesa futura ou gasto já pago.</li>
+      <li><span class="k">Parcelar compras</span> — "comprei uma TV em 10x de 300". Cria o parcelamento e já mostra a 1ª parcela.</li>
+      <li><span class="k">Marcar conta como paga</span> — "paguei a conta de luz", "quitei o aluguel".</li>
+      <li><span class="k">Cancelar o último lançamento</span> — "cancela o último", "errei no último".</li>
+      <li><span class="k">Criar meta de economia</span> — "cria meta de 5000 para viagem".</li>
+      <li><span class="k">Criar recorrência mensal</span> — "adiciona academia 150 todo dia 5".</li>
+      <li><span class="k">Consultar finanças</span> — saldo do mês, contas a vencer, status das metas, maiores gastos, comparativo com o mês anterior, gasto por categoria, previsão de quando atinge a meta.</li>
+      <li><span class="k">Conversar livremente (Chat Agent)</span> — tira dúvidas gerais; a IA consegue puxar saldo/contas/metas do usuário e até buscar informação na web (Tavily) quando precisa.</li>
+    </ul>
+
+    <p><strong>Como funciona por dentro:</strong></p>
+    <ul class="feat">
+      <li>Se a mensagem for <strong>áudio</strong>, o áudio é baixado e transcrito por Whisper antes de continuar.</li>
+      <li>A IA (Llama 3.3 via Groq) devolve um <strong>JSON</strong> classificando a mensagem em um dos tipos: <code>income</code>, <code>expense</code>, <code>general</code>, <code>installment</code>, <code>payment</code>, ações (<code>cancel_last</code>, <code>create_goal</code>, <code>create_recurring</code>), <code>consulta</code> ou <code>chat</code>.</li>
+      <li>Conforme o tipo, um "Handler" específico executa a operação no PocketBase e monta a resposta.</li>
+      <li>O histórico das conversas de chat e consultas é salvo para dar contexto às próximas mensagens.</li>
+    </ul>
+  </section>
+
+  <!-- ============ 2. ALERTAS ============ -->
+  <section class="card">
+    <h2>⚠️ Alertas Visibill <span class="tag cron">Diário · 8h (Brasília)</span></h2>
+    <p class="sub">Roda todo dia de manhã, percorre todos os usuários com WhatsApp e envia
+       avisos proativos conforme a situação de cada um.</p>
+
+    <div class="flow">
+      <span class="step">Cron 8h</span><span class="arrow">→</span>
+      <span class="step">Autentica no PocketBase</span><span class="arrow">→</span>
+      <span class="step">Busca usuários</span><span class="arrow">→</span>
+      <span class="step">Gera alertas por usuário</span><span class="arrow">→</span>
+      <span class="step">Envia no WhatsApp</span>
+    </div>
+
+    <table>
+      <tr><th>Alerta</th><th>Quando dispara</th><th>Regra</th></tr>
+      <tr><td>Conta vencendo</td><td>Todo dia</td><td>Contas pendentes que vencem em 2 dias (valor ≥ R$ 200)</td></tr>
+      <tr><td>Saldo insuficiente</td><td>Todo dia</td><td>Conta vence amanhã e o saldo real não cobre — mensagem gerada por IA de forma gentil</td></tr>
+      <tr><td>Fechamento mensal</td><td>Dia 1</td><td>Resultado do mês anterior: receita, gastos e saldo (azul ou vermelho)</td></tr>
+      <tr><td>Brief de segunda</td><td>Segunda-feira</td><td>Todas as contas que vencem na semana (total ≥ R$ 200)</td></tr>
+    </table>
+
+    <div class="msg">⚠️ *Conta vencendo em 2 dias, João:*
+
+• Energia — R$ 245,00
+📅 Vencimento: 06/08</div>
+  </section>
+
+  <!-- ============ 3. PARABÉNS ============ -->
+  <section class="card">
+    <h2>🎉 Parabéns de Meta Visibill <span class="tag cron">Diário · 9h (Brasília)</span></h2>
+    <p class="sub">Acompanha as metas de economia de cada usuário e comemora quando ele
+       cruza marcos importantes — reforço positivo para manter o hábito.</p>
+
+    <div class="flow">
+      <span class="step">Cron 9h</span><span class="arrow">→</span>
+      <span class="step">Busca metas de cada usuário</span><span class="arrow">→</span>
+      <span class="step">Calcula % atingido</span><span class="arrow">→</span>
+      <span class="step">Parabeniza (50% / 100%)</span>
+    </div>
+
+    <ul class="feat">
+      <li>Envia mensagem ao atingir <span class="k">50%</span> da meta (com barra de progresso e quanto falta).</li>
+      <li>Envia mensagem de conquista ao chegar a <span class="k">100%</span>.</li>
+      <li>Usa uma "memória" (<code>staticData</code>) para <strong>nunca repetir</strong> o mesmo parabéns.</li>
+    </ul>
+
+    <div class="msg">🏆 *Incrível, Maria!*
+
+Você concluiu sua meta *Viagem*! 🎊
+██████████ 100%
+💰 R$ 5.000,00 — objetivo atingido!</div>
+  </section>
+
+  <!-- ============ 4. RESUMO SEMANAL ============ -->
+  <section class="card">
+    <h2>☀️ Resumo Semanal Visibill <span class="tag cron">Segunda · 8h (Brasília)</span></h2>
+    <p class="sub">Toda segunda de manhã envia uma retrospectiva da semana anterior + a
+       agenda de contas da semana que começa.</p>
+
+    <div class="flow">
+      <span class="step">Toda segunda 8h</span><span class="arrow">→</span>
+      <span class="step">Autentica + busca usuários</span><span class="arrow">→</span>
+      <span class="step">Soma semana passada</span><span class="arrow">→</span>
+      <span class="step">Lista contas da semana</span><span class="arrow">→</span>
+      <span class="step">Envia resumo</span>
+    </div>
+
+    <ul class="feat">
+      <li>Receitas e gastos <span class="k">pagos</span> nos últimos 7 dias, com saldo da semana.</li>
+      <li>Lista de contas <span class="k">pendentes</span> que vencem nos próximos 7 dias, ordenadas por data.</li>
+      <li>Total a pagar na semana + dica de como registrar gastos.</li>
+    </ul>
+
+    <div class="msg">☀️ *Bom dia, João!*
+Resumo da semana (28/07–04/08):
+
+💚 Receitas: *R$ 3.200,00*
+💸 Gastos:   *R$ 1.150,00*
+✅ Saldo:    *R$ 2.050,00*
+
+📋 *Contas vencendo essa semana:*
+• Internet — R$ 120,00 _(06/08)_</div>
+  </section>
+
+  <!-- ============ INFRA ============ -->
+  <section class="card">
+    <h2>🔧 Infraestrutura compartilhada</h2>
+    <table>
+      <tr><th>Componente</th><th>Papel</th></tr>
+      <tr><td>PocketBase (<code>app.visibill.com.br</code>)</td><td>Banco de dados: usuários, transações, metas</td></tr>
+      <tr><td>Evolution API</td><td>Envio e recebimento de mensagens no WhatsApp</td></tr>
+      <tr><td>Groq · Llama 3.3</td><td>IA que interpreta mensagens e gera respostas naturais</td></tr>
+      <tr><td>Whisper</td><td>Transcrição de mensagens de áudio para texto</td></tr>
+      <tr><td>Tavily</td><td>Busca na web dentro do modo conversa (Chat Agent)</td></tr>
+    </table>
+  </section>
+
+  <!-- ============ AVISO SEGURANÇA ============ -->
+  <section class="note">
+    <h2>🔐 Atenção antes de portar para o Lumers Flow</h2>
+    <p>Os arquivos <code>.json</code> desses workflows contêm <strong>credenciais em texto puro</strong>
+       (senha do PocketBase, chaves da Evolution API, Groq e Tavily). Ao migrar para o novo projeto:</p>
+    <ul class="feat">
+      <li>Troque todas as chaves/senhas e mova para <strong>credenciais do n8n</strong> ou variáveis de ambiente — nunca deixe fixas no código.</li>
+      <li>Ajuste as URLs (PocketBase, Evolution) e a instância do WhatsApp para o ambiente do Lumers Flow.</li>
+      <li>Reveja o schema das coleções (<code>users</code>, <code>transactions</code>, <code>goals</code>) para bater com o banco do Lumers Flow.</li>
+      <li>Reconfigure o webhook da Evolution API para apontar para o novo endpoint do n8n.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Documentação gerada a partir dos 4 workflows em <code>/n8n</code> ·
+    Automação Visibill v2 · Alertas · Parabéns de Meta · Resumo Semanal
+  </footer>
+
+</div>
+</body>
+</html>

@@ -9,7 +9,7 @@ import {
 import { groqChat, geminiGenerate, openaiChat } from '../_lib/ai.js';
 import bcrypt from 'bcryptjs';
 
-const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret', 'n8n_webhook_url', 'n8n_secret', 'ai_enabled', 'ai_groq_key', 'ai_groq_model', 'ai_groq_vision_model', 'ai_gemini_key', 'ai_gemini_model', 'ai_openai_key', 'ai_openai_vision_model', 'ai_openai_audio_model', 'wa_assistant_number', 'wa_signup_enabled'];
+const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret', 'n8n_webhook_url', 'n8n_secret', 'ai_enabled', 'ai_groq_key', 'ai_groq_model', 'ai_groq_vision_model', 'ai_gemini_key', 'ai_gemini_model', 'ai_openai_key', 'ai_openai_vision_model', 'ai_openai_audio_model', 'wa_assistant_number', 'wa_signup_enabled', 'ai_rules', 'chatwoot_enabled', 'chatwoot_url', 'chatwoot_token', 'chatwoot_account_id', 'chatwoot_inbox_id'];
 
 // Normaliza um telefone BR para o formato canônico: 55 + DDD(2) + 9 + 8 dígitos (celular).
 // Insere o 9º dígito quando ausente (regra padrão: local de 10 dígitos cujo assinante
@@ -279,6 +279,51 @@ export default async function handler(req, res) {
             details: { changed },
           });
         }
+        return res.status(200).json({ ok: true });
+      }
+    }
+
+    // ── CRUD /api/admin/users?resource=knowledge  →  base de regras/documentos do assistente
+    if (req.query.resource === 'knowledge') {
+      if (req.method === 'GET') {
+        const { rows } = await db.execute(
+          'SELECT id, title, content, type, tags, enabled, source, created_at, updated_at FROM knowledge_docs ORDER BY updated_at DESC'
+        );
+        return res.status(200).json({ docs: rowsToObjects(rows) });
+      }
+      if (req.method === 'POST') {
+        const { title, content, type, tags, enabled } = req.body || {};
+        if (!title || !String(title).trim()) return res.status(400).json({ error: 'title obrigatório' });
+        const id = crypto.randomUUID();
+        await db.execute({
+          sql: `INSERT INTO knowledge_docs (id, title, content, type, tags, enabled, source, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'panel', datetime('now'), datetime('now'))`,
+          args: [id, String(title).trim(), String(content || ''), type === 'doc' || type === 'faq' ? type : 'rule', String(tags || ''), enabled === false || enabled === 0 ? 0 : 1],
+        });
+        await logSystem({ req, actor: user, action: 'knowledge.create', targetType: 'knowledge_doc', targetLabel: String(title).trim() });
+        return res.status(201).json({ id, ok: true });
+      }
+      if (req.method === 'PUT') {
+        const { id, title, content, type, tags, enabled } = req.body || {};
+        if (!id) return res.status(400).json({ error: 'id obrigatório' });
+        const sets = [], args = [];
+        if (title != null)   { sets.push('title=?');   args.push(String(title)); }
+        if (content != null) { sets.push('content=?'); args.push(String(content)); }
+        if (type != null)    { sets.push('type=?');    args.push(type === 'doc' || type === 'faq' ? type : 'rule'); }
+        if (tags != null)    { sets.push('tags=?');    args.push(String(tags)); }
+        if (enabled != null) { sets.push('enabled=?'); args.push(enabled === false || enabled === 0 ? 0 : 1); }
+        if (!sets.length) return res.status(400).json({ error: 'nada para atualizar' });
+        sets.push("updated_at=datetime('now')");
+        args.push(id);
+        await db.execute({ sql: `UPDATE knowledge_docs SET ${sets.join(', ')} WHERE id=?`, args });
+        await logSystem({ req, actor: user, action: 'knowledge.update', targetType: 'knowledge_doc', targetLabel: id });
+        return res.status(200).json({ ok: true });
+      }
+      if (req.method === 'DELETE') {
+        const id = req.query.id || (req.body || {}).id;
+        if (!id) return res.status(400).json({ error: 'id obrigatório' });
+        await db.execute({ sql: 'DELETE FROM knowledge_docs WHERE id=?', args: [id] });
+        await logSystem({ req, actor: user, action: 'knowledge.delete', targetType: 'knowledge_doc', targetLabel: String(id) });
         return res.status(200).json({ ok: true });
       }
     }
