@@ -521,7 +521,7 @@ function _toggleBlockLock(btn) {
 // ── Render Admin Users ────────────────────────────────────────────────────────
 
 let _adminUsersCache = [];
-let _adminUsersF = { search: '', role: '', status: '', saldo: '', cadastro: '', acesso: '', interaction: '', sort: 'name' };
+let _adminUsersF = { search: '', role: '', saldo: '', cadastro: '', acesso: '', interaction: '', sort: 'name' };
 
 async function renderAdminUsers() {
   const content = document.getElementById('content');
@@ -529,7 +529,7 @@ async function renderAdminUsers() {
   try {
     const stats = await _api('GET', '/admin/users?stats=true');
     _adminUsersCache = stats.users || [];
-    _adminUsersF = { search: '', role: '', status: '', saldo: '', cadastro: '', acesso: '', interaction: '', sort: 'name' };
+    _adminUsersF = { search: '', role: '', saldo: '', cadastro: '', acesso: '', interaction: '', sort: 'name' };
     _renderAdminUsersPage();
   } catch(e) {
     content.innerHTML = `<div class="empty-state"><p style="color:var(--expense)">Erro ao carregar: ${e.message}</p></div>`;
@@ -574,9 +574,6 @@ function _renderAdminUsersPage() {
       ${_adminFilterSelect('shield-check', 'role', [
         ['','Todos os perfis'], ['user','Usuário'], ['admin','Admin'], ['super_admin','Super Admin'],
       ])}
-      ${_adminFilterSelect('activity', 'status', [
-        ['','Qualquer status'], ['active','Ativo (já logou)'], ['inactive','Inativo (nunca logou)'],
-      ])}
       ${_adminFilterSelect('wallet', 'saldo', [
         ['','Qualquer saldo'], ['positive','Saldo positivo'], ['negative','Saldo negativo'], ['zero','Sem movimentação'],
       ])}
@@ -587,7 +584,7 @@ function _renderAdminUsersPage() {
         ['','Qualquer acesso'], ['7d','Acessou em 7 dias'], ['30d','Acessou em 30 dias'], ['old','Mais de 30 dias'], ['never','Nunca acessou'],
       ])}
       ${_adminFilterSelect('message-circle', 'interaction', [
-        ['','Qualquer interação'], ['has','Já interagiu no WhatsApp'], ['none','Nunca interagiu'],
+        ['','Interação WhatsApp'], ['has','Já interagiu no WhatsApp'], ['none','Nunca interagiu'],
       ])}
       ${_adminFilterSelect('arrow-up-down', 'sort', [
         ['name','Ordenar: Nome'], ['recent','Ordenar: Mais recente'], ['oldest','Ordenar: Mais antigo'],
@@ -628,7 +625,7 @@ function _adminUsersSet(key, value) {
 }
 
 function _adminUsersClearFilters() {
-  _adminUsersF = { search: '', role: '', status: '', saldo: '', cadastro: '', acesso: '', interaction: '', sort: 'name' };
+  _adminUsersF = { search: '', role: '', saldo: '', cadastro: '', acesso: '', interaction: '', sort: 'name' };
   _renderAdminUsersPage();
 }
 
@@ -653,10 +650,6 @@ function _adminUsersRefreshList() {
     }
     // Perfil
     if (f.role && role !== f.role) return false;
-    // Status — usa last_active (login ou última transação)
-    const _lastActive = u.last_active || u.last_login;
-    if (f.status === 'active'   && !_lastActive) return false;
-    if (f.status === 'inactive' &&  _lastActive) return false;
     // Saldo
     if (f.saldo === 'positive' && balance <= 0) return false;
     if (f.saldo === 'negative' && balance >= 0) return false;
@@ -708,7 +701,7 @@ function _adminUsersRefreshList() {
   const users  = _adminUsersCache;
   const comWpp = users.filter(u => u.phone).length;
   const comInteracao = users.filter(u => (u.wa_count || 0) > 0).length;
-  const hasFilters = f.search || f.role || f.status || f.saldo || f.cadastro || f.acesso || f.interaction;
+  const hasFilters = f.search || f.role || f.saldo || f.cadastro || f.acesso || f.interaction;
 
   // Chips de filtros ativos
   const activeEl = document.getElementById('admin-users-active-filters');
@@ -735,7 +728,6 @@ function _adminUsersRefreshList() {
 const _ADMIN_FILTER_META = {
   search:      { icon: 'search',         label: v => `Busca: "${v}"` },
   role:        { icon: 'shield-check',   label: v => ({ user:'Perfil: Usuário', admin:'Perfil: Admin', super_admin:'Perfil: Super Admin' }[v] || v) },
-  status:      { icon: 'activity',       label: v => ({ active:'Ativo (já logou)', inactive:'Inativo (nunca logou)' }[v] || v) },
   saldo:       { icon: 'wallet',         label: v => ({ positive:'Saldo positivo', negative:'Saldo negativo', zero:'Sem movimentação' }[v] || v) },
   cadastro:    { icon: 'calendar-plus',  label: v => ({ '7d':'Cadastro: 7 dias', '30d':'Cadastro: 30 dias', '90d':'Cadastro: 90 dias', old:'Cadastro: +90 dias' }[v] || v) },
   acesso:      { icon: 'log-in',         label: v => ({ '7d':'Acesso: 7 dias', '30d':'Acesso: 30 dias', old:'Acesso: +30 dias', never:'Nunca acessou' }[v] || v) },

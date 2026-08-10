@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.38.1] — 2026-08-10
+
+### Melhorado
+- **Filtros de usuários sem redundância** — removido o filtro *Status (Ativo/Inativo por login)*, que era redundante com o filtro *Acesso* (que já cobre "Nunca acessou" e as janelas de acesso). O placeholder do filtro de interação passou a ser *Interação WhatsApp*.
+
+---
+
 ## [v1.38.0] — 2026-08-10
 
 ### Adicionado
