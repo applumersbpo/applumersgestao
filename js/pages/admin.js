@@ -521,7 +521,7 @@ function _toggleBlockLock(btn) {
 // ── Render Admin Users ────────────────────────────────────────────────────────
 
 let _adminUsersCache = [];
-let _adminUsersF = { search: '', role: '', status: '', saldo: '', cadastro: '', acesso: '', sort: 'name' };
+let _adminUsersF = { search: '', role: '', status: '', saldo: '', cadastro: '', acesso: '', interaction: '', sort: 'name' };
 
 async function renderAdminUsers() {
   const content = document.getElementById('content');
@@ -529,7 +529,7 @@ async function renderAdminUsers() {
   try {
     const stats = await _api('GET', '/admin/users?stats=true');
     _adminUsersCache = stats.users || [];
-    _adminUsersF = { search: '', role: '', status: '', saldo: '', cadastro: '', acesso: '', sort: 'name' };
+    _adminUsersF = { search: '', role: '', status: '', saldo: '', cadastro: '', acesso: '', interaction: '', sort: 'name' };
     _renderAdminUsersPage();
   } catch(e) {
     content.innerHTML = `<div class="empty-state"><p style="color:var(--expense)">Erro ao carregar: ${e.message}</p></div>`;
@@ -571,68 +571,55 @@ function _renderAdminUsersPage() {
 
     <!-- Filtros -->
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;padding:12px 14px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:var(--r-md)">
-      <select class="form-control" style="flex:1;min-width:130px;max-width:180px;height:40px;padding:10px;font-size:.83rem"
-        onchange="_adminUsersSet('role',this.value)">
-        <option value="" ${_adminUsersF.role===''?'selected':''}>Todos os perfis</option>
-        <option value="user"        ${_adminUsersF.role==='user'?'selected':''}>Usuário</option>
-        <option value="admin"       ${_adminUsersF.role==='admin'?'selected':''}>Admin</option>
-        <option value="super_admin" ${_adminUsersF.role==='super_admin'?'selected':''}>Super Admin</option>
-      </select>
-
-      <select class="form-control" style="flex:1;min-width:130px;max-width:180px;height:40px;padding:10px;font-size:.83rem"
-        onchange="_adminUsersSet('status',this.value)">
-        <option value="" ${_adminUsersF.status===''?'selected':''}>Qualquer status</option>
-        <option value="active"   ${_adminUsersF.status==='active'?'selected':''}>Ativo (já logou)</option>
-        <option value="inactive" ${_adminUsersF.status==='inactive'?'selected':''}>Inativo (nunca logou)</option>
-      </select>
-
-      <select class="form-control" style="flex:1;min-width:130px;max-width:180px;height:40px;padding:10px;font-size:.83rem"
-        onchange="_adminUsersSet('saldo',this.value)">
-        <option value="" ${_adminUsersF.saldo===''?'selected':''}>Qualquer saldo</option>
-        <option value="positive" ${_adminUsersF.saldo==='positive'?'selected':''}>Saldo positivo</option>
-        <option value="negative" ${_adminUsersF.saldo==='negative'?'selected':''}>Saldo negativo</option>
-        <option value="zero"     ${_adminUsersF.saldo==='zero'?'selected':''}>Sem movimentação</option>
-      </select>
-
-      <select class="form-control" style="flex:1;min-width:140px;max-width:190px;height:40px;padding:10px;font-size:.83rem"
-        onchange="_adminUsersSet('cadastro',this.value)">
-        <option value="" ${_adminUsersF.cadastro===''?'selected':''}>Qualquer cadastro</option>
-        <option value="7d"  ${_adminUsersF.cadastro==='7d'?'selected':''}>Últimos 7 dias</option>
-        <option value="30d" ${_adminUsersF.cadastro==='30d'?'selected':''}>Últimos 30 dias</option>
-        <option value="90d" ${_adminUsersF.cadastro==='90d'?'selected':''}>Últimos 90 dias</option>
-        <option value="old" ${_adminUsersF.cadastro==='old'?'selected':''}>Mais de 90 dias</option>
-      </select>
-
-      <select class="form-control" style="flex:1;min-width:140px;max-width:190px;height:40px;padding:10px;font-size:.83rem"
-        onchange="_adminUsersSet('acesso',this.value)">
-        <option value="" ${_adminUsersF.acesso===''?'selected':''}>Qualquer acesso</option>
-        <option value="7d"   ${_adminUsersF.acesso==='7d'?'selected':''}>Acessou em 7 dias</option>
-        <option value="30d"  ${_adminUsersF.acesso==='30d'?'selected':''}>Acessou em 30 dias</option>
-        <option value="old"  ${_adminUsersF.acesso==='old'?'selected':''}>Mais de 30 dias</option>
-        <option value="never"${_adminUsersF.acesso==='never'?'selected':''}>Nunca acessou</option>
-      </select>
-
-      <select class="form-control" style="flex:1;min-width:130px;max-width:170px;height:40px;padding:10px;font-size:.83rem"
-        onchange="_adminUsersSet('sort',this.value)">
-        <option value="name"    ${_adminUsersF.sort==='name'?'selected':''}>Ordenar: Nome</option>
-        <option value="recent"  ${_adminUsersF.sort==='recent'?'selected':''}>Ordenar: Mais recente</option>
-        <option value="oldest"  ${_adminUsersF.sort==='oldest'?'selected':''}>Ordenar: Mais antigo</option>
-        <option value="balance" ${_adminUsersF.sort==='balance'?'selected':''}>Ordenar: Saldo</option>
-        <option value="login"   ${_adminUsersF.sort==='login'?'selected':''}>Ordenar: Último acesso</option>
-        <option value="tx"      ${_adminUsersF.sort==='tx'?'selected':''}>Ordenar: Transações</option>
-      </select>
+      ${_adminFilterSelect('shield-check', 'role', [
+        ['','Todos os perfis'], ['user','Usuário'], ['admin','Admin'], ['super_admin','Super Admin'],
+      ])}
+      ${_adminFilterSelect('activity', 'status', [
+        ['','Qualquer status'], ['active','Ativo (já logou)'], ['inactive','Inativo (nunca logou)'],
+      ])}
+      ${_adminFilterSelect('wallet', 'saldo', [
+        ['','Qualquer saldo'], ['positive','Saldo positivo'], ['negative','Saldo negativo'], ['zero','Sem movimentação'],
+      ])}
+      ${_adminFilterSelect('calendar-plus', 'cadastro', [
+        ['','Qualquer cadastro'], ['7d','Últimos 7 dias'], ['30d','Últimos 30 dias'], ['90d','Últimos 90 dias'], ['old','Mais de 90 dias'],
+      ])}
+      ${_adminFilterSelect('log-in', 'acesso', [
+        ['','Qualquer acesso'], ['7d','Acessou em 7 dias'], ['30d','Acessou em 30 dias'], ['old','Mais de 30 dias'], ['never','Nunca acessou'],
+      ])}
+      ${_adminFilterSelect('message-circle', 'interaction', [
+        ['','Qualquer interação'], ['has','Já interagiu no WhatsApp'], ['none','Nunca interagiu'],
+      ])}
+      ${_adminFilterSelect('arrow-up-down', 'sort', [
+        ['name','Ordenar: Nome'], ['recent','Ordenar: Mais recente'], ['oldest','Ordenar: Mais antigo'],
+        ['balance','Ordenar: Saldo'], ['login','Ordenar: Último acesso'], ['tx','Ordenar: Transações'], ['wa','Ordenar: Interações WhatsApp'],
+      ])}
 
       <button class="btn btn-sm btn-ghost" style="height:40px;padding:10px;white-space:nowrap" onclick="_adminUsersClearFilters()">
         ${icon('x',13)} Limpar filtros
       </button>
     </div>
 
-    <!-- Contadores + lista -->
+    <!-- Filtros ativos + Contadores + lista -->
+    <div id="admin-users-active-filters"></div>
     <div id="admin-users-list"></div>
   `;
 
   _adminUsersRefreshList();
   if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// Monta um <select> de filtro com ícone à esquerda para identificação visual.
+function _adminFilterSelect(iconName, key, options) {
+  const cur = _adminUsersF[key] || '';
+  const opts = options.map(([v, label]) =>
+    `<option value="${v}" ${cur === v ? 'selected' : ''}>${label}</option>`
+  ).join('');
+  return `
+    <div style="position:relative;flex:1;min-width:150px;max-width:200px">
+      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text-muted);display:flex;align-items:center">${icon(iconName, 14)}</span>
+      <select class="form-control" style="width:100%;height:40px;padding:10px 10px 10px 32px;font-size:.83rem"
+        onchange="_adminUsersSet('${key}', this.value)">${opts}</select>
+    </div>`;
 }
 
 function _adminUsersSet(key, value) {
@@ -641,7 +628,7 @@ function _adminUsersSet(key, value) {
 }
 
 function _adminUsersClearFilters() {
-  _adminUsersF = { search: '', role: '', status: '', saldo: '', cadastro: '', acesso: '', sort: 'name' };
+  _adminUsersF = { search: '', role: '', status: '', saldo: '', cadastro: '', acesso: '', interaction: '', sort: 'name' };
   _renderAdminUsersPage();
 }
 
@@ -692,6 +679,12 @@ function _adminUsersRefreshList() {
       if (f.acesso === '30d' && login < daysAgo(30))      return false;
       if (f.acesso === 'old' && login >= daysAgo(30))     return false;
     }
+    // Interações no WhatsApp
+    if (f.interaction) {
+      const waCount = u.wa_count || 0;
+      if (f.interaction === 'has'  && waCount <= 0) return false;
+      if (f.interaction === 'none' && waCount >  0) return false;
+    }
     return true;
   });
 
@@ -708,17 +701,24 @@ function _adminUsersRefreshList() {
     if (f.sort === 'balance') return balB - balA;
     if (f.sort === 'login')   return new Date(b.last_active||b.last_login||0) - new Date(a.last_active||a.last_login||0);
     if (f.sort === 'tx')      return (b.tx_count||0) - (a.tx_count||0);
+    if (f.sort === 'wa')      return (b.wa_count||0) - (a.wa_count||0);
     return (a.name||a.email).localeCompare(b.name||b.email, 'pt');
   });
 
   const users  = _adminUsersCache;
   const comWpp = users.filter(u => u.phone).length;
-  const hasFilters = f.search || f.role || f.status || f.saldo || f.cadastro || f.acesso;
+  const comInteracao = users.filter(u => (u.wa_count || 0) > 0).length;
+  const hasFilters = f.search || f.role || f.status || f.saldo || f.cadastro || f.acesso || f.interaction;
+
+  // Chips de filtros ativos
+  const activeEl = document.getElementById('admin-users-active-filters');
+  if (activeEl) activeEl.innerHTML = _adminUsersActiveChips();
 
   listEl.innerHTML = `
     <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
       <span style="font-size:.82rem;color:var(--text-muted)">${icon('users',13)} <strong>${users.length}</strong> total</span>
       <span style="font-size:.82rem;color:var(--income-text)">${icon('message-circle',13)} <strong>${comWpp}</strong> com WhatsApp</span>
+      <span style="font-size:.82rem;color:var(--primary)">${icon('message-square-text',13)} <strong>${comInteracao}</strong> com interação</span>
       ${hasFilters ? `<span style="font-size:.82rem;color:var(--warning-text);background:var(--warning-light);padding:2px 8px;border-radius:10px">${icon('filter',12)} ${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}</span>` : ''}
     </div>
     ${filtered.length === 0
@@ -731,8 +731,54 @@ function _adminUsersRefreshList() {
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
+// Rótulos e ícones dos filtros para os chips de "filtro ativo".
+const _ADMIN_FILTER_META = {
+  search:      { icon: 'search',         label: v => `Busca: "${v}"` },
+  role:        { icon: 'shield-check',   label: v => ({ user:'Perfil: Usuário', admin:'Perfil: Admin', super_admin:'Perfil: Super Admin' }[v] || v) },
+  status:      { icon: 'activity',       label: v => ({ active:'Ativo (já logou)', inactive:'Inativo (nunca logou)' }[v] || v) },
+  saldo:       { icon: 'wallet',         label: v => ({ positive:'Saldo positivo', negative:'Saldo negativo', zero:'Sem movimentação' }[v] || v) },
+  cadastro:    { icon: 'calendar-plus',  label: v => ({ '7d':'Cadastro: 7 dias', '30d':'Cadastro: 30 dias', '90d':'Cadastro: 90 dias', old:'Cadastro: +90 dias' }[v] || v) },
+  acesso:      { icon: 'log-in',         label: v => ({ '7d':'Acesso: 7 dias', '30d':'Acesso: 30 dias', old:'Acesso: +30 dias', never:'Nunca acessou' }[v] || v) },
+  interaction: { icon: 'message-circle', label: v => ({ has:'Já interagiu no WhatsApp', none:'Nunca interagiu' }[v] || v) },
+};
+
+function _adminUsersActiveChips() {
+  const f = _adminUsersF;
+  const keys = ['search', 'role', 'status', 'saldo', 'cadastro', 'acesso', 'interaction'];
+  const chips = keys.filter(k => f[k]).map(k => {
+    const meta = _ADMIN_FILTER_META[k];
+    const label = meta.label(f[k]);
+    return `
+      <span style="display:inline-flex;align-items:center;gap:5px;font-size:.76rem;font-weight:600;color:var(--primary);
+        background:var(--primary-light);border:1px solid var(--primary);border-radius:999px;padding:3px 6px 3px 10px">
+        ${icon(meta.icon, 12)} ${_escHtml(String(label))}
+        <button onclick="_adminUsersClearOne('${k}')" title="Remover filtro"
+          style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border:none;border-radius:50%;
+          background:rgba(0,0,0,.08);color:inherit;cursor:pointer;padding:0">${icon('x', 10)}</button>
+      </span>`;
+  });
+  if (chips.length === 0) return '';
+  return `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px">
+      <span style="font-size:.75rem;color:var(--text-muted);font-weight:600;display:inline-flex;align-items:center;gap:4px">${icon('filter', 12)} Filtros ativos:</span>
+      ${chips.join('')}
+      <button onclick="_adminUsersClearFilters()" style="font-size:.74rem;color:var(--text-muted);background:none;border:none;cursor:pointer;text-decoration:underline;padding:2px 4px">limpar todos</button>
+    </div>`;
+}
+
+// Remove um único filtro (o sort não é limpo aqui — é ordenação, não filtro).
+function _adminUsersClearOne(key) {
+  _adminUsersF[key] = '';
+  _renderAdminUsersPage();
+}
+
 function _adminUsersFilterInput(term) {
   _adminUsersSet('search', term);
+}
+
+function _adminUsersFilterInteracted() {
+  _adminUsersF.interaction = 'has';
+  _renderAdminUsersPage();
 }
 
 function _adminRoleBadge(role) {
@@ -753,6 +799,7 @@ function _adminUserRow(u) {
   const balance      = (u.total_income || 0) - (u.total_expense || 0);
   const balanceColor = balance >= 0 ? 'var(--income-text)' : 'var(--expense)';
   const role         = u.role || (u.is_admin ? 'admin' : 'user');
+  const waCount      = u.wa_count || 0;
 
   return `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;transition:box-shadow .15s"
@@ -788,10 +835,12 @@ function _adminUserRow(u) {
             <div style="font-size:.72rem;color:var(--text-muted)">Saldo</div>
             <div style="font-size:.88rem;font-weight:700;color:${balanceColor}">${balance >= 0 ? '+' : ''}${fmt(balance)}</div>
           </div>
-          <div style="text-align:center;padding:0 12px;border-right:1px solid var(--border)">
+          <div style="text-align:center;padding:0 12px;border-right:1px solid var(--border);${waCount > 0 ? 'cursor:pointer' : ''}"
+               ${waCount > 0 ? `onclick="_adminUsersFilterInteracted()" title="Filtrar quem já interagiu no WhatsApp"` : ''}>
             <div style="font-size:.72rem;color:var(--text-muted)">WhatsApp</div>
-            <div style="font-size:.8rem;font-weight:600;color:${phoneOk ? 'var(--income-text)' : phone ? 'var(--warning)' : 'var(--text-muted)'}">
-              ${phone ? (phoneOk ? '✓ OK' : '⚠ sem DDI') : '—'}
+            <div style="display:flex;align-items:center;justify-content:center;gap:5px;font-size:.8rem;font-weight:600;color:${phoneOk ? 'var(--income-text)' : phone ? 'var(--warning)' : 'var(--text-muted)'}">
+              <span>${phone ? (phoneOk ? '✓ OK' : '⚠ sem DDI') : '—'}</span>
+              ${waCount > 0 ? `<span style="display:inline-flex;align-items:center;gap:2px;font-size:.7rem;font-weight:700;padding:1px 6px;border-radius:9px;background:var(--primary-light);color:var(--primary)">${icon('message-circle',10)} ${waCount}</span>` : ''}
             </div>
           </div>
           <div style="text-align:center;padding:0 12px">
@@ -830,6 +879,7 @@ function _adminUserRow(u) {
         <span style="font-size:.78rem;color:${phoneOk ? 'var(--income-text)' : phone ? 'var(--warning)' : 'var(--text-muted)'}">
           ${phone ? (phoneOk ? '✓ WhatsApp' : '⚠ sem DDI') : 'Sem WhatsApp'}
         </span>
+        ${waCount > 0 ? `<span style="display:inline-flex;align-items:center;gap:2px;font-size:.72rem;font-weight:700;color:var(--primary)">${icon('message-circle',10)} ${waCount}</span>` : ''}
         <span style="font-size:.78rem;color:var(--text-muted);margin-left:auto">${(u.last_active||u.last_login) ? fmtDateTime(u.last_active||u.last_login) : 'Nunca logou'}</span>
       </div>
     </div>`;

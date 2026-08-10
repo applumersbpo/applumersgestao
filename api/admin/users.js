@@ -360,7 +360,8 @@ export default async function handler(req, res) {
             WHEN MAX(t.created_at) IS NULL THEN NULLIF(u.last_login,'')
             WHEN u.last_login > MAX(t.created_at) THEN u.last_login
             ELSE MAX(t.created_at)
-          END as last_active
+          END as last_active,
+          (SELECT COUNT(*) FROM wa_interactions wi WHERE wi.user_id = u.id) as wa_count
           FROM users u
           LEFT JOIN transactions t ON t.user_id=u.id
           GROUP BY u.id

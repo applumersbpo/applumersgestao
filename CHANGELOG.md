@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.37.1] — 2026-08-10
+
+### Adicionado
+- **Volume de interações no WhatsApp (painel de usuários)** — na lista de usuários (Sistema → Usuários), a coluna WhatsApp passa a exibir, ao lado do status, um badge com o número de interações que o usuário já teve pelo assistente. Clicar no badge filtra rapidamente quem já interagiu.
+- **Filtro por interação no WhatsApp** — novo filtro *Interação* (já interagiu / nunca interagiu) e nova ordenação por volume de interações.
+
+### Melhorado
+- **Filtros com ícones e filtros ativos visíveis** — os seletores de filtro ganharam ícones para identificação rápida e, quando há filtros aplicados, eles aparecem como chips removíveis acima da lista (com opção de limpar individualmente ou todos).
+
+---
+
 ## [v1.37.0] — 2026-08-10
 
 ### Adicionado
