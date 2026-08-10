@@ -361,7 +361,8 @@ export default async function handler(req, res) {
             WHEN u.last_login > MAX(t.created_at) THEN u.last_login
             ELSE MAX(t.created_at)
           END as last_active,
-          (SELECT COUNT(*) FROM wa_interactions wi WHERE wi.user_id = u.id) as wa_count
+          (SELECT COUNT(*) FROM wa_interactions wi WHERE wi.user_id = u.id) as wa_count,
+          (SELECT np.value FROM user_notification_prefs np WHERE np.user_id = u.id AND np.notif_key = 'wa_notify' LIMIT 1) as wa_notify
           FROM users u
           LEFT JOIN transactions t ON t.user_id=u.id
           GROUP BY u.id

@@ -776,11 +776,6 @@ function _adminUsersFilterInput(term) {
   _adminUsersSet('search', term);
 }
 
-function _adminUsersFilterInteracted() {
-  _adminUsersF.interaction = 'has';
-  _renderAdminUsersPage();
-}
-
 function _adminRoleBadge(role) {
   const map = {
     super_admin: { label: 'Super Admin', color: '#dc2626', bg: '#fef2f2' },
@@ -789,6 +784,62 @@ function _adminRoleBadge(role) {
   };
   const r = map[role] || map.user;
   return `<span style="font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:10px;background:${r.bg};color:${r.color};white-space:nowrap">${r.label}</span>`;
+}
+
+// Tipos de notificação que o usuário recebe conforme o modo escolhido (wa_notify).
+// Espelha a lógica do dispatcher: resumo (17h) e/ou lembrete de contas a pagar (8h).
+function _waNotifyInfo(mode) {
+  const m = (mode == null || mode === '') ? 'daily' : String(mode);
+  const RESUMO_DIA = { icon: 'file-text',    label: 'Resumo diário',    detail: 'todo dia às 17h' };
+  const RESUMO_SEM = { icon: 'calendar',     label: 'Resumo semanal',   detail: 'segunda-feira às 17h' };
+  const RESUMO_QUI = { icon: 'calendar',     label: 'Resumo quinzenal', detail: 'a cada 15 dias, segunda às 17h' };
+  const CONTAS     = { icon: 'alarm-clock',  label: 'Contas a pagar',   detail: 'todo dia às 8h' };
+  const map = {
+    daily:      { title: 'Tudo',              on: true,  types: [RESUMO_DIA, CONTAS] },
+    weekly:     { title: 'Resumo semanal',    on: true,  types: [RESUMO_SEM] },
+    biweekly:   { title: 'Resumo quinzenal',  on: true,  types: [RESUMO_QUI] },
+    bills_only: { title: 'Somente contas',    on: true,  types: [CONTAS] },
+    off:        { title: 'Nenhuma',           on: false, types: [] },
+  };
+  return map[m] || map.daily;
+}
+
+function _adminNotifTooltipHtml(u) {
+  const info = _waNotifyInfo(u.wa_notify);
+  const rows = info.types.length
+    ? info.types.map(t => `
+        <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
+          <span style="color:var(--primary);flex-shrink:0;margin-top:1px">${icon(t.icon,14)}</span>
+          <span style="line-height:1.25"><span style="font-weight:600;color:var(--text)">${t.label}</span><br>
+            <span style="font-size:.72rem;color:var(--text-muted)">${t.detail}</span></span>
+        </div>`).join('')
+    : `<div style="padding:8px 0;border-top:1px solid var(--border);font-size:.78rem;color:var(--text-muted)">
+         O usuário optou por não receber notificações no WhatsApp.
+       </div>`;
+  return `
+    <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);font-weight:700">Notificações no WhatsApp</div>
+    <div style="display:flex;align-items:center;gap:6px;margin:4px 0 2px;font-size:.85rem;font-weight:700;color:${info.on ? 'var(--primary)' : 'var(--text-muted)'}">
+      ${icon(info.on ? 'bell' : 'bell-off',14)} ${info.title}
+    </div>
+    ${rows}`;
+}
+
+function _adminNotifTooltipToggle(btn, ev) {
+  if (ev) ev.stopPropagation();
+  const tip = btn.parentElement.querySelector('.admin-notif-tip');
+  if (!tip) return;
+  const isOpen = tip.style.display === 'block';
+  document.querySelectorAll('.admin-notif-tip').forEach(t => { t.style.display = 'none'; });
+  if (!isOpen) {
+    tip.style.display = 'block';
+    const close = (e) => {
+      if (!btn.parentElement.contains(e.target)) {
+        tip.style.display = 'none';
+        document.removeEventListener('click', close);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', close), 0);
+  }
 }
 
 function _adminUserRow(u) {
@@ -835,12 +886,12 @@ function _adminUserRow(u) {
             <div style="font-size:.72rem;color:var(--text-muted)">Saldo</div>
             <div style="font-size:.88rem;font-weight:700;color:${balanceColor}">${balance >= 0 ? '+' : ''}${fmt(balance)}</div>
           </div>
-          <div style="text-align:center;padding:0 12px;border-right:1px solid var(--border);${waCount > 0 ? 'cursor:pointer' : ''}"
-               ${waCount > 0 ? `onclick="_adminUsersFilterInteracted()" title="Filtrar quem já interagiu no WhatsApp"` : ''}>
+          <div style="text-align:center;padding:0 12px;border-right:1px solid var(--border)">
             <div style="font-size:.72rem;color:var(--text-muted)">WhatsApp</div>
             <div style="display:flex;align-items:center;justify-content:center;gap:5px;font-size:.8rem;font-weight:600;color:${phoneOk ? 'var(--income-text)' : phone ? 'var(--warning)' : 'var(--text-muted)'}">
               <span>${phone ? (phoneOk ? '✓ OK' : '⚠ sem DDI') : '—'}</span>
-              ${waCount > 0 ? `<span style="display:inline-flex;align-items:center;gap:2px;font-size:.7rem;font-weight:700;padding:1px 6px;border-radius:9px;background:var(--primary-light);color:var(--primary)">${icon('message-circle',10)} ${waCount}</span>` : ''}
+              ${waCount > 0 ? `<button type="button" onclick="openUserWaHistoryModal('${u.id}','${_escHtml(displayName).replace(/'/g,"\\'")}')" title="Ver histórico de mensagens no WhatsApp"
+                style="display:inline-flex;align-items:center;gap:2px;font-size:.7rem;font-weight:700;padding:1px 6px;border:none;cursor:pointer;border-radius:9px;background:var(--primary-light);color:var(--primary)">${icon('message-circle',10)} ${waCount}</button>` : ''}
             </div>
           </div>
           <div style="text-align:center;padding:0 12px">
@@ -851,6 +902,17 @@ function _adminUserRow(u) {
 
         <!-- Ações -->
         <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;margin-left:4px">
+          <div style="position:relative" onmouseenter="this.querySelector('.admin-notif-tip').style.display='block'" onmouseleave="this.querySelector('.admin-notif-tip').style.display='none'">
+            <button class="btn btn-sm btn-icon btn-ghost" style="color:${_waNotifyInfo(u.wa_notify).on ? 'var(--primary)' : 'var(--text-muted)'}"
+              onclick="_adminNotifTooltipToggle(this,event)" title="Notificações disponíveis">
+              ${icon(_waNotifyInfo(u.wa_notify).on ? 'bell' : 'bell-off',14)}
+            </button>
+            <div class="admin-notif-tip" style="display:none;position:absolute;top:calc(100% + 6px);right:0;z-index:50;width:260px;
+              background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:0 8px 28px rgba(0,0,0,.16);
+              padding:10px 12px;text-align:left;cursor:default" onclick="event.stopPropagation()">
+              ${_adminNotifTooltipHtml(u)}
+            </div>
+          </div>
           <button class="btn btn-sm btn-icon btn-ghost" style="color:var(--primary)"
             onclick="impersonateUser('${u.id}',this)" title="Acessar conta (somente leitura)">
             ${icon('eye',14)}
@@ -879,7 +941,8 @@ function _adminUserRow(u) {
         <span style="font-size:.78rem;color:${phoneOk ? 'var(--income-text)' : phone ? 'var(--warning)' : 'var(--text-muted)'}">
           ${phone ? (phoneOk ? '✓ WhatsApp' : '⚠ sem DDI') : 'Sem WhatsApp'}
         </span>
-        ${waCount > 0 ? `<span style="display:inline-flex;align-items:center;gap:2px;font-size:.72rem;font-weight:700;color:var(--primary)">${icon('message-circle',10)} ${waCount}</span>` : ''}
+        ${waCount > 0 ? `<button type="button" onclick="openUserWaHistoryModal('${u.id}','${_escHtml(displayName).replace(/'/g,"\\'")}')" title="Ver histórico de mensagens no WhatsApp"
+          style="display:inline-flex;align-items:center;gap:2px;font-size:.72rem;font-weight:700;color:var(--primary);background:none;border:none;padding:0;cursor:pointer">${icon('message-circle',10)} ${waCount}</button>` : ''}
         <span style="font-size:.78rem;color:var(--text-muted);margin-left:auto">${(u.last_active||u.last_login) ? fmtDateTime(u.last_active||u.last_login) : 'Nunca logou'}</span>
       </div>
     </div>`;
@@ -1107,6 +1170,70 @@ async function renderAdminUserProfile(userId) {
       </button>
       <div class="empty-state"><p style="color:var(--expense)">Erro ao carregar perfil: ${_escHtml(e.message)}</p></div>`;
     if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+}
+
+// Abre o histórico de mensagens do WhatsApp de um usuário específico em um modal,
+// acionado pelo badge de interações na lista de usuários.
+async function openUserWaHistoryModal(userId, userName) {
+  showModal(`
+    <div class="modal-backdrop">
+      <div class="modal" style="max-width:820px;width:calc(100% - 32px);max-height:92vh;display:flex;flex-direction:column">
+        <div class="modal-header" style="flex-shrink:0">
+          <div class="modal-title">${icon('message-circle', 16)} Histórico WhatsApp${userName ? ' — ' + _escHtml(userName) : ''}</div>
+          <button class="btn btn-icon btn-ghost" onclick="closeModal()">${icon('x', 16)}</button>
+        </div>
+        <div class="modal-body" style="overflow-y:auto;flex:1" id="user-wa-history-body">
+          <div style="text-align:center;padding:32px;color:var(--text-muted)">
+            <div class="spinner" style="margin:0 auto 12px"></div>
+            Carregando histórico…
+          </div>
+        </div>
+      </div>
+    </div>`);
+
+  const bodyEl = document.getElementById('user-wa-history-body');
+  try {
+    const data = await _api('GET', `/admin/users?resource=wa-interactions&user_id=${encodeURIComponent(userId)}&limit=100`);
+    const logs  = data.logs  || [];
+    const total = data.total || 0;
+    if (!bodyEl) return;
+    if (!logs.length) {
+      bodyEl.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-muted)">
+        ${icon('inbox',32)}<p style="margin-top:12px">Nenhuma interação via WhatsApp registrada.</p></div>`;
+      if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [bodyEl] });
+      return;
+    }
+    const fmtD = d => {
+      if (!d) return '—';
+      const dt = new Date(d);
+      return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    };
+    bodyEl.innerHTML = `
+      <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">
+        ${total} interaç${total !== 1 ? 'ões' : 'ão'} registrada${total !== 1 ? 's' : ''} no WhatsApp
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${logs.map(l => `
+          <div style="border:1px solid var(--border);border-radius:var(--r-lg);padding:10px 12px;background:var(--surface)">
+            <div style="display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--text-muted);margin-bottom:6px">
+              ${icon((typeof _WA_TYPE_ICON !== 'undefined' && _WA_TYPE_ICON[l.in_type]) || 'type', 12)}
+              <span>${_escHtml(l.in_type || 'text')}</span>
+              <span style="margin-left:auto">${fmtD(l.created_at)}</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:6px">
+              <span style="flex-shrink:0;font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:8px;background:var(--bg-subtle);color:var(--text-muted)">Usuário</span>
+              <div style="font-size:.85rem;line-height:1.4;word-break:break-word">${_escHtml(l.in_text || '—')}</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:flex-start">
+              <span style="flex-shrink:0;font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:8px;background:var(--primary-light);color:var(--primary)">Assistente</span>
+              <div style="font-size:.85rem;line-height:1.4;word-break:break-word;color:var(--text)">${_escHtml(l.out_text || '—')}</div>
+            </div>
+          </div>`).join('')}
+      </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [bodyEl] });
+  } catch (e) {
+    if (bodyEl) bodyEl.innerHTML = `<div style="padding:24px;color:var(--text-muted);font-size:.85rem">Não foi possível carregar o histórico: ${_escHtml(e.message)}</div>`;
   }
 }
 

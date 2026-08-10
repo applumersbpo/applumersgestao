@@ -5,6 +5,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.38.0] — 2026-08-10
+
+### Adicionado
+- **Ícone de notificações por usuário (painel)** — cada usuário na lista ganhou um sino que, ao passar o mouse ou clicar, abre uma tooltip personalizada mostrando quais notificações no WhatsApp estão ativas para aquele usuário (resumo diário/semanal/quinzenal e/ou contas a pagar, com horários), ou indica quando ele optou por não receber nenhuma.
+- **Histórico de mensagens do WhatsApp por usuário** — o badge com o número de interações agora é clicável e abre um modal com o histórico completo das conversas do assistente com aquele usuário (mensagem enviada e resposta).
+
+---
+
 ## [v1.37.1] — 2026-08-10
 
 ### Adicionado
