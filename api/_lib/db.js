@@ -953,6 +953,45 @@ export function rowsToObjects(rows) {
   });
 }
 
+// Gera todas as variações plausíveis de um telefone brasileiro (com/sem código
+// do país 55, com/sem o 9º dígito) para casar números salvos em formatos
+// diferentes dos que chegam de fora (ex.: Chatwoot manda +55DDD9XXXXXXXX e o
+// banco pode ter DDDXXXXXXXX). Espelha a lógica do assistente local.
+export function brazilPhoneVariants(raw) {
+  const d = String(raw || '').replace(/\D/g, '');
+  const set = new Set();
+  if (!d) return [];
+  set.add(d);
+  let local = d;
+  if (local.length > 11 && local.startsWith('55')) local = local.slice(2);
+  set.add(local);
+  if (local.length >= 10) {
+    const ddd = local.slice(0, 2);
+    const rest = local.slice(2);
+    let with9, without9;
+    if (rest.length === 9 && rest[0] === '9') { with9 = rest; without9 = rest.slice(1); }
+    else if (rest.length === 8) { without9 = rest; with9 = '9' + rest; }
+    else { with9 = rest; without9 = rest; }
+    for (const r of [with9, without9]) { set.add(ddd + r); set.add('55' + ddd + r); }
+  }
+  return [...set].filter(Boolean);
+}
+
+// Resolve um usuário pelo telefone tolerando formatação e variações do 9º dígito.
+// Normaliza a coluna phone no SQL para casar mesmo com números salvos formatados.
+export async function findUserByPhone(phone) {
+  const variants = brazilPhoneVariants(phone);
+  if (!variants.length) return null;
+  const db = getDb();
+  const norm = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'(',''),')',''),'-',''),'+',''),'.','')";
+  const placeholders = variants.map(() => '?').join(',');
+  const { rows } = await db.execute({
+    sql: `SELECT id, email, name, phone FROM users WHERE ${norm} IN (${placeholders}) LIMIT 1`,
+    args: variants,
+  });
+  return rowsToObjects(rows)[0] || null;
+}
+
 // ── Preferência de notificação no WhatsApp (por usuário) ─────────────────────
 // Modo único e mutuamente exclusivo, guardado em user_notification_prefs
 // (notif_key='wa_notify', value=modo, enabled=0 só quando 'off').

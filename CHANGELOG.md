@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.38.2] — 2026-08-10
+
+### Corrigido
+- **Identificação de usuário no cérebro n8n (Chatwoot)** — a ponte `api/n8n.js` passou a resolver o usuário pelo telefone com tolerância a formatação e ao 9º dígito brasileiro (com/sem `+55`, com/sem o `9`), igual ao assistente local. Antes usava igualdade exata, o que fazia o Chatwoot (que envia `+55DDD9XXXXXXXX`) não casar com números salvos em outro formato, tratando o cliente como desconhecido nas ops `userByPhone` e `getUserContext`.
+
+---
+
 ## [v1.38.1] — 2026-08-10
 
 ### Melhorado

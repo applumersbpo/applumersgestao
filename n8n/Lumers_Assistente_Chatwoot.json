@@ -1,0 +1,499 @@
+{
+  "name": "Lumers - Assistente Chatwoot (referencia)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chatwoot-lumers",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "node-01",
+      "name": "Webhook Chatwoot",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -120,
+        300
+      ],
+      "webhookId": "chatwoot-lumers-ref"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.body.event }}",
+              "rightValue": "message_created",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.body.message_type }}",
+              "rightValue": "incoming",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-02",
+      "name": "So mensagens recebidas",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "baseUrl",
+              "value": "https://app.lumersbpo.com.br/api/n8n",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "secret",
+              "value": "SUBSTITUA_PELO_SEU_N8N_SECRET",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "phone",
+              "value": "={{ (($json.body.sender && $json.body.sender.phone_number) ? $json.body.sender.phone_number : '').replace(/\\D/g, '') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-03",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').item.json.baseUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $('Config').item.json.secret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ op: 'getConnections' }) }}",
+        "options": {}
+      },
+      "id": "node-04",
+      "name": "getConnections",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').item.json.baseUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $('Config').item.json.secret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ op: 'userByPhone', phone: $('Config').item.json.phone }) }}",
+        "options": {}
+      },
+      "id": "node-05",
+      "name": "userByPhone",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        760,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').item.json.baseUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $('Config').item.json.secret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ op: 'getUserContext', phone: $('Config').item.json.phone, userId: (($('userByPhone').item.json.user) || {}).id || '' }) }}",
+        "options": {}
+      },
+      "id": "node-06",
+      "name": "getUserContext",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        980,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').item.json.baseUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $('Config').item.json.secret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ op: 'getRules' }) }}",
+        "options": {}
+      },
+      "id": "node-07",
+      "name": "getRules",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const conn = $('getConnections').item.json;\nconst rules = $('getRules').item.json;\nconst ctx = $('getUserContext').item.json;\nconst userRes = $('userByPhone').item.json;\nconst body = $('Webhook Chatwoot').item.json.body;\nconst NL = String.fromCharCode(10);\nconst userMsg = body.content || '';\nconst u = userRes.user || null;\nconst userName = (u && u.name) || (body.sender && body.sender.name) || 'cliente';\nconst rulesText = rules.rules || '';\nconst docs = (rules.docs || []).map(d => '# ' + d.title + NL + (d.content || '')).join(NL + NL);\nconst pending = (ctx.pending_bills || []).map(b => '- id:' + b.id + ' ' + b.name + ' R$' + b.amount + ' venc ' + b.due_date).join(NL);\nconst cats = (ctx.categories || []).map(c => c.name + '(' + c.type + ')').join(', ');\nconst accts = (ctx.accounts || []).map(a => a.name).join(', ');\nconst mt = ctx.month_totals || {};\nconst lines = [];\nlines.push('Voce e o assistente financeiro da Lumers. Seja caloroso, humano e objetivo. Responda em pt-BR e entenda a intencao do usuario.');\nif (rulesText) lines.push('REGRAS DO ADMIN:' + NL + rulesText);\nif (docs) lines.push('BASE DE CONHECIMENTO:' + NL + docs);\nlines.push('CLIENTE: ' + userName + ' (userId: ' + (u ? u.id : 'desconhecido') + ')');\nlines.push('CONTAS: ' + (accts || 'nenhuma'));\nlines.push('CATEGORIAS: ' + (cats || 'nenhuma'));\nlines.push('CONTAS A PAGAR PENDENTES:' + NL + (pending || 'nenhuma'));\nlines.push('TOTAIS DO MES: receita R$' + (mt.income || 0) + ', despesa R$' + (mt.expense || 0));\nlines.push('');\nlines.push('Responda SEMPRE em JSON valido: {\"reply\":\"texto ao cliente\",\"action\":null}');\nlines.push('Para executar algo, troque action por um objeto pronto para POST na ponte:');\nlines.push('addTransaction -> {\"op\":\"addTransaction\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"amount\":0,\"transaction_type\":\"expense\",\"status\":\"pending\",\"due_date\":\"YYYY-MM-DD\",\"month\":0,\"year\":0,\"category_id\":\"\"}}');\nlines.push('markBillPaid -> {\"op\":\"markBillPaid\",\"txId\":\"<id da conta pendente>\",\"paidDate\":\"YYYY-MM-DD\"}');\nlines.push('createCategory -> {\"op\":\"createCategory\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"type\":\"expense\",\"icon\":\"pacote\"}}');\nlines.push('createAccount -> {\"op\":\"createAccount\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"bank_name\":\"\",\"type\":\"checking\",\"initial_balance\":0}}');\nlines.push('Nunca invente ids; use os ids do contexto. Se for so conversa/consulta, action=null.');\nconst system = lines.join(NL);\nreturn [{ json: { system: system, userMsg: userMsg } }];"
+      },
+      "id": "node-08",
+      "name": "Monta prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('getConnections').item.json.ai.groq_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: ($('getConnections').item.json.ai.groq_model || 'llama-3.3-70b-versatile'), temperature: 0.4, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: $json.system }, { role: 'user', content: $json.userMsg } ] }) }}",
+        "options": {}
+      },
+      "id": "node-09",
+      "name": "IA (Groq)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1640,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let content = '';\ntry { content = $json.choices[0].message.content; } catch (e) { content = ''; }\nlet parsed;\ntry { parsed = JSON.parse(content); } catch (e) { parsed = { reply: content || 'Desculpe, nao consegui entender. Pode repetir?', action: null }; }\nlet action = parsed.action || null;\nif (action && (action.op === 'addTransaction' || action.op === 'createCategory' || action.op === 'createAccount') && !action.userId) {\n  const u = ($('userByPhone').item.json.user) || null;\n  if (u) action.userId = u.id;\n}\nreturn [{ json: { reply: parsed.reply || 'Ok!', action: action, hasAction: !!action } }];"
+      },
+      "id": "node-10",
+      "name": "Parse resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1860,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "h1",
+              "leftValue": "={{ $json.hasAction }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-11",
+      "name": "Tem acao?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').item.json.baseUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $('Config').item.json.secret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Parse resposta').item.json.action) }}",
+        "options": {}
+      },
+      "id": "node-12",
+      "name": "Executa acao",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2300,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').item.json.baseUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $('Config').item.json.secret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ op: 'sendChatwoot', conversationId: $('Webhook Chatwoot').item.json.body.conversation.id, text: $('Parse resposta').item.json.reply }) }}",
+        "options": {}
+      },
+      "id": "node-13",
+      "name": "Responde no Chatwoot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2520,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Chatwoot": {
+      "main": [
+        [
+          {
+            "node": "So mensagens recebidas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "So mensagens recebidas": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "getConnections",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "getConnections": {
+      "main": [
+        [
+          {
+            "node": "userByPhone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "userByPhone": {
+      "main": [
+        [
+          {
+            "node": "getUserContext",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "getUserContext": {
+      "main": [
+        [
+          {
+            "node": "getRules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "getRules": {
+      "main": [
+        [
+          {
+            "node": "Monta prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monta prompt": {
+      "main": [
+        [
+          {
+            "node": "IA (Groq)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA (Groq)": {
+      "main": [
+        [
+          {
+            "node": "Parse resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse resposta": {
+      "main": [
+        [
+          {
+            "node": "Tem acao?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem acao?": {
+      "main": [
+        [
+          {
+            "node": "Executa acao",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responde no Chatwoot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Executa acao": {
+      "main": [
+        [
+          {
+            "node": "Responde no Chatwoot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateId": "lumers-chatwoot-ref"
+  }
+}

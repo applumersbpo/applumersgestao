@@ -1,4 +1,4 @@
-import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from './_lib/db.js';
+import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting, findUserByPhone } from './_lib/db.js';
 import { cors } from './_lib/auth.js';
 import { sendText, evoBase, resolveKey, headers, setWebhook, deriveWebhookUrl } from './_lib/evolution.js';
 
@@ -104,16 +104,11 @@ export default async function handler(req, res) {
       return res.status(200).json({ base64: data.base64 || data.media || '' });
     }
 
-    // Buscar usuário pelo número de WhatsApp
+    // Buscar usuário pelo número de WhatsApp (tolera formatação e 9º dígito).
     if (op === 'userByPhone') {
       if (!phone) return res.status(400).json({ error: 'phone required' });
-      const { rows } = await db.execute({
-        sql: 'SELECT id, email, name, phone FROM users WHERE phone = ?',
-        args: [phone]
-      });
-      const users = rowsToObjects(rows);
-      if (!users.length) return res.status(200).json({ user: null });
-      return res.status(200).json({ user: users[0] });
+      const found = await findUserByPhone(phone);
+      return res.status(200).json({ user: found || null });
     }
 
     // Adicionar transação para um usuário
@@ -218,8 +213,7 @@ export default async function handler(req, res) {
     if (op === 'getUserContext') {
       let uid = userId;
       if (!uid && phone) {
-        const { rows } = await db.execute({ sql: 'SELECT id FROM users WHERE phone = ?', args: [phone] });
-        uid = rowsToObjects(rows)[0]?.id;
+        uid = (await findUserByPhone(phone))?.id;
       }
       if (!uid) return res.status(404).json({ error: 'user não encontrado' });
       const now = new Date();
