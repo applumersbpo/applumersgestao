@@ -1,4 +1,5 @@
-import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting } from '../_lib/db.js';
+import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting, setWaNotifyAsk } from '../_lib/db.js';
+import { waNotifyAskText } from '../_lib/assistant.js';
 import { requireAuth, cors, isImpersonation, signToken } from '../_lib/auth.js';
 import { logSystem } from '../_lib/audit.js';
 import {
@@ -947,6 +948,71 @@ export default async function handler(req, res) {
           details: { total: user_ids.length, instance: defInst.name, has_media: hasMedia },
         });
         return res.status(200).json({ ok: true, campaign_id: campaignId, total: user_ids.length });
+      }
+
+      // Disparo em massa da PERGUNTA de preferência de notificações no WhatsApp.
+      // Envia a pergunta 1..5 a todos os usuários com plano ativo + telefone e marca
+      // a pergunta como pendente (wa_notify_ask) para que a resposta seja interpretada.
+      if (action === 'notif-ask-broadcast') {
+        // Valida instância padrão conectada.
+        const { rows: defRows } = await db.execute("SELECT name, api_key, connection_status FROM evolution_instances WHERE is_default=1 LIMIT 1");
+        const defInst = rowsToObjects(defRows)[0] || null;
+        if (!defInst) return res.status(400).json({ error: 'Nenhuma instância padrão definida. Acesse Sistema → WhatsApp e defina uma instância como padrão.' });
+        const instStatus = defInst.connection_status || 'unknown';
+        if (instStatus !== 'connected') {
+          return res.status(400).json({ error: `Instância "${defInst.name}" não está conectada (status: ${instStatus}). Reconecte e tente novamente.` });
+        }
+
+        // Destinatários: plano ativo + telefone válido.
+        const { rows: recRows } = await db.execute(
+          `SELECT u.id, u.name, u.phone
+             FROM users u
+             JOIN user_plans p ON p.user_id = u.id
+            WHERE p.active = 1 AND u.phone IS NOT NULL AND u.phone != ''`
+        );
+        const recipients = rowsToObjects(recRows).filter(u => (u.phone || '').replace(/\D/g, ''));
+        if (recipients.length === 0) return res.status(400).json({ error: 'Nenhum usuário com plano ativo e telefone cadastrado.' });
+
+        const { rows: senderRows } = await db.execute({ sql: 'SELECT name FROM users WHERE id=?', args: [user.sub] });
+        const senderName = rowsToObjects(senderRows)[0]?.name || user.email || '';
+        // Cadência padrão de 4s entre envios para evitar bloqueio anti-spam.
+        const cadenceMs = 4000;
+        // O texto usa {nome} — substituído pelo dispatcher (applyVars) por usuário.
+        const askText = waNotifyAskText('{nome}');
+
+        const campaignId = crypto.randomUUID();
+        await db.execute({
+          sql: `INSERT INTO message_campaigns
+                  (id, created_by_id, created_by_name, created_by_email, instance_name,
+                   text, has_media, media_type, media_name, media_b64,
+                   cadence_ms, total, sent, failed, status, followup_enabled, created_at)
+                VALUES (?,?,?,?,?,?,0,'','','',?,?,0,0,'running',0,datetime('now'))`,
+          args: [campaignId, user.sub, senderName, user.email || '', defInst.name, askText, cadenceMs, recipients.length],
+        });
+
+        let pendingIndex = 0;
+        const baseTime = Date.now();
+        for (const u of recipients) {
+          const phone = (u.phone || '').replace(/\D/g, '');
+          const scheduledFor = new Date(baseTime + pendingIndex * cadenceMs).toISOString();
+          await db.execute({
+            sql: `INSERT INTO message_dispatch
+                    (id, campaign_id, user_id, recipient_name, phone, status, attempts, scheduled_for, created_at)
+                  VALUES (?,?,?,?,?,'pending',0,?,datetime('now'))`,
+            args: [crypto.randomUUID(), campaignId, u.id, u.name || '', phone, scheduledFor],
+          });
+          // Marca a pergunta como pendente para interpretar a resposta 1..5.
+          try { await setWaNotifyAsk(u.id); } catch (_) {}
+          pendingIndex++;
+        }
+
+        await logSystem({
+          req, actor: user, action: 'message.notif_ask_broadcast',
+          targetType: 'campaign', targetId: campaignId,
+          targetLabel: `${recipients.length} destinatário(s)`,
+          details: { total: recipients.length, instance: defInst.name },
+        });
+        return res.status(200).json({ ok: true, campaign_id: campaignId, total: recipients.length });
       }
 
       // Editar / reagendar mensagem agendada (texto e/ou nova data-base)

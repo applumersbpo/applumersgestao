@@ -1,4 +1,4 @@
-import { getDb, rowsToObjects } from './db.js';
+import { getDb, rowsToObjects, getWaNotifyAsk, setWaNotifyMode, clearWaNotifyAsk } from './db.js';
 import { getAiConfig, groqChat, groqTranscribeAudio, groqReadImage, geminiTranscribeAudio, geminiReadImage, openaiReadImage, openaiReadDocument, openaiTranscribeAudio } from './ai.js';
 import { sendText, evoBase, resolveKey, headers } from './evolution.js';
 import { sendTemplateEmail } from './email.js';
@@ -1475,6 +1475,58 @@ Digite */ajuda* para tirar dúvidas ou */melhorias* para sugerir algo.
 
 Pronto pra começar? É só mandar seu primeiro lançamento de verdade! 😉`;
 
+// ── Preferência de notificações no WhatsApp ──────────────────────────────────
+// Mapeia a resposta numérica (1..5) da pergunta de opt-in para o modo interno.
+const WA_NOTIFY_CHOICE_MAP = {
+  '1': 'daily',      // sim, tudo
+  '2': 'off',        // não quero receber
+  '3': 'weekly',     // resumo semanal
+  '4': 'biweekly',   // resumo quinzenal
+  '5': 'bills_only', // somente contas a pagar
+};
+
+const WA_NOTIFY_LABELS = {
+  daily: 'todas as notificações (resumo diário + contas a pagar)',
+  weekly: 'resumo semanal (toda segunda-feira)',
+  biweekly: 'resumo quinzenal (a cada 15 dias, na segunda-feira)',
+  bills_only: 'somente lembrete de contas a pagar',
+  off: 'nenhuma notificação automática',
+};
+
+// Texto da pergunta enviada no disparo em massa.
+export function waNotifyAskText(name) {
+  return `Olá, ${firstName(name)}! 👋
+
+Aqui é o assistente do *Lumers Flow*. Queremos ajustar como você recebe as *notificações por aqui no WhatsApp*.
+
+Responda com o *número* da opção desejada:
+
+*1* — Sim, quero receber tudo (resumo diário + contas a pagar)
+*2* — Não quero mais receber notificações
+*3* — Somente resumo *semanal*
+*4* — Somente resumo *quinzenal*
+*5* — Somente lembrete de *contas a pagar*
+
+É só responder com o número (ex.: *1*). 🙂`;
+}
+
+// Confirmação + passo a passo de como ajustar no painel — enviado SÓ após a resposta.
+function waNotifyConfirmText(name, mode, appUrl) {
+  const label = WA_NOTIFY_LABELS[mode] || WA_NOTIFY_LABELS.daily;
+  const done = mode === 'off'
+    ? `Prontinho, ${firstName(name)}! ✅ A partir de agora você *não receberá* notificações automáticas por aqui.`
+    : `Prontinho, ${firstName(name)}! ✅ Preferência salva: *${label}*.`;
+  return `${done}
+
+📲 *Quer mudar depois?* É rápido, pelo painel:
+1. Acesse ${appUrl} e faça login
+2. Abra o menu *Configurações*
+3. Vá até *Notificações no WhatsApp*
+4. Escolha a opção desejada e clique em *Salvar*
+
+Se preferir, você também pode ajustar respondendo esta pergunta de novo quando ela chegar. 🙂`;
+}
+
 // Responde a uma dúvida sobre o sistema usando o Groq (fallback: visão geral estática).
 async function answerHelpQuestion(cfg, user, question) {
   if (!cfg.groqKey) return HELP_OVERVIEW;
@@ -1680,6 +1732,21 @@ async function handleWaCommands({ user, isAdmin, phone, userText, inType, reply,
     await saveConversation(phone, user.id, r.pending, conv.history || []);
     await logInteraction({ phone, user, inType, inText: raw, outText: r.answer, action: 'pay_bill_step' });
     return { handled: true, reason: 'pay_bill_step' };
+  }
+
+  // Resposta 1..5 à pergunta de preferência de notificações (opt-in em massa).
+  // Só intercepta quando há uma pergunta pendente para ESTE usuário — e depois de
+  // todos os fluxos pendentes acima, para não roubar respostas de outros fluxos.
+  if (/^[1-5]$/.test(raw) && (await getWaNotifyAsk(user.id))) {
+    const mode = WA_NOTIFY_CHOICE_MAP[raw];
+    await setWaNotifyMode(user.id, mode);
+    await clearWaNotifyAsk(user.id);
+    const appUrl = process.env.APP_URL || 'https://app.lumersbpo.com.br';
+    const out = waNotifyConfirmText(user.name, mode, appUrl);
+    await reply(out);
+    await saveConversation(phone, user.id, null, conv.history || []);
+    await logInteraction({ phone, user, inType, inText: raw, outText: out, action: 'wa_notify_choice' });
+    return { handled: true, reason: 'wa_notify_choice' };
   }
 
   return { handled: false };

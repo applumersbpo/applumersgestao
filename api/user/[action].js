@@ -1,4 +1,4 @@
-import { getDb, initDb, rowsToObjects } from '../_lib/db.js';
+import { getDb, initDb, rowsToObjects, getWaNotifyMode, setWaNotifyMode, WA_NOTIFY_MODES } from '../_lib/db.js';
 import { requireAuth, cors, isImpersonation } from '../_lib/auth.js';
 import emailRouter from '../_lib/email-router.js';
 import bcrypt from 'bcryptjs';
@@ -69,6 +69,22 @@ export default async function handler(req, res) {
       }
       await db.execute({ sql: 'DELETE FROM users WHERE id = ?', args: [user.sub] });
       return res.status(200).json({ ok: true });
+    }
+
+    // GET /api/user/wa-notify — modo atual de notificação no WhatsApp
+    if (action === 'wa-notify' && req.method === 'GET') {
+      const mode = await getWaNotifyMode(user.sub);
+      return res.status(200).json({ mode });
+    }
+
+    // POST /api/user/wa-notify — atualiza o modo de notificação no WhatsApp
+    if (action === 'wa-notify' && req.method === 'POST') {
+      const { mode } = req.body || {};
+      if (!WA_NOTIFY_MODES.includes(String(mode || ''))) {
+        return res.status(400).json({ error: 'Modo inválido' });
+      }
+      const saved = await setWaNotifyMode(user.sub, mode);
+      return res.status(200).json({ mode: saved });
     }
 
     return res.status(404).json({ error: 'Action not found' });

@@ -55,6 +55,14 @@ async function renderSettings() {
       </div>
 
       <div class="card">
+        <div class="card-title" style="margin-bottom:4px">Notificações no WhatsApp</div>
+        <p style="font-size:.83rem;color:var(--text-muted);margin-bottom:16px">
+          Escolha com que frequência você quer receber os avisos automáticos no WhatsApp.
+        </p>
+        <div id="wa-notify-body"></div>
+      </div>
+
+      <div class="card">
         <div class="card-title" style="margin-bottom:4px">Notificações por e-mail</div>
         <p style="font-size:.83rem;color:var(--text-muted);margin-bottom:16px">
           Escolha quais e-mails você quer receber. Ative ou desative cada tipo de notificação.
@@ -94,6 +102,63 @@ async function renderSettings() {
 
   _initAvatarPreview();
   _renderNotificationPrefs();
+  _renderWaNotifyPref();
+}
+
+const WA_NOTIFY_OPTIONS = [
+  { mode: 'daily',      label: 'Tudo (resumo diário + contas a pagar)' },
+  { mode: 'weekly',     label: 'Somente resumo semanal (segunda-feira)' },
+  { mode: 'biweekly',   label: 'Somente resumo quinzenal (a cada 15 dias)' },
+  { mode: 'bills_only', label: 'Somente lembrete de contas a pagar' },
+  { mode: 'off',        label: 'Não receber notificações' },
+];
+
+async function _renderWaNotifyPref() {
+  const body = document.getElementById('wa-notify-body');
+  if (!body) return;
+  body.innerHTML = `<div style="font-size:.85rem;color:var(--text-muted);padding:6px 0">Carregando...</div>`;
+
+  let mode = 'daily';
+  try {
+    const r = await _api('GET', '/user/wa-notify');
+    mode = r?.mode || 'daily';
+  } catch (e) {
+    body.innerHTML = `
+      <div style="font-size:.85rem;color:var(--text-muted);padding:2px 0 12px">
+        Não foi possível carregar sua preferência.
+      </div>
+      <button class="btn btn-sm btn-outline" onclick="_renderWaNotifyPref()">Tentar novamente</button>`;
+    return;
+  }
+
+  const opts = WA_NOTIFY_OPTIONS.map(o => {
+    const checked = o.mode === mode;
+    return `
+      <label style="display:flex;align-items:center;gap:12px;padding:10px 0;cursor:pointer;border-bottom:1px solid var(--border)">
+        <input type="radio" name="wa-notify-mode" value="${o.mode}" ${checked ? 'checked' : ''}
+          style="width:18px;height:18px;accent-color:var(--primary);flex-shrink:0">
+        <span style="font-size:.9rem">${_escHtml(o.label)}</span>
+      </label>`;
+  }).join('');
+
+  body.innerHTML = `
+    <div style="margin-bottom:16px">${opts}</div>
+    <button id="wa-notify-save" class="btn btn-primary" onclick="saveWaNotifyMode()">Salvar preferência</button>`;
+}
+
+async function saveWaNotifyMode() {
+  const sel = document.querySelector('input[name="wa-notify-mode"]:checked');
+  const mode = sel ? sel.value : 'daily';
+  const saveBtn = document.getElementById('wa-notify-save');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando...'; }
+  try {
+    await _api('POST', '/user/wa-notify', { mode });
+    toast('Preferência salva!', 'success');
+  } catch (e) {
+    toast(e?.response?.message || 'Erro ao salvar preferência', 'error');
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar preferência'; }
+  }
 }
 
 async function _renderNotificationPrefs() {

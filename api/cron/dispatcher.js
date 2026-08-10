@@ -699,16 +699,22 @@ export default async function handler(req, res) {
         const dsInst = rowsToObjects(dsInstRows)[0] || null;
 
         if (dsInst && dsInst.connection_status === 'connected') {
-          // Usuários elegíveis: plano ativo + telefone + não optaram por sair do resumo.
+          // Modo de notificação por usuário (wa_notify). O resumo vale para os
+          // modos daily/weekly/biweekly; 'off' e 'bills_only' são excluídos.
+          //   daily    → todo dia
+          //   weekly   → só na segunda-feira BRT
+          //   biweekly → segunda-feira BRT e sem resumo enviado nos últimos 13 dias
+          const isMonday = nowBRT.getDay() === 1;
+          const biweeklyCutoffUtc = new Date(Date.now() - 13 * 86400000).toISOString();
           const { rows: dsUserRows } = await db.execute({
-            sql: `SELECT u.id AS user_id, u.name, u.phone
+            sql: `SELECT u.id AS user_id, u.name, u.phone, np.value AS wa_mode
                   FROM users u
                   JOIN user_plans p ON p.user_id = u.id
                   LEFT JOIN user_notification_prefs np
-                         ON np.user_id = u.id AND np.notif_key = 'daily_summary'
+                         ON np.user_id = u.id AND np.notif_key = 'wa_notify'
                   WHERE p.active = 1
                     AND u.phone IS NOT NULL AND u.phone != ''
-                    AND (np.enabled IS NULL OR np.enabled = 1)
+                    AND (np.value IS NULL OR np.value NOT IN ('off','bills_only'))
                   LIMIT 500`,
           });
           const dsUsers = rowsToObjects(dsUserRows);
@@ -716,6 +722,19 @@ export default async function handler(req, res) {
 
           for (const u of dsUsers) {
             if (dailySummarySends >= DS_MAX) break;
+
+            // Aplica a cadência do modo escolhido (padrão: daily).
+            const waMode = (u.wa_mode || 'daily');
+            if (waMode === 'weekly' && !isMonday) continue;
+            if (waMode === 'biweekly') {
+              if (!isMonday) continue;
+              const { rows: recentRows } = await db.execute({
+                sql: `SELECT 1 FROM notification_rule_sends
+                      WHERE rule_id='daily_summary' AND user_id=? AND status='sent' AND sent_at >= ? LIMIT 1`,
+                args: [u.user_id, biweeklyCutoffUtc],
+              });
+              if (rowsToObjects(recentRows).length > 0) continue;
+            }
 
             // Dedupe: já enviou hoje?
             const { rows: dupRows } = await db.execute({
@@ -810,16 +829,17 @@ export default async function handler(req, res) {
         const dbInst = rowsToObjects(dbInstRows)[0] || null;
 
         if (dbInst && dbInst.connection_status === 'connected') {
-          // Usuários elegíveis: plano ativo + telefone + não optaram por sair.
+          // Usuários elegíveis: plano ativo + telefone. O lembrete de contas vale
+          // para os modos daily e bills_only; off/weekly/biweekly são excluídos.
           const { rows: dbUserRows } = await db.execute({
             sql: `SELECT u.id AS user_id, u.name, u.phone
                   FROM users u
                   JOIN user_plans p ON p.user_id = u.id
                   LEFT JOIN user_notification_prefs np
-                         ON np.user_id = u.id AND np.notif_key = 'daily_bills'
+                         ON np.user_id = u.id AND np.notif_key = 'wa_notify'
                   WHERE p.active = 1
                     AND u.phone IS NOT NULL AND u.phone != ''
-                    AND (np.enabled IS NULL OR np.enabled = 1)
+                    AND (np.value IS NULL OR np.value IN ('daily','bills_only'))
                   LIMIT 500`,
           });
           const dbUsers = rowsToObjects(dbUserRows);

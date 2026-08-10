@@ -701,6 +701,14 @@ export async function initDb() {
     await db.execute("ALTER TABLE wa_conversations ADD COLUMN guard TEXT DEFAULT ''");
   }
 
+  // user_notification_prefs — coluna `value` guarda o MODO de notificação no WhatsApp
+  // (chave 'wa_notify': daily|weekly|biweekly|bills_only|off) e o timestamp da pergunta
+  // pendente (chave 'wa_notify_ask'). enabled=0/1 continua valendo para o resto.
+  const { rows: unpCols } = await db.execute("PRAGMA table_info('user_notification_prefs')");
+  if ((unpCols || []).length > 0 && !(unpCols || []).map(r => r.name).includes('value')) {
+    await db.execute("ALTER TABLE user_notification_prefs ADD COLUMN value TEXT DEFAULT ''");
+  }
+
   // Seed default system settings (INSERT OR IGNORE keeps existing values)
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('allow_registration', '0')", args: [] });
 
@@ -942,5 +950,78 @@ export function rowsToObjects(rows) {
       obj[k] = v;
     }
     return obj;
+  });
+}
+
+// ── Preferência de notificação no WhatsApp (por usuário) ─────────────────────
+// Modo único e mutuamente exclusivo, guardado em user_notification_prefs
+// (notif_key='wa_notify', value=modo, enabled=0 só quando 'off').
+//   daily      → resumo diário (17h) + contas a pagar do dia (8h)
+//   weekly     → resumo semanal (segunda 17h)
+//   biweekly   → resumo quinzenal (segunda 17h, a cada ~15 dias)
+//   bills_only → somente contas a pagar do dia (8h)
+//   off        → não recebe notificações automáticas
+export const WA_NOTIFY_MODES = ['daily', 'weekly', 'biweekly', 'bills_only', 'off'];
+
+export function normalizeWaNotifyMode(mode) {
+  const m = String(mode || '').trim();
+  return WA_NOTIFY_MODES.includes(m) ? m : 'daily';
+}
+
+export async function getWaNotifyMode(userId) {
+  const db = getDb();
+  const { rows } = await db.execute({
+    sql: "SELECT value FROM user_notification_prefs WHERE user_id=? AND notif_key='wa_notify' LIMIT 1",
+    args: [userId],
+  });
+  const row = rowsToObjects(rows)[0];
+  if (!row) return 'daily'; // padrão: mantém o comportamento atual (tudo)
+  return normalizeWaNotifyMode(row.value);
+}
+
+export async function setWaNotifyMode(userId, mode) {
+  const db = getDb();
+  const m = normalizeWaNotifyMode(mode);
+  const enabled = m === 'off' ? 0 : 1;
+  await db.execute({
+    sql: `INSERT INTO user_notification_prefs (id, user_id, notif_key, enabled, value, updated_at)
+          VALUES (?, ?, 'wa_notify', ?, ?, datetime('now'))
+          ON CONFLICT(user_id, notif_key) DO UPDATE SET enabled=excluded.enabled, value=excluded.value, updated_at=excluded.updated_at`,
+    args: [crypto.randomUUID(), userId, enabled, m],
+  });
+  return m;
+}
+
+// Pergunta pendente de preferência (marca por usuário, com validade de 14 dias).
+// Enquanto pendente, uma resposta "1".."5" no WhatsApp é interpretada como escolha.
+export async function setWaNotifyAsk(userId) {
+  const db = getDb();
+  await db.execute({
+    sql: `INSERT INTO user_notification_prefs (id, user_id, notif_key, enabled, value, updated_at)
+          VALUES (?, ?, 'wa_notify_ask', 1, ?, datetime('now'))
+          ON CONFLICT(user_id, notif_key) DO UPDATE SET enabled=1, value=excluded.value, updated_at=excluded.updated_at`,
+    args: [crypto.randomUUID(), userId, new Date().toISOString()],
+  });
+}
+
+export async function getWaNotifyAsk(userId) {
+  const db = getDb();
+  const { rows } = await db.execute({
+    sql: "SELECT enabled, value FROM user_notification_prefs WHERE user_id=? AND notif_key='wa_notify_ask' LIMIT 1",
+    args: [userId],
+  });
+  const row = rowsToObjects(rows)[0];
+  if (!row) return false;
+  if (!(row.enabled === 1 || row.enabled === '1')) return false;
+  const ts = Date.parse(row.value || '');
+  if (!isNaN(ts) && (Date.now() - ts) > 14 * 86400000) return false; // pergunta expirou
+  return true;
+}
+
+export async function clearWaNotifyAsk(userId) {
+  const db = getDb();
+  await db.execute({
+    sql: "UPDATE user_notification_prefs SET enabled=0, updated_at=datetime('now') WHERE user_id=? AND notif_key='wa_notify_ask'",
+    args: [userId],
   });
 }

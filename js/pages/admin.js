@@ -3718,6 +3718,11 @@ async function openAdminMessageModal(preSelectedIds = []) {
             <input id="msg-schedule-at" type="datetime-local"
               class="form-control" title="Data e hora do envio agendado"
               style="display:none;width:200px;padding:6px 8px;font-size:.82rem;height:auto">
+            <button class="btn btn-outline" id="msg-notif-ask-btn" onclick="_broadcastNotifAsk()"
+              title="Pergunta a TODOS os usuários ativos como querem receber notificações (1-5). A resposta configura a preferência automaticamente."
+              ${noDefault ? 'disabled title="Defina uma instância padrão antes de enviar"' : ''}>
+              ${icon('bell', 14)} Perguntar preferência a todos
+            </button>
             <button class="btn btn-primary" id="msg-send-btn" onclick="_sendAdminMessage()"
               ${noDefault ? 'disabled title="Defina uma instância padrão antes de enviar"' : 'disabled'}>
               ${icon('send', 14)} Enviar para 0
@@ -3736,6 +3741,38 @@ async function openAdminMessageModal(preSelectedIds = []) {
 // Helper to open for a single user (avoids JSON-in-onclick)
 function _adminMsgOpenFor(userId) {
   openAdminMessageModal([userId]);
+}
+
+// Dispara a pergunta de preferência de notificações (1-5) para TODOS os usuários
+// ativos com telefone. A resposta no WhatsApp configura a preferência sozinha.
+async function _broadcastNotifAsk() {
+  const ok = confirm('Enviar a pergunta de preferência de notificações para TODOS os usuários ativos com telefone cadastrado?\n\nCada um receberá as opções 1 a 5 e a resposta configura a preferência automaticamente.');
+  if (!ok) return;
+  const btn = document.getElementById('msg-notif-ask-btn');
+  const resultEl = document.getElementById('msg-result');
+  if (btn) { btn.disabled = true; btn.innerHTML = icon('loader', 14) + ' Enfileirando…'; }
+  try {
+    const res = await _api('POST', '/admin/users', { action: 'notif-ask-broadcast' });
+    if (!res.ok || !res.campaign_id) {
+      toast('Erro ao criar disparo da pergunta', 'error');
+    } else {
+      toast(`Pergunta enfileirada para ${res.total} usuário(s)`, 'success');
+      if (resultEl) {
+        resultEl.innerHTML = `
+          <div style="background:var(--surface-alt,#f8fafc);border:1px solid var(--border);border-radius:var(--r-md);
+            padding:10px 12px;font-size:.85rem;display:flex;gap:8px;align-items:flex-start;margin-top:4px">
+            ${icon('bell', 14)}
+            <div>Pergunta de preferência enfileirada para <strong>${res.total}</strong> usuário(s).
+            <div style="margin-top:4px;font-size:.78rem;color:var(--text-muted)">Conforme cada um responder (1-5), a preferência é configurada automaticamente.</div></div>
+          </div>`;
+        if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [resultEl] });
+      }
+    }
+  } catch (e) {
+    toast(e?.response?.error || e?.response?.message || 'Erro ao disparar a pergunta', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = icon('bell', 14) + ' Perguntar preferência a todos'; }
+  }
 }
 
 function _renderMsgRecipients(search) {

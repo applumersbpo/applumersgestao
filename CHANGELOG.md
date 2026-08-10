@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.37.0] — 2026-08-10
+
+### Adicionado
+- **Preferência de notificações no WhatsApp (opt-in por resposta)** — novo disparo em massa (painel → Sistema → Mensagens → *Perguntar preferência a todos*) que envia a todos os usuários ativos a pergunta com 5 opções: **1** tudo, **2** não receber, **3** resumo semanal, **4** resumo quinzenal, **5** somente contas a pagar. A resposta pelo WhatsApp configura a preferência automaticamente e o usuário recebe a confirmação com o passo a passo de como ajustar depois pelo painel.
+- **Ajuste da preferência pelo painel** — nova seção *Notificações no WhatsApp* em Configurações, onde o usuário escolhe a frequência (tudo / semanal / quinzenal / só contas / nenhuma) a qualquer momento.
+
+### Melhorado
+- **Envios automáticos respeitam o modo escolhido** — o resumo diário (17h) passa a cair na cadência do usuário (diário, semanal na segunda-feira ou quinzenal) e o lembrete de contas a pagar (8h) só vai para quem optou por *tudo* ou *somente contas a pagar*. Sem novos arquivos de função serverless (mantém o limite 12/12): tudo entra na ponte `api/user/[action].js`, em `api/admin/users.js` e no dispatcher.
+
+---
+
 ## [v1.36.0] — 2026-08-08
 
 ### Adicionado
