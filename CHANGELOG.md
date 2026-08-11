@@ -5,6 +5,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.39.0] — 2026-08-10
+
+### Adicionado
+- **Assistente v2 (mais inteligente, no próprio app)** — nova versão do cérebro do WhatsApp (`api/_lib/assistant2.js`) que entende melhor a demanda antes de responder: passou a considerar a **identidade e o nível de acesso** do usuário (usuário comum, administrador ou administrador master), a ter uma **visão geral do que o sistema faz**, e a seguir as **regras de uso e a base de conhecimento editáveis pela administração** (setting `ai_rules` + `knowledge_docs`), sobre um baseline de regras padrão. Todos os menus, cadastros e fluxos já existentes continuam valendo — a diferença é uma resposta mais natural e contextual.
+- O **assistente anterior (`api/_lib/assistant.js`) permanece intacto** como fallback; reverter é só reapontar o import em `api/webhooks/evolution.js`.
+
+---
+
 ## [v1.38.2] — 2026-08-10
 
 ### Corrigido

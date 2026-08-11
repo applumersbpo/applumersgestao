@@ -1,6 +1,10 @@
 import { getDb, initDb, getSystemSetting } from '../_lib/db.js';
 import { normalizeStatus } from '../_lib/evolution.js';
-import { handleAssistantMessage } from '../_lib/assistant.js';
+// Assistente v2 (cópia melhorada de assistant.js): mais inteligência de contexto —
+// identidade + nível de acesso, visão do sistema e regras/base de conhecimento
+// editáveis pela administração. O assistant.js original fica intacto como fallback;
+// para reverter, basta trocar este import de volta para '../_lib/assistant.js'.
+import { handleAssistantMessage } from '../_lib/assistant2.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).json({ ok: true });
