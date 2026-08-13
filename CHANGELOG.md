@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.42.1] — 2026-08-13
+
+### Adicionado
+- **Check verde ✅ ao concluir um registro (Chatwoot/n8n)** — o nó "Responde no Chatwoot" agora prefixa `✅` na resposta **apenas quando a ação foi executada com sucesso** (retornou `ok`/`id`). A IA é instruída a nunca escrever o ✅ manualmente, evitando o emoji em perguntas ou mensagens que não são conclusão.
+
+### Melhorado
+- **Assistente menos redundante — registra assim que tem os dados** — quando o cliente já forneceu/confirmou os campos (ex.: escolheu a conta), o assistente emite a ação e registra na mesma resposta, sem pedir "confirma?" nem repetir os dados. Só volta a perguntar se um campo obrigatório ainda estiver vazio ou ambíguo.
+
+---
+
 ## [v1.42.0] — 2026-08-13
 
 ### Corrigido
