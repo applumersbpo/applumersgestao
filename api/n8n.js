@@ -312,8 +312,23 @@ export default async function handler(req, res) {
     // e Groq como fallback). Sempre responde 200 com { text } — se não houver url
     // ou a leitura falhar, text vem vazio, para o nó HTTP do n8n nunca quebrar.
     if (op === 'readMedia') {
-      const url = req.body?.url;
+      let url = req.body?.url;
       if (!url) return res.status(200).json({ text: '' });
+      // O Chatwoot pode gerar o data_url do anexo com um host (FRONTEND_URL) que não
+      // resolve publicamente (ex.: chat.* em vez de chatwoot.*). Reescreve o host do
+      // link de active_storage para o host do Chatwoot configurado no painel.
+      try {
+        const cwUrl = await getSystemSetting('chatwoot_url').catch(() => '');
+        if (cwUrl && /\/rails\/active_storage\//.test(url)) {
+          const cw = new URL(cwUrl);
+          const u = new URL(url);
+          if (u.host !== cw.host) {
+            u.protocol = cw.protocol;
+            u.host = cw.host;
+            url = u.toString();
+          }
+        }
+      } catch {}
       let base64 = '';
       let mime = req.body?.mimetype || '';
       try {
