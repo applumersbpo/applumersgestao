@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.41.2] — 2026-08-13
+
+### Corrigido
+- **Formatação garantida das respostas do assistente (Chatwoot/n8n)** — o nó "Parse resposta" passou a pós-processar o texto de forma determinística (sem depender do modelo): **quebra respostas em parágrafo único em várias linhas** (uma frase por linha) e **força o nome da marca em negrito** (`*Lumers Flow*`), inclusive quando a IA escrevia "Lumers Flow" sem asteriscos ou tudo em uma linha só.
+
+---
+
 ## [v1.41.1] — 2026-08-13
 
 ### Melhorado
