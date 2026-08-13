@@ -234,7 +234,35 @@
     },
     {
       "parameters": {
-        "jsCode": "const conn = $('getConnections').item.json;\nconst rules = $('getRules').item.json;\nconst ctx = $('getUserContext').item.json;\nconst userRes = $('userByPhone').item.json;\nconst body = $('Webhook Chatwoot').item.json.body;\nconst NL = String.fromCharCode(10);\nconst docText = (function(){ try { return $('Le anexo').item.json.text || ''; } catch(e){ return ''; } })();\nconst rawMsg = body.content || '';\nlet userMsg = rawMsg;\nif (docText) { userMsg = (rawMsg ? rawMsg + NL + NL : '') + '[DOCUMENTO/IMAGEM ENVIADO PELO CLIENTE - conteudo extraido]:' + NL + docText; }\nif (!userMsg) { userMsg = '(o cliente enviou algo sem texto legivel)'; }\nconst u = userRes.user || null;\nconst userName = (u && u.name) || (body.sender && body.sender.name) || 'cliente';\nconst rulesText = rules.rules || '';\nconst docs = (rules.docs || []).map(d => '# ' + d.title + NL + (d.content || '')).join(NL + NL);\nconst pending = (ctx.pending_bills || []).map(b => '- id:' + b.id + ' ' + b.name + ' R$' + b.amount + ' venc ' + b.due_date).join(NL);\nconst cats = (ctx.categories || []).map(c => c.name + '(' + c.type + ')').join(', ');\nconst accts = (ctx.accounts || []).map(a => a.name).join(', ');\nconst mt = ctx.month_totals || {};\nconst lines = [];\nlines.push('Voce e o assistente financeiro da Lumers. Seja caloroso, humano e objetivo. Responda em pt-BR e entenda a intencao do usuario.');\nlines.push('FORMATACAO DA RESPOSTA (campo reply) - obrigatorio:');\nlines.push('- Escreva o nome da marca SEMPRE como *Lumers Flow* em negrito (asteriscos do WhatsApp).');\nlines.push('- Nunca responda em um paragrafo unico: quebre a mensagem em varias linhas curtas.');\nlines.push('- Ao apresentar opcoes, coloque UMA opcao por linha no formato: *1* - Texto da opcao.');\nlines.push('- Deixe uma linha em branco antes da lista de opcoes e destaque valores e nomes em *negrito*.');\nlines.push('- Use no maximo 1 emoji por mensagem e mantenha o tom caloroso, humano e objetivo.');\nlines.push('DOCUMENTOS/IMAGENS: se a mensagem do usuario contiver [DOCUMENTO/IMAGEM ENVIADO PELO CLIENTE], use os dados extraidos (valores, datas, descricao) para ajudar. Confirme o que entendeu e ofereca registrar como lancamento. NUNCA ignore o documento nem reinicie a conversa com saudacao generica.');\nif (rulesText) lines.push('REGRAS DO ADMIN:' + NL + rulesText);\nif (docs) lines.push('BASE DE CONHECIMENTO:' + NL + docs);\nlines.push('CLIENTE: ' + userName + ' (userId: ' + (u ? u.id : 'desconhecido') + ')');\nlines.push('CONTAS: ' + (accts || 'nenhuma'));\nlines.push('CATEGORIAS: ' + (cats || 'nenhuma'));\nlines.push('CONTAS A PAGAR PENDENTES:' + NL + (pending || 'nenhuma'));\nlines.push('TOTAIS DO MES: receita R$' + (mt.income || 0) + ', despesa R$' + (mt.expense || 0));\nlines.push('');\nlines.push('Responda SEMPRE em JSON valido: {\"reply\":\"texto ao cliente\",\"action\":null}');\nlines.push('Para executar algo, troque action por um objeto pronto para POST na ponte:');\nlines.push('addTransaction -> {\"op\":\"addTransaction\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"amount\":0,\"transaction_type\":\"expense\",\"status\":\"pending\",\"due_date\":\"YYYY-MM-DD\",\"month\":0,\"year\":0,\"category_id\":\"\"}}');\nlines.push('markBillPaid -> {\"op\":\"markBillPaid\",\"txId\":\"<id da conta pendente>\",\"paidDate\":\"YYYY-MM-DD\"}');\nlines.push('createCategory -> {\"op\":\"createCategory\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"type\":\"expense\",\"icon\":\"pacote\"}}');\nlines.push('createAccount -> {\"op\":\"createAccount\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"bank_name\":\"\",\"type\":\"checking\",\"initial_balance\":0}}');\nlines.push('Nunca invente ids; use os ids do contexto. Se for so conversa/consulta, action=null.');\nconst system = lines.join(NL);\nreturn [{ json: { system: system, userMsg: userMsg } }];"
+        "method": "POST",
+        "url": "={{ $('Config').item.json.baseUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $('Config').item.json.secret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ op: 'getChatwootHistory', conversationId: ((($('Webhook Chatwoot').item.json.body.conversation) || {}).id) || '', limit: 14 }) }}",
+        "options": {}
+      },
+      "id": "node-07c",
+      "name": "Historico",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1310,
+        120
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const conn = $('getConnections').item.json;\nconst rules = $('getRules').item.json;\nconst ctx = $('getUserContext').item.json;\nconst userRes = $('userByPhone').item.json;\nconst body = $('Webhook Chatwoot').item.json.body;\nconst NL = String.fromCharCode(10);\nconst docText = (function(){ try { return $('Le anexo').item.json.text || ''; } catch(e){ return ''; } })();\nconst rawMsg = body.content || '';\nlet userMsg = rawMsg;\nif (docText) { userMsg = (rawMsg ? rawMsg + NL + NL : '') + '[DOCUMENTO/IMAGEM ENVIADO PELO CLIENTE - conteudo extraido]:' + NL + docText; }\nif (!userMsg) { userMsg = '(o cliente enviou algo sem texto legivel)'; }\nconst u = userRes.user || null;\nconst userName = (u && u.name) || (body.sender && body.sender.name) || 'cliente';\nconst rulesText = rules.rules || '';\nconst docs = (rules.docs || []).map(d => '# ' + d.title + NL + (d.content || '')).join(NL + NL);\nconst pending = (ctx.pending_bills || []).map(b => '- id:' + b.id + ' ' + b.name + ' R$' + b.amount + ' venc ' + b.due_date).join(NL);\nconst cats = (ctx.categories || []).map(c => c.name + '(' + c.type + ')').join(', ');\nconst accts = (ctx.accounts || []).map(a => a.name).join(', ');\nconst mt = ctx.month_totals || {};\nconst now = new Date();\nconst hoje = now.toISOString().slice(0,10);\nconst lines = [];\nlines.push('Voce e o assistente financeiro da Lumers (a marca chama-se *Lumers Flow*). Seja caloroso, humano e objetivo. Responda em pt-BR e entenda a intencao do usuario.');\nlines.push('DATA DE HOJE: ' + hoje + '. Mes atual: ' + (now.getMonth()+1) + ', ano: ' + now.getFullYear() + '.');\nlines.push('FORMATACAO DA RESPOSTA (campo reply) - obrigatorio:');\nlines.push('- Escreva o nome da marca SEMPRE como *Lumers Flow* em negrito (asteriscos do WhatsApp).');\nlines.push('- Nunca responda em um paragrafo unico: quebre a mensagem em varias linhas curtas.');\nlines.push('- Ao apresentar opcoes, coloque UMA opcao por linha no formato: *1* - Texto da opcao.');\nlines.push('- Deixe uma linha em branco antes da lista de opcoes e destaque valores e nomes em *negrito*.');\nlines.push('- Use no maximo 1 emoji por mensagem e mantenha o tom caloroso, humano e objetivo.');\nlines.push('SEJA PROATIVO E CONDUZA ATE A ACAO - regra central:');\nlines.push('- NUNCA apenas descreva/confirme e pare. TODA resposta deve terminar com uma PERGUNTA clara ou um proximo passo, ate concluir um registro.');\nlines.push('- Se nao entendeu a intencao do cliente, faca perguntas para esclarecer ate saber o que fazer. Nunca finalize sem proximo passo.');\nlines.push('- Faca UMA pergunta objetiva por vez (nao despeje todas juntas). Use o contexto para nao perguntar o obvio.');\nlines.push('DOCUMENTO/IMAGEM: quando a mensagem do usuario contiver [DOCUMENTO/IMAGEM ENVIADO PELO CLIENTE]:');\nlines.push('- Confirme em 1 linha o que entendeu (valor, descricao, data).');\nlines.push('- Em seguida PERGUNTE o que ele quer fazer, oferecendo opcoes numeradas, por exemplo:');\nlines.push('  *1* - Registrar como *despesa*');\nlines.push('  *2* - Registrar como *receita*');\nlines.push('  *3* - Nao registrar agora');\nlines.push('- Depois pergunte os dados que faltam UM DE CADA VEZ (data/periodo, categoria, conta) ate ter o suficiente para emitir a action addTransaction.');\nif (rulesText) lines.push('REGRAS DO ADMIN:' + NL + rulesText);\nif (docs) lines.push('BASE DE CONHECIMENTO:' + NL + docs);\nlines.push('CLIENTE: ' + userName + ' (userId: ' + (u ? u.id : 'desconhecido') + ')');\nlines.push('CONTAS: ' + (accts || 'nenhuma'));\nlines.push('CATEGORIAS: ' + (cats || 'nenhuma'));\nlines.push('CONTAS A PAGAR PENDENTES:' + NL + (pending || 'nenhuma'));\nlines.push('TOTAIS DO MES: receita R$' + (mt.income || 0) + ', despesa R$' + (mt.expense || 0));\nlines.push('');\nlines.push('Responda SEMPRE em JSON valido: {\"reply\":\"texto ao cliente\",\"action\":null}');\nlines.push('Quando ja tiver dados suficientes, troque action por um objeto pronto para POST na ponte:');\nlines.push('addTransaction -> {\"op\":\"addTransaction\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"amount\":0,\"transaction_type\":\"expense\",\"status\":\"pending\",\"due_date\":\"YYYY-MM-DD\",\"month\":0,\"year\":0,\"category_id\":\"\"}}');\nlines.push('markBillPaid -> {\"op\":\"markBillPaid\",\"txId\":\"<id da conta pendente>\",\"paidDate\":\"YYYY-MM-DD\"}');\nlines.push('createCategory -> {\"op\":\"createCategory\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"type\":\"expense\",\"icon\":\"pacote\"}}');\nlines.push('createAccount -> {\"op\":\"createAccount\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"bank_name\":\"\",\"type\":\"checking\",\"initial_balance\":0}}');\nlines.push('Nunca invente ids; use os ids do contexto. Enquanto faltar dado para agir, mantenha action=null E faca a proxima pergunta.');\nconst system = lines.join(NL);\nconst hist = (function(){ try { return $('Historico').item.json.history || []; } catch(e){ return []; } })();\nconst curId = body.id;\nconst messages = [{ role: 'system', content: system }];\nfor (const h of hist) { if (h && h.content && h.id !== curId) messages.push({ role: h.role, content: h.content }); }\nmessages.push({ role: 'user', content: userMsg });\nreturn [{ json: { messages: messages, userMsg: userMsg, system: system } }];"
       },
       "id": "node-08",
       "name": "Monta prompt",
@@ -260,7 +288,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: ($('getConnections').item.json.ai.groq_model || 'llama-3.3-70b-versatile'), temperature: 0.4, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: $json.system }, { role: 'user', content: $json.userMsg } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: ($('getConnections').item.json.ai.groq_model || 'llama-3.3-70b-versatile'), temperature: 0.4, response_format: { type: 'json_object' }, messages: $json.messages }) }}",
         "options": {}
       },
       "id": "node-09",
@@ -457,7 +485,7 @@
       "main": [
         [
           {
-            "node": "Monta prompt",
+            "node": "Historico",
             "type": "main",
             "index": 0
           }
@@ -520,6 +548,17 @@
         [
           {
             "node": "Responde no Chatwoot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Historico": {
+      "main": [
+        [
+          {
+            "node": "Monta prompt",
             "type": "main",
             "index": 0
           }

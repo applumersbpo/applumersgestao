@@ -364,6 +364,34 @@ export default async function handler(req, res) {
       return res.status(200).json({ text: (text || '').trim(), mime });
     }
 
+    // Histórico recente de uma conversa do Chatwoot — dá MEMÓRIA multi-turno ao
+    // assistente no n8n (que por padrão só recebe a mensagem atual). Retorna as
+    // últimas mensagens já mapeadas em papéis (user/assistant) para o prompt.
+    // Sempre responde 200 com { history } (vazio em qualquer falha) para o nó
+    // HTTP do n8n nunca quebrar o fluxo.
+    if (op === 'getChatwootHistory') {
+      const conversationId = req.body?.conversationId;
+      const limit = Math.min(Number(req.body?.limit) || 14, 30);
+      if (!conversationId) return res.status(200).json({ history: [] });
+      const cwUrl = await getSystemSetting('chatwoot_url').catch(() => '');
+      const cwToken = await getSystemSetting('chatwoot_token').catch(() => '');
+      const cwAccount = await getSystemSetting('chatwoot_account_id').catch(() => '');
+      if (!cwUrl || !cwToken || !cwAccount) return res.status(200).json({ history: [] });
+      try {
+        const endpoint = `${cwUrl.replace(/\/$/, '')}/api/v1/accounts/${cwAccount}/conversations/${conversationId}/messages`;
+        const r = await fetch(endpoint, { headers: { api_access_token: cwToken } });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) return res.status(200).json({ history: [], error: `chatwoot ${r.status}` });
+        const arr = Array.isArray(data.payload) ? data.payload : (Array.isArray(data) ? data : []);
+        const history = arr
+          .filter((m) => m && (m.message_type === 0 || m.message_type === 1) && m.content && String(m.content).trim())
+          .map((m) => ({ id: m.id, role: m.message_type === 0 ? 'user' : 'assistant', content: String(m.content).trim() }));
+        return res.status(200).json({ history: history.slice(-limit) });
+      } catch (e) {
+        return res.status(200).json({ history: [], error: String(e?.message || e) });
+      }
+    }
+
     // Envia mensagem de volta a uma conversa do Chatwoot, usando as credenciais do painel.
     if (op === 'sendChatwoot') {
       const { conversationId, text } = req.body || {};

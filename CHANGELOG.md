@@ -5,6 +5,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.41.0] — 2026-08-13
+
+### Adicionado
+- **Assistente proativo com memória multi-turno (Chatwoot/n8n)** — o cérebro no n8n deixou de ser passivo. Toda resposta agora termina com uma **pergunta/próximo passo** e conduz o cliente até concluir uma ação (registrar despesa/receita, dar baixa, etc.), fazendo uma pergunta objetiva por vez. Ao receber PDF/imagem, ele confirma o que entendeu e **oferece opções numeradas** (registrar como despesa, receita ou não registrar) antes de agir.
+- **Memória de conversa** — nova op `getChatwootHistory` na ponte `api/n8n.js` puxa as últimas mensagens da conversa no Chatwoot; o workflow ganhou o nó **"Historico"** e passou a enviar o histórico à IA (antes cada mensagem era stateless, sem lembrar o que já fora perguntado). O prompt também passou a conhecer a **data de hoje**.
+
+---
+
 ## [v1.40.0] — 2026-08-13
 
 ### Adicionado
