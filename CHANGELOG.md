@@ -5,6 +5,21 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.42.0] — 2026-08-13
+
+### Corrigido
+- **Compra parcelada no cartão registrava errado (Chatwoot/n8n)** — uma compra parcelada (ex.: R$350 em 10x a partir do dia 14) era gravada como uma única despesa de um mês, sem conta, sem categoria e sem as parcelas dos meses seguintes. Causas e correções:
+  - A ponte `addTransaction` **não persistia `account_id`** (a conta era perdida). Agora persiste.
+  - A ponte `addInstallment` **não persistia `account_id`, `start_month` nem `start_year`** (parcelamento sem conta e sem indexação por mês). Agora persiste, usando o mês/ano atual como início quando não informado.
+  - A IA passava **nomes** ("Cartão de Crédito", "Nubank") em vez de UUIDs, e usava `addTransaction` (mês único) em vez de `addInstallment` (modelo de N parcelas). Adicionado **resolvedor nome→id** na ponte (aceita id, nome exato ou o alias `account`) e o prompt do fluxo agora **expõe `addInstallment`** e instrui a usá-lo em compras parceladas (`total_amount` = valor total; o app divide pelas parcelas).
+
+### Melhorado
+- **Assistente sempre define CONTA e CATEGORIA ao lançar** — o prompt exige perguntar qual conta e qual categoria (oferecendo as do contexto) antes de gravar uma despesa/receita, e o contexto passou a incluir os **ids** de contas e categorias.
+- **Foco na última mensagem / não misturar registros** — o histórico passa a ser tratado apenas como memória; ao receber um novo documento ou iniciar um novo registro, o assistente começa do zero a partir dele e não reaproveita valores/conta/categoria/data de registros anteriores, salvo pedido explícito de retomar.
+- **Leitura de recibo mais completa** — o assistente extrai valor, **data (vencimento/pagamento)**, do que se trata e detalhes da conta, e **confirma a data** ("a data é essa? quer registrar nessa data ou em outra?") antes de gravar.
+
+---
+
 ## [v1.41.2] — 2026-08-13
 
 ### Corrigido

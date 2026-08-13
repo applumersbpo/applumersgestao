@@ -31,6 +31,31 @@ export default async function handler(req, res) {
       return rowsToObjects(rows)[0] || null;
     }
 
+    // Resolve category_id/account_id que venham como NOME (a IA às vezes manda
+    // "Cartão de Crédito"/"Nubank" em vez do UUID) ou no alias `account`. Não
+    // cria nada: se não achar, category_id fica como veio e account_id vazio.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const norm = (s) => String(s || '').trim().toLowerCase();
+    async function resolveRefs(uid, rec) {
+      if (!uid || !rec) return rec;
+      if (rec.category_id && !UUID_RE.test(String(rec.category_id))) {
+        const { rows } = await db.execute({ sql: 'SELECT id, name FROM categories WHERE user_id = ?', args: [uid] });
+        const hit = rowsToObjects(rows).find((c) => norm(c.name) === norm(rec.category_id));
+        if (hit) rec.category_id = hit.id;
+      }
+      const acctRaw = rec.account_id || rec.account;
+      if (acctRaw) {
+        if (UUID_RE.test(String(acctRaw))) {
+          rec.account_id = acctRaw;
+        } else {
+          const { rows } = await db.execute({ sql: 'SELECT id, name FROM accounts WHERE user_id = ?', args: [uid] });
+          const hit = rowsToObjects(rows).find((a) => norm(a.name) === norm(acctRaw));
+          rec.account_id = hit ? hit.id : '';
+        }
+      }
+      return rec;
+    }
+
     // Diagnóstico da ligação Evolution -> app (webhook da instância padrão).
     // Com { fix: true } reaplica o webhook no caminho-base com byEvents:false.
     if (op === 'evoWiring') {
@@ -115,21 +140,22 @@ export default async function handler(req, res) {
     // Adicionar transação para um usuário
     if (op === 'addTransaction') {
       if (!userId || !record) return res.status(400).json({ error: 'userId and record required' });
+      await resolveRefs(userId, record);
       const id = crypto.randomUUID();
       const now = new Date().toISOString();
       const {
         name, amount, transaction_type, kind, status,
-        due_date, paid_date, month, year, notes, category_id, template_id
+        due_date, paid_date, month, year, notes, category_id, account_id, template_id
       } = record;
       await db.execute({
-        sql: `INSERT INTO transactions (id, user_id, name, amount, transaction_type, kind, status, due_date, paid_date, month, year, notes, category_id, template_id, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO transactions (id, user_id, name, amount, transaction_type, kind, status, due_date, paid_date, month, year, notes, category_id, account_id, template_id, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           id, userId, name || '', Number(amount) || 0,
           transaction_type || 'expense', kind || 'variable',
           status || 'pending', due_date || '', paid_date || '',
           Number(month) || 0, Number(year) || 0,
-          notes || '', category_id || '', template_id || '', now
+          notes || '', category_id || '', account_id || '', template_id || '', now
         ]
       });
       return res.status(201).json({ id, ok: true });
@@ -138,16 +164,21 @@ export default async function handler(req, res) {
     // Adicionar parcelamento para um usuário
     if (op === 'addInstallment') {
       if (!userId || !record) return res.status(400).json({ error: 'userId and record required' });
+      await resolveRefs(userId, record);
       const id = crypto.randomUUID();
-      const now = new Date().toISOString();
-      const { name, total_amount, installments, paid_installments, due_day, notes, category_id } = record;
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const { name, total_amount, installments, paid_installments, due_day, notes, category_id, account_id } = record;
+      const startMonth = Number(record.start_month) || (now.getMonth() + 1);
+      const startYear = Number(record.start_year) || now.getFullYear();
       await db.execute({
-        sql: `INSERT INTO installments (id, user_id, name, total_amount, installments, paid_installments, due_day, notes, category_id, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO installments (id, user_id, name, total_amount, installments, paid_installments, due_day, notes, category_id, account_id, start_month, start_year, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           id, userId, name || '', Number(total_amount) || 0,
           Number(installments) || 1, Number(paid_installments) || 0,
-          Number(due_day) || 1, notes || '', category_id || '', now
+          Number(due_day) || 1, notes || '', category_id || '', account_id || '',
+          startMonth, startYear, nowIso
         ]
       });
       return res.status(201).json({ id, ok: true });
