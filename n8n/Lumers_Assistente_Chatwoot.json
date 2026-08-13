@@ -206,7 +206,35 @@
     },
     {
       "parameters": {
-        "jsCode": "const conn = $('getConnections').item.json;\nconst rules = $('getRules').item.json;\nconst ctx = $('getUserContext').item.json;\nconst userRes = $('userByPhone').item.json;\nconst body = $('Webhook Chatwoot').item.json.body;\nconst NL = String.fromCharCode(10);\nconst userMsg = body.content || '';\nconst u = userRes.user || null;\nconst userName = (u && u.name) || (body.sender && body.sender.name) || 'cliente';\nconst rulesText = rules.rules || '';\nconst docs = (rules.docs || []).map(d => '# ' + d.title + NL + (d.content || '')).join(NL + NL);\nconst pending = (ctx.pending_bills || []).map(b => '- id:' + b.id + ' ' + b.name + ' R$' + b.amount + ' venc ' + b.due_date).join(NL);\nconst cats = (ctx.categories || []).map(c => c.name + '(' + c.type + ')').join(', ');\nconst accts = (ctx.accounts || []).map(a => a.name).join(', ');\nconst mt = ctx.month_totals || {};\nconst lines = [];\nlines.push('Voce e o assistente financeiro da Lumers. Seja caloroso, humano e objetivo. Responda em pt-BR e entenda a intencao do usuario.');\nlines.push('FORMATACAO DA RESPOSTA (campo reply) - obrigatorio:');\nlines.push('- Escreva o nome da marca SEMPRE como *Lumers Flow* em negrito (asteriscos do WhatsApp).');\nlines.push('- Nunca responda em um paragrafo unico: quebre a mensagem em varias linhas curtas.');\nlines.push('- Ao apresentar opcoes, coloque UMA opcao por linha no formato: *1* - Texto da opcao.');\nlines.push('- Deixe uma linha em branco antes da lista de opcoes e destaque valores e nomes em *negrito*.');\nlines.push('- Use no maximo 1 emoji por mensagem e mantenha o tom caloroso, humano e objetivo.');\nif (rulesText) lines.push('REGRAS DO ADMIN:' + NL + rulesText);\nif (docs) lines.push('BASE DE CONHECIMENTO:' + NL + docs);\nlines.push('CLIENTE: ' + userName + ' (userId: ' + (u ? u.id : 'desconhecido') + ')');\nlines.push('CONTAS: ' + (accts || 'nenhuma'));\nlines.push('CATEGORIAS: ' + (cats || 'nenhuma'));\nlines.push('CONTAS A PAGAR PENDENTES:' + NL + (pending || 'nenhuma'));\nlines.push('TOTAIS DO MES: receita R$' + (mt.income || 0) + ', despesa R$' + (mt.expense || 0));\nlines.push('');\nlines.push('Responda SEMPRE em JSON valido: {\"reply\":\"texto ao cliente\",\"action\":null}');\nlines.push('Para executar algo, troque action por um objeto pronto para POST na ponte:');\nlines.push('addTransaction -> {\"op\":\"addTransaction\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"amount\":0,\"transaction_type\":\"expense\",\"status\":\"pending\",\"due_date\":\"YYYY-MM-DD\",\"month\":0,\"year\":0,\"category_id\":\"\"}}');\nlines.push('markBillPaid -> {\"op\":\"markBillPaid\",\"txId\":\"<id da conta pendente>\",\"paidDate\":\"YYYY-MM-DD\"}');\nlines.push('createCategory -> {\"op\":\"createCategory\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"type\":\"expense\",\"icon\":\"pacote\"}}');\nlines.push('createAccount -> {\"op\":\"createAccount\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"bank_name\":\"\",\"type\":\"checking\",\"initial_balance\":0}}');\nlines.push('Nunca invente ids; use os ids do contexto. Se for so conversa/consulta, action=null.');\nconst system = lines.join(NL);\nreturn [{ json: { system: system, userMsg: userMsg } }];"
+        "method": "POST",
+        "url": "={{ $('Config').item.json.baseUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $('Config').item.json.secret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ op: 'readMedia', url: ((($('Webhook Chatwoot').item.json.body.attachments || [])[0]) || {}).data_url || '', mimetype: ((($('Webhook Chatwoot').item.json.body.attachments || [])[0]) || {}).content_type || '' }) }}",
+        "options": {}
+      },
+      "id": "node-07b",
+      "name": "Le anexo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1310,
+        480
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const conn = $('getConnections').item.json;\nconst rules = $('getRules').item.json;\nconst ctx = $('getUserContext').item.json;\nconst userRes = $('userByPhone').item.json;\nconst body = $('Webhook Chatwoot').item.json.body;\nconst NL = String.fromCharCode(10);\nconst docText = (function(){ try { return $('Le anexo').item.json.text || ''; } catch(e){ return ''; } })();\nconst rawMsg = body.content || '';\nlet userMsg = rawMsg;\nif (docText) { userMsg = (rawMsg ? rawMsg + NL + NL : '') + '[DOCUMENTO/IMAGEM ENVIADO PELO CLIENTE - conteudo extraido]:' + NL + docText; }\nif (!userMsg) { userMsg = '(o cliente enviou algo sem texto legivel)'; }\nconst u = userRes.user || null;\nconst userName = (u && u.name) || (body.sender && body.sender.name) || 'cliente';\nconst rulesText = rules.rules || '';\nconst docs = (rules.docs || []).map(d => '# ' + d.title + NL + (d.content || '')).join(NL + NL);\nconst pending = (ctx.pending_bills || []).map(b => '- id:' + b.id + ' ' + b.name + ' R$' + b.amount + ' venc ' + b.due_date).join(NL);\nconst cats = (ctx.categories || []).map(c => c.name + '(' + c.type + ')').join(', ');\nconst accts = (ctx.accounts || []).map(a => a.name).join(', ');\nconst mt = ctx.month_totals || {};\nconst lines = [];\nlines.push('Voce e o assistente financeiro da Lumers. Seja caloroso, humano e objetivo. Responda em pt-BR e entenda a intencao do usuario.');\nlines.push('FORMATACAO DA RESPOSTA (campo reply) - obrigatorio:');\nlines.push('- Escreva o nome da marca SEMPRE como *Lumers Flow* em negrito (asteriscos do WhatsApp).');\nlines.push('- Nunca responda em um paragrafo unico: quebre a mensagem em varias linhas curtas.');\nlines.push('- Ao apresentar opcoes, coloque UMA opcao por linha no formato: *1* - Texto da opcao.');\nlines.push('- Deixe uma linha em branco antes da lista de opcoes e destaque valores e nomes em *negrito*.');\nlines.push('- Use no maximo 1 emoji por mensagem e mantenha o tom caloroso, humano e objetivo.');\nlines.push('DOCUMENTOS/IMAGENS: se a mensagem do usuario contiver [DOCUMENTO/IMAGEM ENVIADO PELO CLIENTE], use os dados extraidos (valores, datas, descricao) para ajudar. Confirme o que entendeu e ofereca registrar como lancamento. NUNCA ignore o documento nem reinicie a conversa com saudacao generica.');\nif (rulesText) lines.push('REGRAS DO ADMIN:' + NL + rulesText);\nif (docs) lines.push('BASE DE CONHECIMENTO:' + NL + docs);\nlines.push('CLIENTE: ' + userName + ' (userId: ' + (u ? u.id : 'desconhecido') + ')');\nlines.push('CONTAS: ' + (accts || 'nenhuma'));\nlines.push('CATEGORIAS: ' + (cats || 'nenhuma'));\nlines.push('CONTAS A PAGAR PENDENTES:' + NL + (pending || 'nenhuma'));\nlines.push('TOTAIS DO MES: receita R$' + (mt.income || 0) + ', despesa R$' + (mt.expense || 0));\nlines.push('');\nlines.push('Responda SEMPRE em JSON valido: {\"reply\":\"texto ao cliente\",\"action\":null}');\nlines.push('Para executar algo, troque action por um objeto pronto para POST na ponte:');\nlines.push('addTransaction -> {\"op\":\"addTransaction\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"amount\":0,\"transaction_type\":\"expense\",\"status\":\"pending\",\"due_date\":\"YYYY-MM-DD\",\"month\":0,\"year\":0,\"category_id\":\"\"}}');\nlines.push('markBillPaid -> {\"op\":\"markBillPaid\",\"txId\":\"<id da conta pendente>\",\"paidDate\":\"YYYY-MM-DD\"}');\nlines.push('createCategory -> {\"op\":\"createCategory\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"type\":\"expense\",\"icon\":\"pacote\"}}');\nlines.push('createAccount -> {\"op\":\"createAccount\",\"userId\":\"<id>\",\"record\":{\"name\":\"...\",\"bank_name\":\"\",\"type\":\"checking\",\"initial_balance\":0}}');\nlines.push('Nunca invente ids; use os ids do contexto. Se for so conversa/consulta, action=null.');\nconst system = lines.join(NL);\nreturn [{ json: { system: system, userMsg: userMsg } }];"
       },
       "id": "node-08",
       "name": "Monta prompt",
@@ -415,6 +443,17 @@
       ]
     },
     "getRules": {
+      "main": [
+        [
+          {
+            "node": "Le anexo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Le anexo": {
       "main": [
         [
           {

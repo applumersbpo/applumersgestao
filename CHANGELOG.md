@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.40.0] — 2026-08-13
+
+### Adicionado
+- **Leitura de PDF/imagem no assistente do WhatsApp (via Chatwoot/n8n)** — quando o cliente envia um documento (PDF de boleto/fatura/comprovante) ou imagem pelo WhatsApp, o cérebro no n8n agora **lê o conteúdo** em vez de responder com saudação genérica. Nova op `readMedia` na ponte `api/n8n.js` baixa o anexo pela URL pública do Chatwoot (`data_url`) e extrai o texto reaproveitando os leitores existentes (OpenAI `gpt-4o-mini` como primário, Gemini e Groq como fallback). O workflow ganhou o nó **"Le anexo"** (entre `getRules` e `Monta prompt`) e o prompt passou a instruir a IA a usar os dados extraídos e a nunca reiniciar a conversa diante de um documento.
+
+### Corrigido
+- **Assistente "reiniciava a conversa" ao receber PDF** — o workflow n8n só lia `body.content`, que vem vazio quando a mensagem é um anexo, fazendo a IA responder com a saudação de boas-vindas. Agora o texto do documento é injetado na mensagem do usuário.
+
+---
+
 ## [v1.39.0] — 2026-08-10
 
 ### Adicionado

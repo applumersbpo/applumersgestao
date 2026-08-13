@@ -1,6 +1,7 @@
 import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting, findUserByPhone } from './_lib/db.js';
 import { cors } from './_lib/auth.js';
 import { sendText, evoBase, resolveKey, headers, setWebhook, deriveWebhookUrl } from './_lib/evolution.js';
+import { getAiConfig, openaiReadDocument, openaiReadImage, geminiReadImage, groqReadImage } from './_lib/ai.js';
 
 const N8N_SECRET = process.env.N8N_SECRET || 'lumers-n8n-2025';
 
@@ -303,6 +304,49 @@ export default async function handler(req, res) {
       const data = await r.json().catch(() => ({}));
       if (!r.ok) return res.status(502).json({ error: 'Evolution getBase64 falhou', detail: data });
       return res.status(200).json({ base64: data.base64 || data.media || '', mimetype: data.mimetype || '' });
+    }
+
+    // Lê um anexo (PDF/imagem) a partir de uma URL pública (ex.: data_url que o
+    // Chatwoot manda no webhook) e devolve o TEXTO extraído para o n8n injetar no
+    // prompt. Reaproveita os leitores de documento/imagem (OpenAI primário, Gemini
+    // e Groq como fallback). Sempre responde 200 com { text } — se não houver url
+    // ou a leitura falhar, text vem vazio, para o nó HTTP do n8n nunca quebrar.
+    if (op === 'readMedia') {
+      const url = req.body?.url;
+      if (!url) return res.status(200).json({ text: '' });
+      let base64 = '';
+      let mime = req.body?.mimetype || '';
+      try {
+        const r = await fetch(url, { redirect: 'follow' });
+        if (!r.ok) return res.status(200).json({ text: '', error: `download ${r.status}` });
+        if (!mime) mime = r.headers.get('content-type') || '';
+        base64 = Buffer.from(await r.arrayBuffer()).toString('base64');
+      } catch (e) {
+        return res.status(200).json({ text: '', error: String(e?.message || e) });
+      }
+      const cfg = await getAiConfig();
+      const isPdf = /pdf/i.test(mime) || /\.pdf(\?|$)/i.test(url);
+      let text = '';
+      try {
+        if (isPdf) {
+          if (cfg.openaiKey) {
+            text = await openaiReadDocument({ key: cfg.openaiKey, model: cfg.openaiVisionModel, base64, mime: 'application/pdf' });
+          } else if (cfg.geminiKey) {
+            text = await geminiReadImage({ key: cfg.geminiKey, model: cfg.geminiModel, base64, mime: 'application/pdf' });
+          }
+        } else {
+          if (cfg.openaiKey) {
+            text = await openaiReadImage({ key: cfg.openaiKey, model: cfg.openaiVisionModel, base64, mime });
+          } else if (cfg.geminiKey) {
+            text = await geminiReadImage({ key: cfg.geminiKey, model: cfg.geminiModel, base64, mime });
+          } else if (cfg.groqKey) {
+            text = await groqReadImage({ key: cfg.groqKey, model: cfg.groqVisionModel, base64, mime });
+          }
+        }
+      } catch (e) {
+        return res.status(200).json({ text: '', error: String(e?.message || e) });
+      }
+      return res.status(200).json({ text: (text || '').trim(), mime });
     }
 
     // Envia mensagem de volta a uma conversa do Chatwoot, usando as credenciais do painel.
