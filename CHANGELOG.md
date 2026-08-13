@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.41.1] — 2026-08-13
+
+### Melhorado
+- **Janela de memória do assistente limitada** — o histórico injetado no assistente (op `getChatwootHistory`) passou a considerar no **máximo 50 mensagens** e no **máximo 2 dias** (o que vier primeiro), evitando prompts longos demais e contexto velho.
+
+---
+
 ## [v1.41.0] — 2026-08-13
 
 ### Adicionado

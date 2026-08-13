@@ -371,7 +371,11 @@ export default async function handler(req, res) {
     // HTTP do n8n nunca quebrar o fluxo.
     if (op === 'getChatwootHistory') {
       const conversationId = req.body?.conversationId;
-      const limit = Math.min(Number(req.body?.limit) || 14, 30);
+      // Janela de memória: no máximo 50 mensagens E no máximo 2 dias (o que vier
+      // primeiro). Ambos configuráveis pelo n8n, mas com teto de 50 msgs.
+      const limit = Math.min(Number(req.body?.limit) || 50, 50);
+      const maxAgeDays = Number(req.body?.maxAgeDays) || 2;
+      const cutoff = Math.floor(Date.now() / 1000) - maxAgeDays * 86400;
       if (!conversationId) return res.status(200).json({ history: [] });
       const cwUrl = await getSystemSetting('chatwoot_url').catch(() => '');
       const cwToken = await getSystemSetting('chatwoot_token').catch(() => '');
@@ -385,6 +389,12 @@ export default async function handler(req, res) {
         const arr = Array.isArray(data.payload) ? data.payload : (Array.isArray(data) ? data : []);
         const history = arr
           .filter((m) => m && (m.message_type === 0 || m.message_type === 1) && m.content && String(m.content).trim())
+          .filter((m) => {
+            // created_at do Chatwoot vem em epoch (segundos); tolera milissegundos.
+            let ts = Number(m.created_at) || 0;
+            if (ts > 1e12) ts = Math.floor(ts / 1000);
+            return !ts || ts >= cutoff; // sem timestamp -> não descarta
+          })
           .map((m) => ({ id: m.id, role: m.message_type === 0 ? 'user' : 'assistant', content: String(m.content).trim() }));
         return res.status(200).json({ history: history.slice(-limit) });
       } catch (e) {

@@ -247,7 +247,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ op: 'getChatwootHistory', conversationId: ((($('Webhook Chatwoot').item.json.body.conversation) || {}).id) || '', limit: 14 }) }}",
+        "jsonBody": "={{ JSON.stringify({ op: 'getChatwootHistory', conversationId: ((($('Webhook Chatwoot').item.json.body.conversation) || {}).id) || '', limit: 50, maxAgeDays: 2 }) }}",
         "options": {}
       },
       "id": "node-07c",
