@@ -184,6 +184,32 @@ export default async function handler(req, res) {
       return res.status(201).json({ id, ok: true });
     }
 
+    // Registrar uma sugestão de melhoria no painel de Melhorias. Aceita userId
+    // direto OU resolve pelo phone. Guarda nome/telefone p/ exibir no painel. Fica
+    // como pending/medium — o admin decide status e agrupamento depois.
+    if (op === 'addImprovement') {
+      const text = (record?.text || req.body?.text || '').trim();
+      if (!text) return res.status(400).json({ error: 'record.text obrigatório' });
+      let uid = userId || null;
+      let uName = record?.user_name || '';
+      let uPhone = record?.user_phone || phone || '';
+      if (!uid && (phone || uPhone)) {
+        const found = await findUserByPhone(phone || uPhone);
+        if (found) { uid = found.id; uName = uName || found.name || ''; uPhone = uPhone || found.phone || ''; }
+      } else if (uid && !uName) {
+        const { rows } = await db.execute({ sql: 'SELECT name, phone FROM users WHERE id = ?', args: [uid] });
+        const u = rowsToObjects(rows)[0];
+        if (u) { uName = u.name || ''; uPhone = uPhone || u.phone || ''; }
+      }
+      const id = crypto.randomUUID();
+      await db.execute({
+        sql: `INSERT INTO improvements (id, user_id, user_name, user_phone, text, priority, status, created_at)
+              VALUES (?, ?, ?, ?, ?, 'medium', 'pending', datetime('now'))`,
+        args: [id, uid || '', uName || '', uPhone || '', text],
+      });
+      return res.status(201).json({ id, ok: true });
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Ops do "cérebro no n8n": pontos de conexão, regras/documentos, contexto do
     // usuário, ações completas e leitura de mídia. O n8n lê as conexões do painel

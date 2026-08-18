@@ -5,6 +5,15 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.43.1] — 2026-08-18
+
+### Corrigido
+- **Captura de `/melhorias` agora funciona em produção (cérebro n8n/Chatwoot)** — a coleta de feedback estava ligada ao assistente interno, mas o roteador ativo em produção é o n8n/Chatwoot. Sugestões enviadas pelos usuários não eram registradas nem respondidas. Correções:
+  - **Ponte `api/n8n.js`**: nova operação `addImprovement` que resolve o usuário (por `userId` ou telefone) e grava a sugestão no painel de Melhorias (`pending`/`medium`).
+  - **Workflow n8n "Lumers - Assistente Chatwoot"**: o assistente agora detecta `/melhorias` e feedbacks sobre o sistema, emite a ação `addImprovement` e responde ao usuário confirmando que a sugestão foi registrada e será analisada.
+
+---
+
 ## [v1.43.0] — 2026-08-18
 
 ### Adicionado
