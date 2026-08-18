@@ -5,6 +5,19 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.43.0] — 2026-08-18
+
+### Adicionado
+- **Coleta de feedback dos usuários + agrupamento de melhorias por IA** — fluxo completo para pedir, receber e organizar sugestões dos usuários:
+  - **Template "Pedir feedback"** no painel de mensagens (disparo em massa), com **variação de texto (spin)** e personalização `{nome}` para reduzir bloqueios do WhatsApp. Instrui o usuário a responder com `/melhorias` (texto **ou áudio**).
+  - **Captura por texto e áudio** — o comando `/melhorias` (com ou sem ideia junto) registra a sugestão; áudios são transcritos automaticamente (Groq/OpenAI/Gemini) e viram a demanda. O usuário recebe confirmação de que a sugestão será analisada.
+  - **Agrupamento de duplicadas (IA sugere, admin confirma)** — botão "🪄 Sugerir agrupamentos" no painel de Melhorias: a IA identifica sugestões que tratam do mesmo problema e propõe agrupá-las numa task única, com título editável. O admin confirma, desfaz o grupo inteiro ou tira um item específico.
+
+### Melhorado
+- **Aviso ao usuário em toda mudança de status** — além de *Concluída* e *Recusada*, a melhoria agora também notifica o usuário pelo WhatsApp quando entra *Em andamento*.
+
+---
+
 ## [v1.42.1] — 2026-08-13
 
 ### Adicionado

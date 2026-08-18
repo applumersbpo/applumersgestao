@@ -7,7 +7,7 @@ import {
   connectionState, connectQr, deleteInstance, setSettings, setWebhook,
   createInstance, deriveWebhookUrl, sendText,
 } from '../_lib/evolution.js';
-import { groqChat, geminiGenerate, openaiChat } from '../_lib/ai.js';
+import { groqChat, geminiGenerate, openaiChat, getAiConfig } from '../_lib/ai.js';
 import bcrypt from 'bcryptjs';
 
 const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret', 'n8n_webhook_url', 'n8n_secret', 'ai_enabled', 'ai_groq_key', 'ai_groq_model', 'ai_groq_vision_model', 'ai_gemini_key', 'ai_gemini_model', 'ai_openai_key', 'ai_openai_vision_model', 'ai_openai_audio_model', 'wa_assistant_number', 'wa_signup_enabled', 'ai_rules', 'chatwoot_enabled', 'chatwoot_url', 'chatwoot_token', 'chatwoot_account_id', 'chatwoot_inbox_id'];
@@ -142,7 +142,7 @@ export default async function handler(req, res) {
     // Sugestões de melhoria enviadas pelos usuários (comando /melhorias no WhatsApp)
     if (req.query.resource === 'improvements') {
       const { rows } = await db.execute(
-        `SELECT id, user_id, user_name, user_phone, text, priority, status, admin_note, created_at, decided_at
+        `SELECT id, user_id, user_name, user_phone, text, priority, status, admin_note, group_id, group_title, created_at, decided_at
            FROM improvements ORDER BY created_at DESC`
       );
       return res.status(200).json({ improvements: rowsToObjects(rows) });
@@ -718,7 +718,9 @@ export default async function handler(req, res) {
         await db.execute({ sql: `UPDATE improvements SET ${sets.join(', ')} WHERE id = ?`, args });
 
         let notified = false;
-        if (statusChanged && (status === 'done' || status === 'rejected') && imp.user_phone) {
+        // Avisa o usuário a cada mudança de status relevante (em andamento, concluída
+        // ou recusada). Voltar para "pendente" não gera aviso (evita ruído/spam).
+        if (statusChanged && (status === 'in_progress' || status === 'done' || status === 'rejected') && imp.user_phone) {
           try {
             const { rows: instRows } = await db.execute("SELECT name, api_key FROM evolution_instances WHERE is_default = 1 LIMIT 1");
             const inst = rowsToObjects(instRows)[0];
@@ -728,6 +730,8 @@ export default async function handler(req, res) {
               const note = typeof admin_note === 'string' && admin_note.trim() ? `\n\n📝 ${admin_note.trim()}` : '';
               const text = status === 'done'
                 ? `✅ Olá, ${first}! Sua sugestão de melhoria foi *aceita e implementada*:\n\n_"${shortIdea}"_${note}\n\nObrigado por ajudar a melhorar o Lumers Flow! 🙌`
+                : status === 'in_progress'
+                ? `🔧 Olá, ${first}! Sua sugestão já está *em andamento* e sendo trabalhada pela equipe:\n\n_"${shortIdea}"_${note}\n\nVocê recebe um novo aviso por aqui quando ela for concluída. Obrigado! 🙌`
                 : `Olá, ${first}. Analisamos sua sugestão:\n\n_"${shortIdea}"_\n\nDesta vez ela *não foi aceita*.${note}\n\nAgradecemos muito o seu envio — continue sugerindo! 💡`;
               await sendText({ name: inst.name, key: inst.api_key || null, number: imp.user_phone, text });
               notified = true;
@@ -736,6 +740,75 @@ export default async function handler(req, res) {
         }
         await logSystem({ req, actor: user, action: 'improvement.update', targetType: 'improvement', targetLabel: id, details: { status: newStatus, notified } });
         return res.status(200).json({ ok: true, notified });
+      }
+
+      // IA sugere agrupamentos de melhorias que tratam do MESMO problema. Não persiste
+      // nada — só devolve sugestões [{title, ids:[...]}] para o admin confirmar no painel.
+      if (action === 'improvements-suggest-groups') {
+        const cfg = await getAiConfig();
+        if (!cfg.groqKey && !cfg.openaiKey) {
+          return res.status(400).json({ error: 'Nenhum provedor de IA (Groq/OpenAI) configurado para sugerir agrupamentos.' });
+        }
+        // Considera apenas itens ainda soltos e não recusados (pending/in_progress/done).
+        const { rows: iRows } = await db.execute(
+          `SELECT id, text FROM improvements
+             WHERE (group_id IS NULL OR group_id = '') AND status != 'rejected'
+             ORDER BY created_at DESC LIMIT 100`
+        );
+        const items = rowsToObjects(iRows).filter(i => String(i.text || '').trim());
+        if (items.length < 2) return res.status(200).json({ groups: [] });
+
+        const list = items.map((i, n) => `${n + 1}. [${i.id}] ${String(i.text).replace(/\s+/g, ' ').slice(0, 240)}`).join('\n');
+        const sys = 'Você agrupa sugestões de melhoria de um app financeiro que tratam do MESMO problema ou pedem a MESMA funcionalidade. Responda APENAS JSON válido no formato {"groups":[{"title":"...","ids":["id1","id2"]}]}. Use o título curto (máx 60 caracteres) em português descrevendo o tema comum. Inclua um grupo SOMENTE quando houver 2 ou mais itens claramente sobre o mesmo assunto. Itens únicos NÃO entram em nenhum grupo. Use exatamente os ids entre colchetes.';
+        let raw = '';
+        try {
+          raw = cfg.groqKey
+            ? await groqChat({ key: cfg.groqKey, model: cfg.groqModel, messages: [{ role: 'system', content: sys }, { role: 'user', content: list }], temperature: 0, jsonMode: true })
+            : await openaiChat({ key: cfg.openaiKey, model: cfg.openaiVisionModel, messages: [{ role: 'system', content: sys }, { role: 'user', content: list }], temperature: 0 });
+        } catch (e) {
+          return res.status(502).json({ error: 'Falha ao consultar a IA: ' + (e?.message || 'erro') });
+        }
+        let parsed = {};
+        try { parsed = JSON.parse(raw.replace(/^```(json)?/i, '').replace(/```$/,'').trim()); } catch { parsed = {}; }
+        const validIds = new Set(items.map(i => i.id));
+        const groups = (Array.isArray(parsed.groups) ? parsed.groups : [])
+          .map(g => ({
+            title: String(g?.title || 'Melhorias relacionadas').slice(0, 60),
+            ids: [...new Set((Array.isArray(g?.ids) ? g.ids : []).map(String).filter(x => validIds.has(x)))],
+          }))
+          .filter(g => g.ids.length >= 2);
+        return res.status(200).json({ groups });
+      }
+
+      // Aplica um agrupamento confirmado pelo admin: marca os itens com um group_id
+      // comum e um título. Se algum item já pertencia a um grupo, é remanejado para este.
+      if (action === 'improvement-group') {
+        const { ids, group_title, group_id } = req.body || {};
+        const list = [...new Set((Array.isArray(ids) ? ids : []).map(String))].filter(Boolean);
+        if (list.length < 2) return res.status(400).json({ error: 'Selecione ao menos 2 melhorias para agrupar.' });
+        const gid = String(group_id || crypto.randomUUID());
+        const title = String(group_title || 'Melhorias relacionadas').slice(0, 80);
+        const placeholders = list.map(() => '?').join(',');
+        await db.execute({
+          sql: `UPDATE improvements SET group_id = ?, group_title = ? WHERE id IN (${placeholders})`,
+          args: [gid, title, ...list],
+        });
+        await logSystem({ req, actor: user, action: 'improvement.update', targetType: 'improvement', targetLabel: gid, details: { grouped: list.length, title } });
+        return res.status(200).json({ ok: true, group_id: gid });
+      }
+
+      // Desfaz um agrupamento: por group_id (todos do grupo) ou por id (item específico).
+      if (action === 'improvement-ungroup') {
+        const { group_id, id } = req.body || {};
+        if (group_id) {
+          await db.execute({ sql: "UPDATE improvements SET group_id = '', group_title = '' WHERE group_id = ?", args: [String(group_id)] });
+        } else if (id) {
+          await db.execute({ sql: "UPDATE improvements SET group_id = '', group_title = '' WHERE id = ?", args: [String(id)] });
+        } else {
+          return res.status(400).json({ error: 'group_id ou id é obrigatório' });
+        }
+        await logSystem({ req, actor: user, action: 'improvement.update', targetType: 'improvement', targetLabel: String(group_id || id), details: { ungrouped: true } });
+        return res.status(200).json({ ok: true });
       }
 
       // Define instância padrão

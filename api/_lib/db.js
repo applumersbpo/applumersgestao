@@ -695,6 +695,17 @@ export async function initDb() {
   // message_followups index for the cron scan
   await db.execute("CREATE INDEX IF NOT EXISTS idx_message_followups_status ON message_followups(status, last_sent_at)");
 
+  // improvements — agrupamento de sugestões que tratam do mesmo problema. group_id
+  // vazio = item solto; itens com o mesmo group_id formam uma task única (título em group_title).
+  const { rows: impCols } = await db.execute("PRAGMA table_info('improvements')");
+  const impColNames = (impCols || []).map(r => r.name);
+  if ((impCols || []).length > 0 && !impColNames.includes('group_id')) {
+    await db.execute("ALTER TABLE improvements ADD COLUMN group_id TEXT DEFAULT ''");
+  }
+  if ((impCols || []).length > 0 && !impColNames.includes('group_title')) {
+    await db.execute("ALTER TABLE improvements ADD COLUMN group_title TEXT DEFAULT ''");
+  }
+
   // wa_conversations — guarda anti-loop/anti-bot (janela de flood + mute + código de reativação)
   const { rows: wcCols } = await db.execute("PRAGMA table_info('wa_conversations')");
   if (!(wcCols || []).map(r => r.name).includes('guard')) {

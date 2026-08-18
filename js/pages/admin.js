@@ -1501,12 +1501,53 @@ function _impFmtDate(s) {
   return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
+// Card de uma sugestão. inGroup=true renderiza mais compacto e com opção de tirar do grupo.
+function _impCardHtml(i, inGroup) {
+  const st = _IMP_STATUS[i.status] || _IMP_STATUS.pending;
+  const idJs = _escHtml(i.id);
+  return `
+    <div class="card" style="margin-bottom:${inGroup ? 10 : 12}px${inGroup ? ';box-shadow:none;border:1px solid var(--border)' : ''}" id="imp-card-${idJs}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div style="min-width:0;flex:1">
+          <div style="font-weight:600;font-size:.9rem;color:var(--text)">${_escHtml(i.user_name || 'Usuário')} ${i.user_phone ? `<span style="color:var(--text-muted);font-weight:400;font-size:.78rem">· ${_escHtml(i.user_phone)}</span>` : ''}</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:1px">${_impFmtDate(i.created_at)}</div>
+        </div>
+        <span style="background:${st.bg};color:${st.color};border-radius:8px;padding:3px 10px;font-size:.75rem;font-weight:600;flex-shrink:0">${st.label}</span>
+      </div>
+      <p style="font-size:.88rem;color:var(--text);margin:10px 0;line-height:1.5;white-space:pre-wrap">${_escHtml(i.text || '')}</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">
+        <label style="font-size:.72rem;color:var(--text-muted)">Status
+          <select id="imp-status-${idJs}" class="input" style="display:block;margin-top:3px;padding:6px 8px;font-size:.82rem">
+            ${Object.entries(_IMP_STATUS).map(([k, s]) => `<option value="${k}" ${i.status === k ? 'selected' : ''}>${s.label}</option>`).join('')}
+          </select>
+        </label>
+        <label style="font-size:.72rem;color:var(--text-muted)">Prioridade
+          <select id="imp-prio-${idJs}" class="input" style="display:block;margin-top:3px;padding:6px 8px;font-size:.82rem">
+            ${Object.entries(_IMP_PRIO).map(([k, l]) => `<option value="${k}" ${i.priority === k ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </label>
+        <label style="font-size:.72rem;color:var(--text-muted);flex:1;min-width:160px">Nota (enviada ao usuário)
+          <input id="imp-note-${idJs}" class="input" style="display:block;margin-top:3px;padding:6px 8px;font-size:.82rem;width:100%" value="${_escHtml(i.admin_note || '')}" placeholder="opcional">
+        </label>
+        <button class="btn btn-primary btn-sm" onclick="_impSave('${idJs}')">Salvar</button>
+        ${inGroup ? `<button class="btn btn-sm" onclick="_impUngroup(null,'${idJs}')" title="Remover desta task">Tirar do grupo</button>` : ''}
+      </div>
+      <div style="font-size:.72rem;color:var(--text-muted);margin-top:8px">
+        💬 Ao mudar o status (Em andamento, Concluída ou Recusada), o usuário é avisado automaticamente pelo WhatsApp.
+      </div>
+    </div>`;
+}
+
+// Cache das sugestões de agrupamento da IA (referenciadas por índice no onclick).
+let _impSuggestions = [];
+
 async function renderAdminImprovements() {
   const content = document.getElementById('content');
   content.innerHTML = '<div class="loading-screen"><div class="spinner"></div></div>';
 
   try {
     const { improvements = [] } = await _api('GET', '/admin/users?resource=improvements');
+    window._impById = {}; improvements.forEach(i => { window._impById[i.id] = i; });
 
     const counts = improvements.reduce((a, i) => { a[i.status] = (a[i.status] || 0) + 1; return a; }, {});
     const summary = `
@@ -1517,53 +1558,49 @@ async function renderAdminImprovements() {
           </div>`).join('')}
       </div>`;
 
-    const rows = improvements.length ? improvements.map(i => {
-      const st = _IMP_STATUS[i.status] || _IMP_STATUS.pending;
-      const idJs = _escHtml(i.id);
-      return `
-        <div class="card" style="margin-bottom:12px" id="imp-card-${idJs}">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
-            <div style="min-width:0;flex:1">
-              <div style="font-weight:600;font-size:.9rem;color:var(--text)">${_escHtml(i.user_name || 'Usuário')} ${i.user_phone ? `<span style="color:var(--text-muted);font-weight:400;font-size:.78rem">· ${_escHtml(i.user_phone)}</span>` : ''}</div>
-              <div style="font-size:.75rem;color:var(--text-muted);margin-top:1px">${_impFmtDate(i.created_at)}</div>
-            </div>
-            <span style="background:${st.bg};color:${st.color};border-radius:8px;padding:3px 10px;font-size:.75rem;font-weight:600;flex-shrink:0">${st.label}</span>
-          </div>
-          <p style="font-size:.88rem;color:var(--text);margin:10px 0;line-height:1.5;white-space:pre-wrap">${_escHtml(i.text || '')}</p>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">
-            <label style="font-size:.72rem;color:var(--text-muted)">Status
-              <select id="imp-status-${idJs}" class="input" style="display:block;margin-top:3px;padding:6px 8px;font-size:.82rem">
-                ${Object.entries(_IMP_STATUS).map(([k, s]) => `<option value="${k}" ${i.status === k ? 'selected' : ''}>${s.label}</option>`).join('')}
-              </select>
-            </label>
-            <label style="font-size:.72rem;color:var(--text-muted)">Prioridade
-              <select id="imp-prio-${idJs}" class="input" style="display:block;margin-top:3px;padding:6px 8px;font-size:.82rem">
-                ${Object.entries(_IMP_PRIO).map(([k, l]) => `<option value="${k}" ${i.priority === k ? 'selected' : ''}>${l}</option>`).join('')}
-              </select>
-            </label>
-            <label style="font-size:.72rem;color:var(--text-muted);flex:1;min-width:160px">Nota (enviada ao usuário)
-              <input id="imp-note-${idJs}" class="input" style="display:block;margin-top:3px;padding:6px 8px;font-size:.82rem;width:100%" value="${_escHtml(i.admin_note || '')}" placeholder="opcional">
-            </label>
-            <button class="btn btn-primary btn-sm" onclick="_impSave('${idJs}')">Salvar</button>
-          </div>
-          <div style="font-size:.72rem;color:var(--text-muted);margin-top:8px">
-            💬 Ao mudar para <strong>Concluída</strong> ou <strong>Recusada</strong>, o usuário é avisado automaticamente pelo WhatsApp.
-          </div>
-        </div>`;
-    }).join('') : `
+    // Separa itens agrupados (mesmo group_id) dos soltos. Cada grupo é uma task única.
+    const groupsMap = new Map();
+    const loose = [];
+    improvements.forEach(i => {
+      if (i.group_id) {
+        if (!groupsMap.has(i.group_id)) groupsMap.set(i.group_id, { title: i.group_title || 'Melhorias relacionadas', items: [] });
+        groupsMap.get(i.group_id).items.push(i);
+      } else loose.push(i);
+    });
+
+    const groupsHtml = [...groupsMap.entries()].map(([gid, g]) => `
+      <div class="card" style="margin-bottom:14px;border-left:3px solid #D4A24C;background:rgba(212,162,76,.05)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+          <div style="font-weight:700;font-size:.92rem;color:var(--text)">🗂️ ${_escHtml(g.title)} <span style="color:var(--text-muted);font-weight:500;font-size:.78rem">· ${g.items.length} sugestões agrupadas</span></div>
+          <button class="btn btn-sm" onclick="_impUngroup('${_escHtml(gid)}')">Desfazer agrupamento</button>
+        </div>
+        ${g.items.map(i => _impCardHtml(i, true)).join('')}
+      </div>`).join('');
+
+    const looseHtml = loose.map(i => _impCardHtml(i, false)).join('');
+
+    const emptyHtml = `
       <div style="padding:48px;text-align:center;color:var(--text-muted)">
         <i data-lucide="lightbulb" style="width:40px;height:40px;opacity:.3;display:block;margin:0 auto 12px"></i>
         <p>Nenhuma sugestão de melhoria ainda. Elas chegam quando um usuário envia <strong>/melhorias</strong> no WhatsApp.</p>
       </div>`;
 
+    const body = improvements.length ? (groupsHtml + looseHtml) : emptyHtml;
+
     content.innerHTML = `
       ${_adminNavBar('improvements')}
       <div class="card" style="margin-bottom:16px">
-        <div class="card-title" style="margin-bottom:6px">${icon('lightbulb', 14)} Sugestões de Melhoria</div>
-        <p style="font-size:.82rem;color:var(--text-muted);margin:0">Enviadas pelos usuários pelo comando <strong>/melhorias</strong> no WhatsApp, em ordem de data.</p>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="min-width:0;flex:1">
+            <div class="card-title" style="margin-bottom:6px">${icon('lightbulb', 14)} Sugestões de Melhoria</div>
+            <p style="font-size:.82rem;color:var(--text-muted);margin:0">Enviadas pelos usuários pelo comando <strong>/melhorias</strong> no WhatsApp, em ordem de data.</p>
+          </div>
+          ${improvements.length >= 2 ? `<button class="btn btn-sm" id="imp-suggest-btn" onclick="_impSuggestGroups()">🪄 Sugerir agrupamentos</button>` : ''}
+        </div>
       </div>
+      <div id="imp-suggestions"></div>
       ${summary}
-      ${rows}`;
+      ${body}`;
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
   } catch (e) {
@@ -1592,6 +1629,65 @@ async function _impSave(id) {
   try {
     const r = await _api('POST', '/admin/users', { action: 'improvement-update', id, status, priority, admin_note });
     if (typeof toast === 'function') toast(r.notified ? 'Salvo. Usuário avisado pelo WhatsApp.' : 'Melhoria atualizada.', 'success');
+    renderAdminImprovements();
+  } catch (e) {
+    if (typeof toast === 'function') toast('Erro: ' + e.message, 'error');
+  }
+}
+
+// Pede à IA para sugerir agrupamentos de melhorias que tratam do mesmo problema.
+async function _impSuggestGroups() {
+  const box = document.getElementById('imp-suggestions');
+  const btn = document.getElementById('imp-suggest-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Analisando…'; }
+  try {
+    const { groups = [] } = await _api('POST', '/admin/users', { action: 'improvements-suggest-groups' });
+    _impSuggestions = groups;
+    if (!groups.length) {
+      if (box) box.innerHTML = `<div class="card" style="margin-bottom:16px;border-left:3px solid #807B6C"><p style="margin:0;font-size:.85rem;color:var(--text-muted)">Nenhum agrupamento sugerido — as sugestões atuais parecem tratar de assuntos diferentes.</p></div>`;
+    } else if (box) {
+      box.innerHTML = `
+        <div class="card" style="margin-bottom:16px;border-left:3px solid #D4A24C">
+          <div style="font-weight:700;font-size:.9rem;margin-bottom:10px">🪄 Agrupamentos sugeridos pela IA <span style="font-weight:500;color:var(--text-muted);font-size:.8rem">— confirme os que fizerem sentido</span></div>
+          ${groups.map((g, gi) => `
+            <div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+                <div style="font-weight:600;font-size:.86rem">${_escHtml(g.title)} <span style="color:var(--text-muted);font-weight:500;font-size:.78rem">· ${g.ids.length} itens</span></div>
+                <button class="btn btn-primary btn-sm" onclick="_impGroupApply(${gi})">Agrupar</button>
+              </div>
+              <ul style="margin:0;padding-left:18px;font-size:.8rem;color:var(--text-muted)">
+                ${g.ids.map(id => { const it = (window._impById && window._impById[id]) || null; return `<li style="margin-bottom:3px">${it ? _escHtml(String(it.text || '').slice(0, 120)) : _escHtml(id)}</li>`; }).join('')}
+              </ul>
+            </div>`).join('')}
+        </div>`;
+    }
+  } catch (e) {
+    if (typeof toast === 'function') toast('Erro: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🪄 Sugerir agrupamentos'; }
+  }
+}
+
+// Aplica um agrupamento sugerido (por índice em _impSuggestions).
+async function _impGroupApply(gi) {
+  const g = _impSuggestions[gi];
+  if (!g) return;
+  const title = prompt('Título da task (agrupamento):', g.title);
+  if (title === null) return;
+  try {
+    await _api('POST', '/admin/users', { action: 'improvement-group', ids: g.ids, group_title: title.trim() || g.title });
+    if (typeof toast === 'function') toast('Melhorias agrupadas.', 'success');
+    renderAdminImprovements();
+  } catch (e) {
+    if (typeof toast === 'function') toast('Erro: ' + e.message, 'error');
+  }
+}
+
+// Desfaz um agrupamento inteiro (groupId) ou tira um único item do grupo (id).
+async function _impUngroup(groupId, id) {
+  try {
+    await _api('POST', '/admin/users', { action: 'improvement-ungroup', ...(groupId ? { group_id: groupId } : { id }) });
+    if (typeof toast === 'function') toast('Agrupamento atualizado.', 'success');
     renderAdminImprovements();
   } catch (e) {
     if (typeof toast === 'function') toast('Erro: ' + e.message, 'error');
@@ -3669,6 +3765,11 @@ const _ADMIN_MSG_TEMPLATES = [
     icon: 'share-2',
     label: 'Indique um amigo',
     text: '💡 *Você conhece alguém que merece ter as finanças no controle?* Compartilhe o Lumers Flow com um amigo e ajude-o a tomar decisões financeiras mais inteligentes. Juntos, crescemos mais! 🤝\n\n👉 https://app.lumersbpo.com.br/',
+  },
+  {
+    icon: 'message-square',
+    label: 'Pedir feedback',
+    text: '{Olá|Oi|Ei}, {nome}! 👋 {Queremos deixar|Estamos trabalhando pra deixar|Queremos tornar} o *Lumers Flow* {cada vez melhor|ainda melhor|melhor pra você} 💚\n\n{Conta pra gente|Nos conte|Queremos muito saber}: {o que você acha que podemos melhorar?|qual dificuldade você tem enfrentado por aí?|tem alguma coisa que parou de funcionar ou que te incomoda?}\n\n📝 É só responder com */melhorias* seguido da sua ideia. {Pode ser por texto ou áudio|Se preferir, manda um áudio|Do jeito que for melhor: texto ou áudio} 🎙️\n\n{Cada sugestão é analisada pela equipe|Toda ideia é avaliada com carinho|A gente lê tudo com atenção} e você {recebe um retorno por aqui|é avisado por aqui} quando ela for avaliada. {Sua opinião faz toda a diferença|Sua opinião nos ajuda demais|Obrigado por ajudar a evoluir}! 🙏',
   },
 ];
 
