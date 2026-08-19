@@ -96,7 +96,7 @@ export default async function handler(req, res) {
     // Configurar as chaves da integração n8n (restrito a essas duas chaves)
     if (op === 'setConfig') {
       const { key, value } = req.body || {};
-      const ALLOWED = ['n8n_webhook_url', 'n8n_secret'];
+      const ALLOWED = ['n8n_webhook_url', 'n8n_secret', 'ai_groq_model', 'admin_alert_phones'];
       if (!ALLOWED.includes(key)) return res.status(400).json({ error: 'key não permitida' });
       await setSystemSetting(key, value == null ? '' : String(value));
       return res.status(200).json({ ok: true, key });

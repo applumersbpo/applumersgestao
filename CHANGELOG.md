@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.43.3] — 2026-08-18
+
+### Melhorado
+- **`setConfig` do bridge n8n agora aceita `ai_groq_model` e `admin_alert_phones`** — permite ajustar o modelo Groq do painel e a lista de telefones de alerta pela ponte protegida por segredo, sem exigir sessão admin. Usado para fixar `openai/gpt-oss-120b` no painel.
+
+---
+
 ## [v1.43.2] — 2026-08-18
 
 ### Corrigido
