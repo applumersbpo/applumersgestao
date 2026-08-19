@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.43.2] — 2026-08-18
+
+### Corrigido
+- **Assistente voltou a responder no WhatsApp (incidente)** — o assistente parou de responder todos os usuários porque o modelo Groq configurado (`llama-3.3-70b-versatile`) foi descontinuado na conta e passou a retornar `404 model does not exist`. Toda mensagem de cliente quebrava no nó "IA (Groq)". Trocado para **`openai/gpt-oss-120b`** (disponível na conta, 131k de contexto, suporte a JSON). Validado ao vivo com execução real.
+
+### Adicionado
+- **Sistema de alerta de falha para administradores** — nova operação `notifyAdmins` em `api/n8n.js`: quando o assistente falha (IA fora do ar, envio ao WhatsApp falha, etc.), um workflow de *Error Trigger* no n8n dispara um alerta por WhatsApp aos admins/super_admins (ou à lista `admin_alert_phones` do painel). Tem *cooldown* de 15 min para não inundar em tempestades de erro.
+
+---
+
 ## [v1.43.1] — 2026-08-18
 
 ### Corrigido

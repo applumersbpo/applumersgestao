@@ -288,7 +288,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: ($('getConnections').item.json.ai.groq_model || 'llama-3.3-70b-versatile'), temperature: 0.4, response_format: { type: 'json_object' }, messages: $json.messages }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'openai/gpt-oss-120b', temperature: 0.4, response_format: { type: 'json_object' }, messages: $json.messages }) }}",
         "options": {}
       },
       "id": "node-09",

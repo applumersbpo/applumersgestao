@@ -210,6 +210,73 @@ export default async function handler(req, res) {
       return res.status(201).json({ id, ok: true });
     }
 
+    // Alerta de falha aos administradores (via WhatsApp). Chamado pelo workflow de
+    // Error Trigger do n8n quando o assistente quebra (ex.: IA fora do ar, envio
+    // falhou). Destinatários: system_setting `admin_alert_phones` (lista separada
+    // por vírgula) OU, se vazio, telefones de todos os admin/super_admin. Tem
+    // COOLDOWN (padrão 15 min) p/ não inundar os admins numa tempestade de erros.
+    if (op === 'notifyAdmins') {
+      const alert = req.body?.alert || {};
+      const cooldownSec = Number(req.body?.cooldownSec ?? 900);
+      const isTest = req.body?.test === true;
+
+      // Cooldown: não reenvia se um alerta saiu há menos de cooldownSec.
+      if (!isTest && cooldownSec > 0) {
+        const lastRaw = await getSystemSetting('wa_alert_last_ts').catch(() => null);
+        const last = Number(lastRaw) || 0;
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (last && nowSec - last < cooldownSec) {
+          return res.status(200).json({ ok: true, skipped: 'cooldown', secondsLeft: cooldownSec - (nowSec - last) });
+        }
+      }
+
+      // Destinatários: lista manual do painel OU admins/super_admins com telefone.
+      let phones = [];
+      const manual = (await getSystemSetting('admin_alert_phones').catch(() => '')) || '';
+      if (manual.trim()) {
+        phones = manual.split(/[,;\n]/).map((s) => s.replace(/\D/g, '')).filter(Boolean);
+      } else {
+        const { rows } = await db.execute(
+          "SELECT phone FROM users WHERE (is_admin = 1 OR role IN ('admin','super_admin')) AND phone IS NOT NULL AND phone != ''"
+        );
+        phones = rowsToObjects(rows).map((r) => String(r.phone).replace(/\D/g, '')).filter(Boolean);
+      }
+      phones = [...new Set(phones)];
+      if (phones.length === 0) return res.status(200).json({ ok: true, sent: 0, warn: 'nenhum admin com telefone' });
+
+      const inst = await getDefaultInstance();
+      if (!inst) return res.status(400).json({ error: 'Nenhuma instância padrão definida' });
+
+      const at = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      const parts = [
+        '🚨 *Lumers Flow — Falha no assistente*',
+        '',
+        'Detectamos uma falha de comunicação no atendimento via WhatsApp.',
+      ];
+      if (alert.message) parts.push('', `*Erro:* ${String(alert.message).slice(0, 300)}`);
+      if (alert.node) parts.push(`*Etapa:* ${alert.node}`);
+      if (alert.workflow) parts.push(`*Fluxo:* ${alert.workflow}`);
+      if (alert.executionId) parts.push(`*Execução:* ${alert.executionId}`);
+      parts.push(`*Quando:* ${at}`);
+      parts.push('', 'As mensagens dos clientes podem estar sem resposta. Verifique o assistente/n8n.');
+      const textMsg = parts.join('\n');
+
+      const results = [];
+      for (const p of phones) {
+        try {
+          const r = await sendText({ name: inst.name, key: inst.api_key || null, number: p, text: textMsg });
+          results.push({ phone: p, status: r.status });
+        } catch (e) {
+          results.push({ phone: p, error: String(e?.message || e) });
+        }
+      }
+      const sent = results.filter((r) => r.status && r.status < 300).length;
+      if (sent > 0 && !isTest) {
+        await setSystemSetting('wa_alert_last_ts', String(Math.floor(Date.now() / 1000))).catch(() => {});
+      }
+      return res.status(200).json({ ok: true, sent, recipients: phones.length, results });
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Ops do "cérebro no n8n": pontos de conexão, regras/documentos, contexto do
     // usuário, ações completas e leitura de mídia. O n8n lê as conexões do painel
