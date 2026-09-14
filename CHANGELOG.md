@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.45.0] — 2026-09-14
+
+### Corrigido
+- **Conversa travava repetindo "Não entendi"** — nos fluxos operacionais (lançamento, parcelamento, múltiplos lançamentos, baixa de conta), qualquer resposta que não batesse com o esperado repetia "não entendi" e **mantinha o estado pendente indefinidamente**, prendendo o usuário sem escape. Adicionada uma **válvula de escape** em `assistant2.js`: (1) saudação / "menu" / "recomeçar" / "sair" / "voltar" abandona o fluxo e volta ao assistente normal; (2) inatividade > 20 min descarta o fluxo abandonado; (3) **cap de tentativas** — após 2 "não entendi" seguidos no mesmo passo, o assistente cancela sozinho e reinicia limpo, em vez de repetir o loop.
+
+### Alterado
+- **Interpretação de mídia agora é feita pelo ChatGPT (OpenAI)** — a pedido: a leitura/interpretação de **áudio, imagem e documentos (PDF)** passa a ter a **OpenAI como provedor primário** (Gemini apenas como fallback quando a OpenAI falhar ou não estiver configurada). O **Groq deixa de interpretar mídia** e fica responsável apenas pelo **chat de texto** (entender a mensagem e responder). Removido o Groq das cadeias de visão e transcrição.
+  - **Requer a chave da OpenAI configurada** no painel (Admin→Sistema→IA). Sem ela, a interpretação cai no Gemini (fallback).
+
+---
+
 ## [v1.44.2] — 2026-09-14
 
 ### Melhorado

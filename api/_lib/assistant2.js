@@ -37,16 +37,15 @@ const MEDIA_EXTRACT_PROMPT =
 // Retorna o texto extraído (não vazio). Se ambos falharem, lança Error com:
 //   .kind = 'tech'  → falha técnica do provedor (API/limite) → função indisponível
 //   .kind = 'empty' → provedor respondeu vazio → conteúdo não compreendido
-// Lê o conteúdo de uma imagem/print. Ordem: OpenAI (primário, quando há chave) →
-// Gemini → Groq (último recurso). O Gemini vem ANTES do Groq de propósito: a visão
-// do Groq (qwen) tem limite de saída ínfimo (OTPM 1000 → HTTP 429) e é inútil na
-// prática; o Gemini multimodal é o provedor confiável de leitura de imagem hoje.
+// Lê o conteúdo de uma imagem/print. A INTERPRETAÇÃO fica a cargo do ChatGPT
+// (OpenAI) — provedor primário; o Gemini entra só como fallback caso a OpenAI
+// falhe ou não esteja configurada. O Groq NÃO é usado para interpretar (a visão
+// dele, qwen, tem limite ínfimo/429): o Groq atende apenas o chat de texto.
 async function readImageContent(cfg, base64, mime) {
   let threw = false;
   const providers = [];
   if (cfg.openaiKey) providers.push('openai');
   if (cfg.geminiKey) providers.push('gemini');
-  if (cfg.groqKey)   providers.push('groq');
   for (const p of providers) {
     try {
       const t = p === 'openai'
@@ -144,14 +143,15 @@ async function userByPhone(phone) {
 
 async function getConversation(phone) {
   const db = getDb();
-  const { rows } = await db.execute({ sql: 'SELECT phone, user_id, pending, history FROM wa_conversations WHERE phone = ?', args: [phone] });
+  const { rows } = await db.execute({ sql: 'SELECT phone, user_id, pending, history, updated_at FROM wa_conversations WHERE phone = ?', args: [phone] });
   const row = rowsToObjects(rows)[0];
-  if (!row) return { phone, user_id: '', pending: null, history: [] };
+  if (!row) return { phone, user_id: '', pending: null, history: [], updated_at: null };
   return {
     phone,
     user_id: row.user_id || '',
     pending: row.pending ? safeParse(row.pending) : null,
     history: row.history ? safeParse(row.history) || [] : [],
+    updated_at: row.updated_at || null,
   };
 }
 
@@ -1701,40 +1701,52 @@ async function handleWaCommands({ user, isAdmin, phone, userText, inType, reply,
     return { handled: true, reason: 'system_menu_step' };
   }
 
-  // Continuação do fluxo de lançamento (escolha de banco/conta e categoria)
-  if (conv.pending?.type === 'tx_flow') {
-    const r = await runTxFlow(user, conv.pending, raw);
-    await reply(r.answer);
-    await saveConversation(phone, user.id, r.pending, conv.history || []);
-    await logInteraction({ phone, user, inType, inText: raw, outText: r.answer, action: 'tx_flow_step' });
-    return { handled: true, reason: 'tx_flow_step' };
-  }
-
-  // Continuação do fluxo de parcelamento (cartão, fechamento/vencimento e categoria)
-  if (conv.pending?.type === 'installment_flow') {
-    const r = await runInstallmentFlow(user, conv.pending, raw);
-    await reply(r.answer);
-    await saveConversation(phone, user.id, r.pending, conv.history || []);
-    await logInteraction({ phone, user, inType, inText: raw, outText: r.answer, action: 'installment_flow_step' });
-    return { handled: true, reason: 'installment_flow_step' };
-  }
-
-  // Continuação do fluxo de MÚLTIPLOS lançamentos (seleção → conta → datas → confirmar)
-  if (conv.pending?.type === 'multi_tx') {
-    const r = await runMultiTxFlow(user, conv.pending, raw);
-    await reply(r.answer);
-    await saveConversation(phone, user.id, r.pending, conv.history || []);
-    await logInteraction({ phone, user, inType, inText: raw, outText: r.answer, action: 'multi_tx_step' });
-    return { handled: true, reason: 'multi_tx_step' };
-  }
-
-  // Continuação da baixa de conta (escolha qual conta pendente foi paga)
-  if (conv.pending?.type === 'pay_bill') {
-    const r = await runPayBillSelect(user, conv.pending, raw);
-    await reply(r.answer);
-    await saveConversation(phone, user.id, r.pending, conv.history || []);
-    await logInteraction({ phone, user, inType, inText: raw, outText: r.answer, action: 'pay_bill_step' });
-    return { handled: true, reason: 'pay_bill_step' };
+  // Continuação dos fluxos operacionais (lançamento, parcelamento, múltiplos, baixa)
+  // com VÁLVULA DE ESCAPE — antes cada fluxo repetia "não entendi" e mantinha o
+  // estado pendente para sempre, prendendo o usuário. Agora:
+  //   1) saudação / "menu" / "recomeçar" / "sair" / "voltar" → abandona o fluxo;
+  //   2) inatividade > 20 min desde a última mensagem → descarta como abandonado;
+  //   3) cap de tentativas: 2 "não entendi" seguidos (mesmo passo) → cancela e
+  //      reinicia limpo, em vez de repetir o loop indefinidamente.
+  const OPS_RUNNERS = {
+    tx_flow: runTxFlow,
+    installment_flow: runInstallmentFlow,
+    multi_tx: runMultiTxFlow,
+    pay_bill: runPayBillSelect,
+  };
+  if (conv.pending && OPS_RUNNERS[conv.pending.type]) {
+    const pendType = conv.pending.type;
+    const escapeWord = /^(menu|in[íi]cio|come[çc]ar|come[çc]a|recome[çc]ar|reiniciar|sair|voltar|esquece|esque[çc]a|oi+|ol[áa]+|bom dia|boa tarde|boa noite)\b/i.test(raw);
+    let stale = false;
+    if (conv.updated_at) {
+      const ts = Date.parse(String(conv.updated_at).replace(' ', 'T') + 'Z');
+      if (ts && (Date.now() - ts) > 20 * 60 * 1000) stale = true;
+    }
+    if (escapeWord || stale) {
+      // Abandona o fluxo travado e deixa a mensagem seguir para o classificador.
+      await saveConversation(phone, user.id, null, conv.history || []);
+      conv.pending = null;
+    } else {
+      const prevStep = conv.pending.step || '';
+      const misses = Number(conv.pending._miss) || 0;
+      const r = await OPS_RUNNERS[pendType](user, conv.pending, raw);
+      const outPending = r.pending;
+      // Não avançou (mesmo tipo e mesmo passo, ainda pendente) → conta como falha.
+      if (outPending && outPending.type === pendType && (outPending.step || '') === prevStep) {
+        outPending._miss = misses + 1;
+        if (outPending._miss >= 2) {
+          const out = `Acho que a gente se perdeu aqui 😅 Cancelei o que estava em andamento. Me diga de novo o que você precisa — por exemplo: *"gastei 30 no mercado"*, ou me envie um comprovante. 🙂`;
+          await reply(out);
+          await saveConversation(phone, user.id, null, conv.history || []);
+          await logInteraction({ phone, user, inType, inText: raw, outText: out, action: pendType + '_reset' });
+          return { handled: true, reason: pendType + '_reset' };
+        }
+      }
+      await reply(r.answer);
+      await saveConversation(phone, user.id, outPending, conv.history || []);
+      await logInteraction({ phone, user, inType, inText: raw, outText: r.answer, action: pendType + '_step' });
+      return { handled: true, reason: pendType + '_step' };
+    }
   }
 
   // Resposta 1..5 à pergunta de preferência de notificações (opt-in em massa).
@@ -1989,13 +2001,13 @@ export async function handleAssistantMessage(msg, instanceName) {
     } else if (m.extendedTextMessage?.text) {
       userText = m.extendedTextMessage.text;
     } else if (m.audioMessage) {
-      // Áudio: Groq Whisper (primário) → OpenAI Whisper → Gemini (fallback).
-      if (!cfg.groqKey && !cfg.openaiKey && !cfg.geminiKey) { await reply('Recebi seu áudio, mas a interpretação de áudio ainda não está configurada. Pode me mandar por texto? 🙂'); return { handled: true, reason: 'no_audio_provider' }; }
+      // Áudio: transcrição a cargo do ChatGPT (OpenAI Whisper) — primário; Gemini
+      // como fallback. O Groq NÃO transcreve aqui (fica só no chat de texto).
+      if (!cfg.openaiKey && !cfg.geminiKey) { await reply('Recebi seu áudio, mas a interpretação de áudio ainda não está configurada. Pode me mandar por texto? 🙂'); return { handled: true, reason: 'no_audio_provider' }; }
       const b64 = await getMediaBase64(inst.name, inst.api_key, msg.key);
       const mime = m.audioMessage.mimetype || 'audio/ogg';
       if (b64) {
         const audioProviders = [];
-        if (cfg.groqKey)   audioProviders.push('groq');
         if (cfg.openaiKey) audioProviders.push('openai');
         if (cfg.geminiKey) audioProviders.push('gemini');
         for (const p of audioProviders) {
@@ -2013,8 +2025,8 @@ export async function handleAssistantMessage(msg, instanceName) {
       }
     } else if (m.imageMessage) {
       userText = m.imageMessage.caption || '';
-      // Sem nenhum provedor de visão configurado → função indisponível.
-      if (!cfg.openaiKey && !cfg.groqKey && !cfg.geminiKey) {
+      // Interpretação de imagem a cargo do ChatGPT (OpenAI) / Gemini como fallback.
+      if (!cfg.openaiKey && !cfg.geminiKey) {
         await reply('A *leitura de imagens não está disponível* no momento. Me envie os dados por texto (ex.: "gastei 30 no mercado") que eu registro. 🙂');
         return { handled: true, reason: 'image_unavailable' };
       }
