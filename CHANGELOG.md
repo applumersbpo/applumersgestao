@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.47.1] — 2026-09-14
+
+### Adicionado
+- **Modelo de disparo em massa "Teste da nova IA"** — novo template em `_ADMIN_MSG_TEMPLATES` (Admin → Mensagem em massa) que anuncia a nova inteligência do assistente financeiro no WhatsApp e as correções, e convida o usuário (`{nome}`) a fazer um teste prático: enviar um **áudio** ou uma **imagem de recibo/comprovante** para o sistema validar a atualização. Mensagem **randômica** (spin `{a|b|c}` aplicado por destinatário — anti-bloqueio), com variável `{nome}`, e anexa automaticamente a **imagem já cadastrada** (`lumers-atualizacao.png`). Fica pronto para ser selecionado no botão de disparo em massa; **nada é enviado automaticamente**.
+
+---
+
 ## [v1.47.0] — 2026-09-14
 
 ### Alterado

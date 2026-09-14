@@ -3782,6 +3782,12 @@ const _ADMIN_MSG_TEMPLATES = [
     text: '🚀 *Novidade no Lumers Flow!*\n\nAcabamos de lançar melhorias que vão deixar a sua gestão financeira ainda mais simples, completa e inteligente. Já está tudo disponível para você aproveitar!\n\n👉 Acesse agora e confira: https://app.lumersbpo.com.br/ ✨',
   },
   {
+    icon: 'zap',
+    label: 'Teste da nova IA',
+    media: 'lumers-atualizacao.png',
+    text: '{Oi|Olá|Ei}, {nome}! 🚀 {Temos uma novidade|Chegou novidade|Novidade quentinha} no *Lumers Flow*!\n\n{Deixamos|Tornamos|Acabamos de deixar} o nosso *assistente financeiro no WhatsApp* {muito mais inteligente|ainda mais esperto|bem mais inteligente} e {corrigimos algumas falhas|resolvemos falhas|arrumamos alguns errinhos} que atrapalhavam o atendimento. 💚\n\n{Podemos contar com você para um teste rapidinho?|Bora testar na prática?|Queríamos muito que você fizesse um teste rápido} 👇\n\n🎙️ {Grave um áudio|Manda um áudio|Fale por áudio} contando um gasto — ex.: _"gastei 30 no mercado"_\n📸 *ou* {envie a foto|manda uma foto|tire uma foto} de um *recibo ou comprovante de pagamento*\n\n{É só mandar aqui nesta conversa|Manda aqui mesmo nesta conversa|Envie por aqui} que o assistente {já lê e organiza tudo pra você|interpreta e registra automaticamente|entende e cadastra sozinho}. {Assim você nos ajuda a validar a atualização|Seu teste ajuda demais a validar a novidade|Com isso validamos a melhoria juntos}! 🙌',
+  },
+  {
     icon: 'log-in',
     label: 'Primeiro acesso pendente',
     text: 'Olá, {nome}! 👋\n\nNotamos que a sua conta no *Lumers Flow* já está pronta, mas você ainda *não realizou o seu primeiro acesso*.\n\nPara não perder o acesso, é importante entrar o quanto antes. ⚠️ *Atenção:* caso o primeiro acesso não aconteça nas próximas *48 horas*, a sua conta será removida automaticamente.\n\nÉ rápido e simples — comece agora mesmo:\n👉 https://app.lumersbpo.com.br/\n\nEstamos à disposição para ajudar no que precisar. 💚',
