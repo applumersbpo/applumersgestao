@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.44.2] — 2026-09-14
+
+### Melhorado
+- **Reconhecimento de áudio, imagem e documentos (PDF) mais confiável** — a leitura de imagem tentava a visão do Groq (`qwen/qwen3.6-27b`) **antes** do Gemini, e essa visão do Groq retorna **HTTP 429** (limite OTPM de 1000, inutilizável) — desperdiçando uma chamada que falha e atrasando toda imagem. Reordenada a cadeia de visão em `assistant2.js` para **OpenAI (se houver chave) → Gemini → Groq**: sem chave OpenAI, a imagem vai direto pro **Gemini `gemini-3.6-flash`** (o provedor multimodal que funciona), no primeiro try. Áudio (Whisper do Groq → Gemini) e PDF (OpenAI → Gemini) já usavam a ordem correta. Resultado: recibos/prints, áudios e faturas em PDF voltam a ser interpretados de forma estável.
+
+---
+
 ## [v1.44.1] — 2026-09-14
 
 ### Melhorado

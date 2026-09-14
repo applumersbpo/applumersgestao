@@ -37,13 +37,16 @@ const MEDIA_EXTRACT_PROMPT =
 // Retorna o texto extraído (não vazio). Se ambos falharem, lança Error com:
 //   .kind = 'tech'  → falha técnica do provedor (API/limite) → função indisponível
 //   .kind = 'empty' → provedor respondeu vazio → conteúdo não compreendido
-// Lê o conteúdo de uma imagem/print. Ordem: OpenAI (primário) → Groq → Gemini (fallback).
+// Lê o conteúdo de uma imagem/print. Ordem: OpenAI (primário, quando há chave) →
+// Gemini → Groq (último recurso). O Gemini vem ANTES do Groq de propósito: a visão
+// do Groq (qwen) tem limite de saída ínfimo (OTPM 1000 → HTTP 429) e é inútil na
+// prática; o Gemini multimodal é o provedor confiável de leitura de imagem hoje.
 async function readImageContent(cfg, base64, mime) {
   let threw = false;
   const providers = [];
   if (cfg.openaiKey) providers.push('openai');
-  if (cfg.groqKey)   providers.push('groq');
   if (cfg.geminiKey) providers.push('gemini');
+  if (cfg.groqKey)   providers.push('groq');
   for (const p of providers) {
     try {
       const t = p === 'openai'
