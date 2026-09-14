@@ -608,17 +608,18 @@ function _fmtDate(iso) {
 }
 
 // Estrutura o texto extraído de uma imagem/documento numa LISTA de lançamentos.
-// Retorna { items, dueDate } — items: { name, amount, type, category_name, date }
-// (date = data da compra/competência); dueDate = vencimento da fatura (se houver).
+// Retorna { items, dueDate, accountName } — items: { name, amount, type,
+// category_name, date } (date = competência); dueDate = vencimento da fatura;
+// accountName = nome do cartão/banco identificado (se houver).
 async function extractLineItems(cfg, contextText) {
-  if (!cfg.groqKey || !contextText) return { items: [], dueDate: null };
+  if (!cfg.groqKey || !contextText) return { items: [], dueDate: null, accountName: null };
   try {
     const raw = await groqChat({
       key: cfg.groqKey,
       model: cfg.groqModel,
       jsonMode: true,
       messages: [
-        { role: 'system', content: 'Você extrai lançamentos financeiros de um texto que descreve um print/fatura/comprovante enviado por um usuário. Responda SOMENTE JSON no formato {"items":[{"name":"descrição curta (use o NOME DO ESTABELECIMENTO quando houver)","amount":number,"type":"income"|"expense","category_name":string|null,"date":"YYYY-MM-DD"|null}],"due_date":"YYYY-MM-DD"|null}. Liste CADA despesa/compra/recebimento individual como um item separado, com o valor em reais (apenas número, sem "R$"). Em "name" prefira o NOME DO ESTABELECIMENTO/loja. Em "date" coloque a DATA DA COMPRA/lançamento do item (competência) se aparecer. Em "due_date" (nível raiz) coloque a DATA DE VENCIMENTO da fatura, se for uma fatura de cartão. NÃO invente dados que não estejam no texto — use null quando não houver. IGNORE totais, subtotais, saldos, limites, pagamentos de fatura e juros — inclua apenas lançamentos individuais. Se houver apenas um lançamento, retorne um único item. Se não houver lançamento claro, retorne items vazio.' },
+        { role: 'system', content: 'Você extrai lançamentos financeiros de um texto que descreve um print/fatura/comprovante enviado por um usuário. Responda SOMENTE JSON no formato {"items":[{"name":"descrição curta (use o NOME DO ESTABELECIMENTO quando houver)","amount":number,"type":"income"|"expense","category_name":"categoria sugerida para o item (ex.: Alimentação, Transporte, Compras)"|null,"date":"YYYY-MM-DD"|null}],"due_date":"YYYY-MM-DD"|null,"account_name":"nome do cartão/banco da fatura, se identificável (ex.: Nubank, PicPay, PDA)"|null}. Liste CADA despesa/compra/recebimento individual como um item separado, com o valor em reais (apenas número, sem "R$"). Em "name" prefira o NOME DO ESTABELECIMENTO/loja. Em "category_name" SEMPRE sugira a categoria mais provável do item (não deixe null se der pra inferir pelo estabelecimento: mercado/restaurante→Alimentação, uber/posto→Transporte, loja/varejo→Compras, farmácia→Saúde). Em "date" coloque a DATA DA COMPRA/lançamento do item (competência) se aparecer. Em "due_date" (raiz) a DATA DE VENCIMENTO da fatura, se for fatura de cartão. Em "account_name" (raiz) o cartão/banco. NÃO invente valores/datas que não estejam no texto. IGNORE totais, subtotais, saldos, limites, pagamentos de fatura e juros. Se houver só um lançamento, retorne um único item. Sem lançamento claro, items vazio.' },
         { role: 'user', content: contextText },
       ],
     });
@@ -633,10 +634,10 @@ async function extractLineItems(cfg, contextText) {
         date: _normalizeDate(it.date),
       }))
       .filter((it) => it.amount > 0);
-    return { items, dueDate: _normalizeDate(parsed.due_date) };
+    return { items, dueDate: _normalizeDate(parsed.due_date), accountName: (parsed.account_name || '').trim() || null };
   } catch (e) {
     console.error('[assistant] extração de itens falhou', e?.message);
-    return { items: [], dueDate: null };
+    return { items: [], dueDate: null, accountName: null };
   }
 }
 
@@ -706,40 +707,97 @@ async function _multiAskDates(user, items, invoiceDue, accountName) {
   };
 }
 
-// Processa a resposta do usuário em cada passo do fluxo de múltiplos lançamentos.
+// Calcula o vencimento da fatura de um cartão para uma compra, a partir dos dias
+// de fechamento e vencimento. Ex.: compra 13/09, fechamento 10, venc 15 → cai na
+// fatura de outubro, vence 15/10. Sem os dias configurados, retorna null.
+function computeCardDueDate(purchaseISO, closingDay, dueDay) {
+  if (!closingDay || !dueDay) return null;
+  const base = /^\d{4}-\d{2}-\d{2}$/.test(String(purchaseISO || '')) ? new Date(purchaseISO + 'T12:00:00') : new Date();
+  let m = base.getMonth(); let y = base.getFullYear();
+  const day = base.getDate();
+  if (day > Number(closingDay)) m += 1;              // compra após o fechamento → próxima fatura
+  if (Number(dueDay) < Number(closingDay)) m += 1;  // vencimento cai no mês seguinte ao fechamento
+  y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(Number(dueDay)).padStart(2, '0')}`;
+}
+
+// Ponto de entrada autônomo para uma fatura/imagem com lançamentos: resolve o
+// cartão (por nome citado, ou o único cadastrado; senão pergunta), e monta o
+// detalhamento para confirmação. NÃO grava nada aqui — só quando o usuário confirma.
+async function startInvoiceFlow(user, rawItems, invoiceDue, accountHint) {
+  const accounts = await getUserAccounts(user.id);
+  const categories = await getUserCategories(user.id);
+  let acc = accountHint ? findAccountByName(accounts, accountHint) : null;
+  if (!acc) for (const it of rawItems) { acc = findAccountByName(accounts, it.account_name || ''); if (acc) break; }
+  if (!acc && accounts.length === 1) acc = accounts[0];
+  if (!acc) {
+    if (!accounts.length) {
+      return { answer: `Antes de registrar os *${rawItems.length}* lançamento(s), me diga o *cartão/conta* (ex.: Nubank, PicPay) que eu cadastro e já organizo tudo. 😊`, pending: { type: 'multi_tx', step: 'account', items: rawItems, dueDate: invoiceDue } };
+    }
+    const list = accounts.map((a, i) => `*${i + 1}* — ${a.name}${a.bank_name ? ` (${a.bank_name})` : ''}`).join('\n');
+    return { answer: `Em qual *cartão/conta* foram esses *${rawItems.length}* lançamento(s)?\n\n${list}\n\nResponda pelo *número* ou *nome* (ou *novo Nome* para criar).`, pending: { type: 'multi_tx', step: 'account', items: rawItems, accounts, dueDate: invoiceDue } };
+  }
+  return await buildInvoiceConfirm(user, rawItems, acc, categories, invoiceDue);
+}
+
+// Resolve categoria (marcando as que serão criadas), competência e vencimento de
+// cada item, e monta o texto de confirmação detalhado (step 'confirm').
+async function buildInvoiceConfirm(user, rawItems, acc, categories, invoiceDue) {
+  const today = new Date().toISOString().slice(0, 10);
+  const closingDay = Number(acc.closing_day) || null;
+  const dueDay = Number(acc.due_day) || null;
+  const toCreate = [];
+  const items = rawItems.map((it) => {
+    const type = it.type === 'income' ? 'income' : 'expense';
+    let cat = it.category_name ? findCategoryByName(categories.filter((c) => !c.type || c.type === type), it.category_name) : null;
+    let categoryName = cat?.name || null; let categoryId = cat?.id || null; let createCat = false;
+    if (!cat && it.category_name) {
+      categoryName = String(it.category_name).trim(); createCat = true;
+      if (!toCreate.some((t) => t.name.toLowerCase() === categoryName.toLowerCase() && t.type === type)) toCreate.push({ name: categoryName, type });
+    }
+    const comp = it.date || today;
+    const due = computeCardDueDate(comp, closingDay, dueDay) || invoiceDue || it.date || today;
+    const status = due && due > today ? 'pending' : 'paid';
+    return { name: it.name, amount: it.amount, type, categoryName, categoryId, createCat, competenceDate: comp, dueDate: due, status };
+  });
+  return { answer: _invoiceDetailText(user, items, acc, toCreate), pending: { type: 'multi_tx', step: 'confirm', items, accountId: acc.id, accountName: acc.name, toCreate } };
+}
+
+// Detalhamento rico (resumo + item a item) para o usuário conferir antes de gravar.
+function _invoiceDetailText(user, items, acc, toCreate) {
+  const total = items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+  const dues = [...new Set(items.map((it) => it.dueDate).filter(Boolean))];
+  const lines = [];
+  lines.push(`Encontrei *${items.length}* lançamento(s) no cartão *${acc.name}*, ${firstName(user.name)}. Confere antes de eu registrar:`);
+  lines.push('');
+  items.forEach((it, i) => {
+    lines.push(`*${i + 1}. ${it.name}*`);
+    lines.push(`• tipo: ${it.type === 'income' ? 'RECEITA' : 'DESPESA'}`);
+    lines.push(`• valor: ${brl(it.amount)}`);
+    lines.push(`• categoria: ${it.categoryName || 'sem categoria'}${it.createCat ? ' _(nova)_' : ''}`);
+    lines.push(`• data: ${_fmtDate(it.competenceDate)}`);
+    lines.push(`• vencimento: ${_fmtDate(it.dueDate)}`);
+    lines.push(`• status: ${it.status === 'pending' ? 'a pagar' : 'pago'}`);
+    lines.push(`• cartão: ${acc.name}`);
+    lines.push('');
+  });
+  lines.push(`*Total:* ${brl(total)}`);
+  if (dues.length === 1) lines.push(`*Vencimento da fatura:* ${_fmtDate(dues[0])}`);
+  if (toCreate.length) lines.push(`_Vou criar a(s) categoria(s):_ ${toCreate.map((t) => '*' + t.name + '*').join(', ')}`);
+  lines.push('');
+  lines.push('Posso *registrar tudo*? Responda *sim* para confirmar, ou *não* para cancelar.');
+  return lines.join('\n');
+}
+
+// Processa a resposta do usuário no fluxo autônomo de fatura (escolha do cartão
+// quando não inferido, e a confirmação final que grava e cria categorias).
 async function runMultiTxFlow(user, pending, raw) {
   const text = String(raw || '').trim();
   const low = text.toLowerCase();
-  if (/^(cancela|cancelar|deixa|para|parar|desisto|desistir)$/i.test(low)) {
-    return { answer: 'Ok, cancelei o cadastro. 🙂', pending: null };
-  }
 
-  if (pending.step === 'select') {
-    const items = pending.items || [];
-    const sel = _parseSelection(text, items.length);
-    if (sel === null) {
-      return { answer: 'Não entendi. Responda *todos*, os *números* (ex.: 1,3) ou *nenhum*.', pending };
-    }
-    if (!sel.length) {
-      return { answer: 'Ok, não vou cadastrar nenhum. 🙂', pending: null };
-    }
-    const chosen = sel.map((i) => items[i]);
-    // Casa a categoria sugerida de cada item com as categorias do usuário.
-    const categories = await getUserCategories(user.id);
-    for (const it of chosen) {
-      const cat = it.category_name
-        ? findCategoryByName(categories.filter((c) => !c.type || c.type === it.type), it.category_name)
-        : null;
-      it.categoryId = cat?.id || null;
-      it.categoryName = cat?.name || null;
-    }
-    const accounts = await getUserAccounts(user.id);
-    return await _multiAskAccount(user, chosen, accounts, pending.dueDate);
-  }
-
+  // Passo: escolher o cartão (só quando não deu para inferir). "novo Nome" cria.
   if (pending.step === 'account') {
     let accounts = pending.accounts || await getUserAccounts(user.id);
-    const items = pending.items || [];
     let acc = null;
     const mNew = text.match(/^novo\s+(.+)/i);
     if (mNew) {
@@ -748,7 +806,7 @@ async function runMultiTxFlow(user, pending, raw) {
       accounts = await getUserAccounts(user.id);
       acc = accounts.find((a) => a.id === accId);
     } else if (!accounts.length) {
-      if (!text) return { answer: 'Me diga o *nome do banco/cartão* para eu criar a conta (ex.: Nubank).', pending };
+      if (!text) return { answer: 'Me diga o *nome do cartão/conta* (ex.: Nubank).', pending };
       const accId = await insertAccount(user.id, { name: text, bank_name: text, initial_balance: 0, type: 'checking' });
       accounts = await getUserAccounts(user.id);
       acc = accounts.find((a) => a.id === accId);
@@ -759,50 +817,40 @@ async function runMultiTxFlow(user, pending, raw) {
     }
     if (!acc) {
       const list = accounts.map((a, i) => `*${i + 1}* — ${a.name}${a.bank_name ? ` (${a.bank_name})` : ''}`).join('\n');
-      return { answer: `Não identifiquei a conta. Escolha pelo *número* ou *nome*:\n\n${list}\n\nOu envie *novo Nome* para criar uma.`, pending: { type: 'multi_tx', step: 'account', items, accounts, dueDate: pending.dueDate } };
+      return { answer: `Não identifiquei o cartão. Escolha pelo *número* ou *nome*:\n\n${list}\n\nOu envie *novo Nome*.`, pending: { type: 'multi_tx', step: 'account', items: pending.items, accounts, dueDate: pending.dueDate } };
     }
-    const withAcc = items.map((it) => ({ ...it, accountId: acc.id }));
-    return await _multiAskDates(user, withAcc, pending.dueDate, acc.name);
+    const categories = await getUserCategories(user.id);
+    return await buildInvoiceConfirm(user, pending.items, acc, categories, pending.dueDate);
   }
 
-  if (pending.step === 'date') {
-    const items = pending.items || [];
-    let forced = null;
-    if (/^(imagem|documento|da imagem|do documento|sim|manter|mesma|mesmas|mantem|manten)/i.test(low)) {
-      forced = null; // usa as datas da imagem
-    } else if (/^(hoje|hj|agora|atual)/i.test(low)) {
-      forced = new Date().toISOString().slice(0, 10);
-    } else {
-      const d = _normalizeDate(text);
-      if (!d) return { answer: 'Não entendi a data. Responda *imagem*, *hoje*, ou envie uma data (ex.: 15/08/2026).', pending };
-      forced = d;
-    }
-    const withDates = _applyDates(items, pending.dueDate, forced);
-    return { answer: _multiConfirmText(user, withDates, pending.accountName), pending: { type: 'multi_tx', step: 'confirm', items: withDates, accountName: pending.accountName } };
-  }
-
+  // Passo: confirmação → grava tudo (criando categorias novas) e detalha o resultado.
   if (pending.step === 'confirm') {
-    const yes = /^(sim|s|confirmo|confirmar|pode|isso|ok|certo|correto|registrar|cadastrar)\b/i.test(low);
-    const no = /^(n[ãa]o|nao|n|cancela|cancelar|errado|corrigir|deixa)\b/i.test(low);
-    if (no) return { answer: 'Ok, cancelei o cadastro. Se quiser, me reenvie os dados corrigidos por texto. 🙂', pending: null };
-    if (!yes) return { answer: 'Só confirmando: responda *sim* para registrar tudo, ou *não* para cancelar.', pending };
-    const today = new Date().toISOString().slice(0, 10);
+    const yes = /^(sim|s|confirmo|confirmar|pode|isso|ok|okay|certo|correto|registrar|cadastrar|manda|bora|fechado)\b/i.test(low);
+    const no = /^(n[ãa]o|nao|n|cancela|cancelar|errado|corrigir|deixa|para)\b/i.test(low);
+    if (no) return { answer: 'Ok, não registrei nada. Se quiser, me reenvie os dados corrigidos. 🙂', pending: null };
+    if (!yes) return { answer: 'Só confirmando: responda *sim* para eu registrar tudo, ou *não* para cancelar. 🙂', pending };
+    // Cria as categorias novas e mapeia (tipo|nome)→id.
+    const created = {};
+    for (const t of (pending.toCreate || [])) {
+      const id = await insertCategory(user.id, { name: t.name, type: t.type });
+      created[(t.type + '|' + t.name).toLowerCase()] = id;
+    }
     let count = 0; let total = 0;
     for (const it of (pending.items || [])) {
-      // Vencimento no futuro → lançamento fica como "a pagar/receber" (pending).
-      const status = it.dueDate && it.dueDate > today ? 'pending' : 'paid';
+      let catId = it.categoryId;
+      if (!catId && it.createCat && it.categoryName) catId = created[(it.type + '|' + it.categoryName).toLowerCase()] || null;
       await insertTransaction(user.id, {
-        name: it.name, amount: it.amount, type: it.type, kind: it.kind || null,
-        accountId: it.accountId || null, categoryId: it.categoryId || null,
-        competenceDate: it.competenceDate || null, dueDate: it.dueDate || null, status,
+        name: it.name, amount: it.amount, type: it.type, kind: null,
+        accountId: pending.accountId || null, categoryId: catId || null,
+        competenceDate: it.competenceDate || null, dueDate: it.dueDate || null, status: it.status,
       });
       count += 1; total += Number(it.amount) || 0;
     }
-    const accNote = pending.accountName ? ` na conta *${pending.accountName}*` : '';
-    return { answer: `Pronto, ${firstName(user.name)}! Registrei *${count}* lançamento(s)${accNote}, total de ${brl(total)}. ✅`, pending: null };
+    const createdNote = (pending.toCreate || []).length ? `\nCriei a(s) categoria(s): ${pending.toCreate.map((t) => '*' + t.name + '*').join(', ')}.` : '';
+    return { answer: `Pronto, ${firstName(user.name)}! ✅ Registrei *${count}* lançamento(s) no cartão *${pending.accountName}*, total de *${brl(total)}*.${createdNote}`, pending: null };
   }
 
-  return { answer: 'Vamos recomeçar: me envie o print/fatura ou os dados por texto. 🙂', pending: null };
+  return { answer: 'Vamos recomeçar: me envie a fatura/print ou os dados por texto. 🙂', pending: null };
 }
 
 // ── Fluxo conversacional de parcelamento (cartão → fechamento/vencimento → registrar) ──
@@ -2128,15 +2176,16 @@ export async function handleAssistantMessage(msg, instanceName) {
   // Imagem/documento com VÁRIOS lançamentos (ex.: fatura de cartão): em vez de
   // registrar direto um único gasto, conduz um fluxo de seleção + confirmação.
   if (imageContext && (m.imageMessage || m.documentMessage || m.documentWithCaptionMessage)) {
-    const { items, dueDate } = await extractLineItems(cfg, imageContext);
-    if (items.length >= 2) {
-      const answer = _multiListText(user, items);
-      const pending = { type: 'multi_tx', step: 'select', items, dueDate };
+    const { items, dueDate, accountName } = await extractLineItems(cfg, imageContext);
+    if (items.length >= 1) {
+      // Fluxo autônomo de fatura: infere cartão, categorias e datas, e mostra o
+      // detalhamento por item para o usuário confirmar antes de gravar.
+      const { answer, pending } = await startInvoiceFlow(user, items, dueDate, accountName);
       await reply(answer);
-      const history = [...(conv.history || []), { role: 'user', content: `[${items.length} lançamentos extraídos de ${inType === 'image' ? 'imagem' : 'documento'}]` }, { role: 'assistant', content: answer }];
+      const history = [...(conv.history || []), { role: 'user', content: `[${items.length} lançamento(s) extraído(s) de ${inType === 'image' ? 'imagem' : 'documento'}]` }, { role: 'assistant', content: answer }];
       await saveConversation(phone, user.id, pending, history);
-      await logInteraction({ phone, user, inType, inText: imageContext, outText: answer, action: 'multi_tx_start' });
-      return { handled: true, action: 'multi_tx_start' };
+      await logInteraction({ phone, user, inType, inText: imageContext, outText: answer, action: 'invoice_flow_start' });
+      return { handled: true, action: 'invoice_flow_start' };
     }
   }
 

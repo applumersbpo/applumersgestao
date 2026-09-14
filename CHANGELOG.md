@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.46.0] — 2026-09-14
+
+### Adicionado
+- **Leitura de fatura/comprovante muito mais inteligente e detalhada** — ao enviar uma imagem/PDF com um ou vários gastos, o assistente agora **infere tudo sozinho** em vez de perguntar item a item: o **cartão/conta** (pelo nome citado na fatura, ou o único cadastrado; só pergunta quando não dá pra saber), a **categoria de cada item** (criando automaticamente a que não existir, ex.: "Compras"), e as **datas de competência e vencimento por fatura** — com raciocínio de cartão (compra após o dia de fechamento cai na fatura seguinte; ex.: compra 13/09 + fechamento dia 10 → vence 15/10). Em seguida mostra um **detalhamento rico por item** (`tipo · valor · categoria · data · vencimento · status · cartão`) + resumo (total, vencimento, categorias a criar) e **grava só depois do seu "sim"** (a pedido). Novo `computeCardDueDate` + fluxo `startInvoiceFlow`/`buildInvoiceConfirm` em `assistant2.js`; `extractLineItems` passou a sugerir categoria por item e a captar o cartão. Substitui o antigo fluxo de seleção manual (quais? → conta? → datas? → confirma?).
+
+---
+
 ## [v1.45.0] — 2026-09-14
 
 ### Corrigido
