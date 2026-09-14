@@ -129,11 +129,11 @@ export async function geminiTranscribeAudio({ key, model, base64, mime = 'audio/
 
 // ── OpenAI (ChatGPT) ────────────────────────────────────────────────────────
 // Chat completions da OpenAI (mesma família da API compatível). Retorna o texto.
-export async function openaiChat({ key, model, messages, temperature = 0.2 }) {
+export async function openaiChat({ key, model, messages, temperature = 0.2, jsonMode = false }) {
   const r = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model, messages, temperature }),
+    body: JSON.stringify({ model, messages, temperature, ...(jsonMode ? { response_format: { type: 'json_object' } } : {}) }),
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(`OpenAI HTTP ${r.status}: ${JSON.stringify(data).slice(0, 200)}`);

@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.47.0] — 2026-09-14
+
+### Alterado
+- **Toda a interação do WhatsApp passa a ser feita pelo ChatGPT (OpenAI)** — o classificador de intenção, a extração de itens de fatura, as respostas de consulta/ajuda e a leitura de áudio/imagem/PDF agora usam **exclusivamente a OpenAI** (`gpt-4o-mini` para chat/estruturação; Whisper para áudio). Groq e Gemini foram **removidos dos caminhos do WhatsApp** em `assistant2.js`. O Groq continua disponível para tarefas internas do sistema (fora do WhatsApp).
+
+### Corrigido
+- **"Não consegui pensar na resposta agora" (rate limit do Groq)** — o modelo Groq `openai/gpt-oss-120b` tem limite de apenas **8.000 tokens/minuto**, que o prompt do assistente estourava, derrubando o chat com HTTP 429. Migrando o chat para a OpenAI (limite muito maior), o assistente volta a responder de forma estável.
+
+---
+
 ## [v1.46.0] — 2026-09-14
 
 ### Adicionado
