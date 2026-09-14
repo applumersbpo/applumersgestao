@@ -738,7 +738,12 @@ export async function initDb() {
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_groq_key', '')", args: [] });
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_groq_model', 'llama-3.3-70b-versatile')", args: [] });
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_gemini_key', '')", args: [] });
-  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_gemini_model', 'gemini-2.0-flash')", args: [] });
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_gemini_model', 'gemini-3.6-flash')", args: [] });
+  // Auto-cura: o Google descontinuou gemini-2.0-flash e as 1.5 (404 "no longer available";
+  // a própria API recomenda models/gemini-3.6-flash). Gemini é o provedor de visão/áudio
+  // que sustenta o fluxo (OpenAI sem chave, visão do Groq com limite ínfimo), então manter
+  // este modelo válido é crítico. Migra valores descontinuados, sem tocar escolha custom.
+  await db.execute({ sql: "UPDATE system_settings SET value='gemini-3.6-flash' WHERE key='ai_gemini_model' AND value IN ('gemini-2.0-flash','gemini-1.5-flash','gemini-1.5-pro','gemini-1.5-flash-latest','gemini-1.5-pro-latest')", args: [] });
   // Modelo de visão do Groq (multimodal). Configurável porque o Groq descontinua/renomeia
   // esses modelos (ex.: 404 model_not_found no llama-4-scout). Admin pode ajustar no painel.
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('ai_groq_vision_model', 'qwen/qwen3.6-27b')", args: [] });

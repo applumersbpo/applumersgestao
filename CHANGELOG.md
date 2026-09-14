@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.43.5] — 2026-09-14
+
+### Corrigido
+- **Assistente não interpretava imagens/áudios (modelos de IA descontinuados)** — com o app assumindo o WhatsApp, a leitura de mídia passou a depender do `assistant2.js`, e os dois provedores de visão estavam com modelo quebrado: o **Gemini `gemini-2.0-flash` foi descontinuado pelo Google** (HTTP 404 "no longer available; use models/gemini-3.6-flash") e a **visão do Groq `qwen/qwen3.6-27b` retorna HTTP 429** (limite OTPM de 1000 tokens, inutilizável). Sem chave OpenAI, sobrava ninguém → "leitura de imagens temporariamente indisponível". Corrigido o default e adicionada auto-cura em `db.js`: `ai_gemini_model` → **`gemini-3.6-flash`** (migra valores descontinuados 2.0/1.5 sem sobrescrever escolha custom do admin). Gemini volta a sustentar visão e transcrição de áudio no fluxo.
+
+### Nota
+- Roteamento do WhatsApp repontado da instância Evolution `lumers-flow` para `https://app.lumersbpo.com.br/api/webhooks/evolution` (antes ia para `movichat.vercel.app`), fazendo o `assistant2` do app receber as mensagens de fato. Visão do Groq (`qwen/qwen3.6-27b`) segue com limite baixo — cai no Gemini por fallback; ajuste do modelo de visão Groq fica como melhoria futura.
+
+---
+
 ## [v1.43.4] — 2026-09-14
 
 ### Corrigido
