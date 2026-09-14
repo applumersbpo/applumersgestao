@@ -1740,186 +1740,154 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUr
   const statusColor  = s => (s === 'connected' || s === 'open') ? 'var(--income-text,#16a34a)' : s === 'connecting' ? 'var(--warning,#d97706)' : 'var(--expense,#dc2626)';
   const statusLabel  = s => (s === 'connected' || s === 'open') ? 'Conectada' : s === 'connecting' ? 'Conectando…' : 'Desconectada';
   const hasDefault   = instances.some(i => i.is_default);
-  const rows = instances.map(inst => `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;
-      padding:10px 0;border-bottom:1px solid var(--border)">
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <span style="font-weight:600;font-size:.9rem">${_escHtml(inst.name)}</span>
-          ${inst.is_default ? `<span style="font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:20px;
-            background:var(--income-light,#dcfce7);color:var(--income-text,#16a34a);letter-spacing:.02em">
-            PADRÃO</span>` : ''}
-        </div>
-        <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">
-          ${inst.number ? _escHtml(inst.number) : 'Sem número'} &nbsp;·&nbsp;
-          <span style="color:${statusColor(inst.connectionStatus)};font-weight:600">
-            ${statusLabel(inst.connectionStatus)}
-          </span>
-        </div>
-        <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px;word-break:break-all"
-          title="Servidor Evolution desta instância">
-          ${icon('link', 10)} ${inst.base_url
-            ? _escHtml(inst.base_url)
-            : `<span style="opacity:.7">URL global${inst.effective_base ? ` (${_escHtml(inst.effective_base)})` : ''}</span>`}
-        </div>
+  const rows = instances.map(inst => {
+    const connected = inst.connectionStatus === 'connected' || inst.connectionStatus === 'open';
+    return `
+    <div style="padding:12px 14px;border:1px solid var(--border);border-radius:var(--r-md);margin-bottom:8px;background:var(--card-bg,#fff)">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:${statusColor(inst.connectionStatus)}"
+          title="${statusLabel(inst.connectionStatus)}"></span>
+        <span style="font-weight:600;font-size:.92rem">${_escHtml(inst.name)}</span>
+        ${inst.is_default ? `<span style="font-size:.64rem;font-weight:700;padding:2px 7px;border-radius:20px;
+          background:var(--income-light,#dcfce7);color:var(--income-text,#16a34a);letter-spacing:.03em">PADRÃO</span>` : ''}
+        <span style="font-size:.74rem;font-weight:600;color:${statusColor(inst.connectionStatus)}">${statusLabel(inst.connectionStatus)}</span>
       </div>
-      <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+      <div style="font-size:.74rem;color:var(--text-muted);margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <span>${icon('phone', 10)} ${inst.number ? _escHtml(inst.number) : 'Sem número'}</span>
+        <span style="opacity:.35">·</span>
+        <span style="word-break:break-all">${icon('link', 10)} ${inst.base_url
+          ? _escHtml(inst.base_url)
+          : `URL global${inst.effective_base ? ` (${_escHtml(inst.effective_base)})` : ''}`}</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px">
         ${!inst.is_default ? `
           <button class="btn btn-sm" onclick="_evoSetDefault('${_escHtml(inst.name)}')"
             style="font-size:.75rem;padding:4px 10px;background:var(--primary-light,#DDE7D8);color:var(--primary-600);border:none"
-            title="Usar esta instância como padrão para envio de mensagens">
-            ${icon('star', 12)} Padrão
-          </button>` : ''}
-        ${(inst.connectionStatus !== 'connected' && inst.connectionStatus !== 'open') ? `
+            title="Usar esta instância como padrão para envio de mensagens">${icon('star', 12)} Tornar padrão</button>` : ''}
+        ${!connected ? `
           <button class="btn btn-sm" onclick="_evoConnectInstance('${_escHtml(inst.name)}')"
-            style="font-size:.75rem;padding:4px 10px">
-            ${icon('qr-code', 12)} QR Code
-          </button>` : ''}
-        <button class="btn btn-sm" onclick="_evoTestConnection('${_escHtml(inst.name)}', this)"
-          style="font-size:.75rem;padding:4px 10px"
-          title="Verifica o status ao vivo na Evolution e reaplica o webhook">
-          ${icon('activity', 12)} Testar
-        </button>
-        <button class="btn btn-sm" onclick="_evoEditKey('${_escHtml(inst.name)}')"
-          style="font-size:.78rem" title="Atualizar a API key desta instância">
-          ${icon('key', 12)} Chave
-        </button>
-        <button class="btn btn-sm" onclick="_evoEditUrl('${_escHtml(inst.name)}')"
-          style="font-size:.78rem" title="Definir a URL do servidor Evolution desta instância">
-          ${icon('link', 12)} URL
-        </button>
-        <button class="btn btn-sm" onclick="_evoUnlinkInstance('${_escHtml(inst.name)}')"
-          style="font-size:.75rem;padding:4px 10px;background:var(--bg-subtle);color:var(--text-muted);border:none"
-          title="Remove do sistema sem deletar na Evolution">
-          ${icon('unlink', 12)} Desvincular
-        </button>
-        <button class="btn btn-sm" onclick="_evoDeleteInstance('${_escHtml(inst.name)}')"
-          style="font-size:.75rem;padding:4px 10px;background:var(--expense-light,#fee2e2);color:var(--expense,#dc2626);border:none"
-          title="Exclui a instância da Evolution e remove do sistema">
-          ${icon('trash-2', 12)} Excluir
-        </button>
+            style="font-size:.75rem;padding:4px 10px" title="Conectar escaneando o QR Code">${icon('qr-code', 12)} QR Code</button>` : ''}
+        <button class="btn btn-sm btn-ghost" onclick="_evoTestConnection('${_escHtml(inst.name)}', this)"
+          style="font-size:.75rem;padding:4px 8px" title="Verifica o status ao vivo e reaplica o webhook">${icon('activity', 12)} Testar</button>
+        <button class="btn btn-sm btn-ghost" onclick="_evoEditKey('${_escHtml(inst.name)}')"
+          style="font-size:.75rem;padding:4px 8px" title="Atualizar a API key desta instância">${icon('key', 12)} Chave</button>
+        <button class="btn btn-sm btn-ghost" onclick="_evoEditUrl('${_escHtml(inst.name)}')"
+          style="font-size:.75rem;padding:4px 8px" title="Definir a URL do servidor Evolution desta instância">${icon('link', 12)} URL</button>
+        <span style="flex:1;min-width:8px"></span>
+        <button class="btn btn-sm btn-ghost" onclick="_evoUnlinkInstance('${_escHtml(inst.name)}')"
+          style="font-size:.75rem;padding:4px 8px;color:var(--text-muted)"
+          title="Remove do sistema sem deletar na Evolution">${icon('unlink', 12)}</button>
+        <button class="btn btn-sm btn-ghost" onclick="_evoDeleteInstance('${_escHtml(inst.name)}')"
+          style="font-size:.75rem;padding:4px 8px;color:var(--expense,#dc2626)"
+          title="Exclui a instância da Evolution e remove do sistema">${icon('trash-2', 12)}</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+
+  // Cabeçalho de grupo padronizado (título + descrição opcional) para dar hierarquia.
+  const groupHead = (iconName, title, desc = '') => `
+    <div style="font-weight:700;font-size:.92rem;margin-bottom:${desc ? '4px' : '12px'};display:flex;align-items:center;gap:8px">
+      ${icon(iconName, 15)} ${title}
+    </div>
+    ${desc ? `<div style="font-size:.75rem;color:var(--text-muted);margin-bottom:14px;line-height:1.5">${desc}</div>` : ''}`;
+  const groupWrap = 'margin-top:24px;border-top:1px solid var(--border);padding-top:18px';
+  const subLabel = (iconName, txt) => `<div style="font-weight:600;font-size:.8rem;color:var(--text-secondary,var(--text-primary));margin-bottom:8px;display:flex;align-items:center;gap:6px">${icon(iconName, 12)} ${txt}</div>`;
 
   return `
     <div class="card" style="margin-bottom:20px" id="evolution-section">
       <div class="card-title" style="margin-bottom:4px">${icon('message-circle', 14)} WhatsApp — Instâncias Evolution</div>
       <p style="font-size:.78rem;color:var(--text-muted);margin:0 0 16px;line-height:1.5">
-        Exibe apenas instâncias cadastradas neste sistema. Para adicionar uma instância já existente, use <strong>Vincular instância</strong> abaixo.
+        Conexões de WhatsApp deste sistema. A instância <strong>padrão</strong> é a usada para enviar e receber mensagens.
       </p>
+
+      <!-- ══ GRUPO: Instâncias ══ -->
+      ${groupHead('smartphone', `Instâncias${instances.length ? ` (${instances.length})` : ''}`)}
+      ${!hasDefault && instances.length > 0 ? `
+        <div style="margin-bottom:12px;background:#fef9c3;border:1px solid #fde047;border-radius:var(--r-md);padding:10px 14px;
+          display:flex;align-items:center;gap:10px;font-size:.82rem;color:#713f12">
+          ${icon('alert-triangle', 14)}
+          <span>Nenhuma instância padrão. Clique em <strong>Tornar padrão</strong> numa instância abaixo para habilitar o envio de mensagens.</span>
+        </div>` : ''}
       <div id="evo-instances-list">
-        ${rows || '<div style="color:var(--text-muted);font-size:.85rem;padding:8px 0">Nenhuma instância cadastrada neste sistema.</div>'}
+        ${rows || `<div style="color:var(--text-muted);font-size:.85rem;padding:14px;border:1px dashed var(--border);border-radius:var(--r-md);text-align:center">
+          Nenhuma instância cadastrada. Use <strong>Adicionar instância</strong> abaixo.</div>`}
+      </div>
+      <div id="evo-qr-panel" style="display:none;margin-top:16px;text-align:center"></div>
+
+      <!-- ══ GRUPO: Adicionar instância ══ -->
+      <div style="${groupWrap}">
+        ${groupHead('plus-circle', 'Adicionar instância', 'Vincule uma instância que já existe no servidor Evolution, ou crie uma nova (gera QR Code para conectar).')}
+
+        <div style="background:var(--bg-subtle);border-radius:var(--r-md);padding:14px;margin-bottom:10px">
+          ${subLabel('link', 'Vincular instância existente')}
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <input id="evo-link-name" type="text" class="form-input" placeholder="Nome exato da instância"
+              style="flex:2;min-width:140px;font-size:.85rem">
+            <input id="evo-link-key" type="password" class="form-input" placeholder="Chave da instância (opcional)"
+              style="flex:2;min-width:140px;font-size:.85rem;font-family:monospace">
+            <input id="evo-link-url" type="text" class="form-input" placeholder="URL do servidor (opcional)"
+              style="flex:2;min-width:140px;font-size:.85rem;font-family:monospace">
+            <button class="btn btn-outline" onclick="_evoLinkInstance()" id="evo-link-btn"
+              style="font-size:.85rem;white-space:nowrap;flex-shrink:0">${icon('link', 14)} Vincular</button>
+          </div>
+          <div id="evo-link-feedback" style="margin-top:8px"></div>
+        </div>
+
+        <div style="background:var(--bg-subtle);border-radius:var(--r-md);padding:14px">
+          ${subLabel('plus-circle', 'Criar nova instância')}
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <input id="evo-new-name" type="text" class="form-input" placeholder="Nome da nova instância (ex: app-lumers2)"
+              style="flex:2;min-width:140px;font-size:.85rem" onkeydown="if(event.key==='Enter')_evoCreateInstance()">
+            <input id="evo-new-url" type="text" class="form-input" placeholder="URL do servidor (opcional)"
+              style="flex:2;min-width:140px;font-size:.85rem;font-family:monospace" onkeydown="if(event.key==='Enter')_evoCreateInstance()">
+            <button class="btn btn-primary" onclick="_evoCreateInstance()" id="evo-create-btn"
+              style="font-size:.85rem;white-space:nowrap;flex-shrink:0">${icon('plus', 14)} Criar</button>
+          </div>
+          <div id="evo-create-feedback" style="margin-top:8px"></div>
+        </div>
       </div>
 
-      <!-- Número público do assistente (para o popup de onboarding montar o link wa.me) -->
-      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
-        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">Número do assistente (WhatsApp)</div>
-        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px">
-          Número da instância padrão, com DDI e DDD (só dígitos, ex.: <code>5511999998888</code>).
-          É usado no popup de novidade para o usuário enviar a mensagem de teste ao Lumers Flow.
-        </div>
-        <div style="display:flex;gap:8px">
-          <input id="wa-assistant-number" type="text" inputmode="numeric" class="form-input"
-            style="flex:1" placeholder="5511999998888" value="${_escHtml(waNumber)}">
-          <button class="btn btn-primary btn-sm" onclick="_saveWaNumber()">Salvar</button>
-        </div>
-        <div id="wa-number-feedback" style="font-size:.78rem;margin-top:8px;display:none"></div>
-      </div>
+      <!-- ══ GRUPO: Servidor Evolution ══ -->
+      <div style="${groupWrap}">
+        ${groupHead('server', 'Servidor Evolution', 'URL e chave usadas por padrão. Cada instância pode ter a sua própria URL (botão <strong>URL</strong> na lista) — estas valem quando a instância não define a dela.')}
 
-      <!-- URL global do servidor Evolution -->
-      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
-        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('link', 13)} URL do servidor Evolution (global)</div>
-        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px;line-height:1.5">
-          Padrão para todas as instâncias que não têm URL própria. Ex.: <code>https://wpp.seuservidor.com.br</code>.
-          Cada instância pode ter a sua (botão <strong>URL</strong> na lista). Se vazio, usa a configuração do servidor (env).
-        </div>
-        <div style="display:flex;gap:8px">
+        ${subLabel('link', 'URL do servidor (global)')}
+        <div style="display:flex;gap:8px;margin-bottom:6px">
           <input id="evo-global-url" type="text" class="form-input" placeholder="https://wpp.seuservidor.com.br"
             value="${_escHtml(evoUrl)}" style="flex:1;font-size:.85rem;font-family:monospace">
           <button class="btn btn-primary btn-sm" onclick="_saveEvolutionUrl()" id="evo-url-btn"
             style="white-space:nowrap">${icon('save', 14)} Salvar</button>
         </div>
-        <div id="evo-url-feedback" style="font-size:.78rem;margin-top:8px;display:none"></div>
-      </div>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:6px">Vazio = usa a configuração do servidor (variável de ambiente).</div>
+        <div id="evo-url-feedback" style="font-size:.78rem;margin-bottom:16px;display:none"></div>
 
-      <!-- Chave global -->
-      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
-        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">Chave global (para criar/excluir instâncias)</div>
-        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px">
-          Chave <code>AUTHENTICATION_API_KEY</code> do servidor Evolution — necessária para criar e excluir instâncias.
-        </div>
-        <div style="display:flex;gap:8px;margin-bottom:16px">
-          <input id="evo-global-key" type="password" class="form-input"
-            placeholder="Cole aqui a chave global…"
-            value="${_escHtml(evoGlobalKey)}"
-            style="flex:1;font-size:.85rem;font-family:monospace">
+        ${subLabel('key', 'Chave global (AUTHENTICATION_API_KEY)')}
+        <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:8px">Necessária para <strong>criar</strong> e <strong>excluir</strong> instâncias.</div>
+        <div style="display:flex;gap:8px">
+          <input id="evo-global-key" type="password" class="form-input" placeholder="Cole aqui a chave global…"
+            value="${_escHtml(evoGlobalKey)}" style="flex:1;font-size:.85rem;font-family:monospace">
           <button class="btn btn-outline" onclick="_evoTestGlobalKey()" id="evo-key-test-btn"
-            style="font-size:.85rem;white-space:nowrap">
-            ${icon('zap', 14)} Testar
-          </button>
+            style="font-size:.85rem;white-space:nowrap">${icon('zap', 14)} Testar</button>
           <button class="btn btn-primary" onclick="_evoSaveGlobalKey()" id="evo-key-btn"
-            style="font-size:.85rem;white-space:nowrap">
-            ${icon('save', 14)} Salvar
-          </button>
+            style="font-size:.85rem;white-space:nowrap">${icon('save', 14)} Salvar</button>
         </div>
-        <div id="evo-key-feedback" style="margin-bottom:4px"></div>
+        <div id="evo-key-feedback" style="margin-top:8px"></div>
       </div>
 
-      <!-- Vincular instância existente -->
-      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
-        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('link', 13)} Vincular instância existente</div>
-        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
-          Registra uma instância já existente na Evolution neste sistema. Informe o nome exato da instância e, se necessário, a chave da instância.
+      <!-- ══ GRUPO: Assistente ══ -->
+      <div style="${groupWrap}">
+        ${groupHead('phone', 'Número do assistente', 'Número da instância padrão, com DDI e DDD (só dígitos, ex.: <code>5511999998888</code>). Usado no popup de onboarding para o usuário enviar a mensagem de teste ao Lumers Flow.')}
+        <div style="display:flex;gap:8px">
+          <input id="wa-assistant-number" type="text" inputmode="numeric" class="form-input"
+            style="flex:1" placeholder="5511999998888" value="${_escHtml(waNumber)}">
+          <button class="btn btn-primary btn-sm" onclick="_saveWaNumber()" style="white-space:nowrap">${icon('save', 14)} Salvar</button>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-          <input id="evo-link-name" type="text" class="form-input" placeholder="Nome da instância"
-            style="flex:2;min-width:140px;font-size:.85rem">
-          <input id="evo-link-key" type="password" class="form-input" placeholder="Chave da instância (opcional)"
-            style="flex:2;min-width:140px;font-size:.85rem;font-family:monospace">
-          <input id="evo-link-url" type="text" class="form-input" placeholder="URL do servidor (opcional)"
-            style="flex:2;min-width:140px;font-size:.85rem;font-family:monospace">
-          <button class="btn btn-outline" onclick="_evoLinkInstance()" id="evo-link-btn"
-            style="font-size:.85rem;white-space:nowrap;flex-shrink:0">
-            ${icon('link', 14)} Vincular
-          </button>
-        </div>
-        <div id="evo-link-feedback" style="margin-bottom:4px"></div>
+        <div id="wa-number-feedback" style="font-size:.78rem;margin-top:8px;display:none"></div>
       </div>
 
-      <!-- Criar nova instância -->
-      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
-        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('plus-circle', 13)} Criar nova instância</div>
-        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:10px">
-          Cria uma nova instância na Evolution e registra automaticamente neste sistema.
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <input id="evo-new-name" type="text" class="form-input" placeholder="Nome da instância (ex: app-lumers2)"
-            style="flex:2;min-width:140px;font-size:.85rem" onkeydown="if(event.key==='Enter')_evoCreateInstance()">
-          <input id="evo-new-url" type="text" class="form-input" placeholder="URL do servidor (opcional)"
-            style="flex:2;min-width:140px;font-size:.85rem;font-family:monospace" onkeydown="if(event.key==='Enter')_evoCreateInstance()">
-          <button class="btn btn-primary" onclick="_evoCreateInstance()" id="evo-create-btn"
-            style="font-size:.85rem;white-space:nowrap;flex-shrink:0">
-            ${icon('plus', 14)} Criar
-          </button>
-        </div>
-        <div id="evo-create-feedback" style="margin-top:10px"></div>
-      </div>
-
-      ${!hasDefault && instances.length > 0 ? `
-      <div style="margin-top:16px;background:#fef9c3;border:1px solid #fde047;border-radius:var(--r-md);padding:10px 14px;
-        display:flex;align-items:center;gap:10px;font-size:.82rem;color:#713f12">
-        ${icon('alert-triangle', 14)}
-        <span>Nenhuma instância padrão definida. Clique em <strong>Padrão</strong> em uma das instâncias acima para habilitar o envio de mensagens.</span>
-      </div>` : ''}
-
-      <div id="evo-qr-panel" style="display:none;margin-top:16px;text-align:center"></div>
-
-      <!-- Disparo automático (cron externo) -->
-      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
-        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('clock', 13)} Disparo automático (cron externo)</div>
-        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
-          Cole esta URL no <strong>cron-job.org</strong> (ou similar) com intervalo de <strong>1 minuto</strong> para processar a fila de mensagens.
-        </div>
+      <!-- ══ GRUPO: Disparo automático ══ -->
+      <div style="${groupWrap}">
+        ${groupHead('clock', 'Disparo automático (cron externo)', 'Cole esta URL no <strong>cron-job.org</strong> (ou similar) com intervalo de <strong>1 minuto</strong> para processar a fila de mensagens.')}
         <div style="display:flex;gap:8px;margin-bottom:8px">
           <input id="cron-url-input" type="text" class="form-input" readonly
             value="${cronSecret ? `${location.origin}/api/cron/dispatcher?secret=${cronSecret}` : ''}"
@@ -1938,14 +1906,9 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUr
         <div id="cron-secret-feedback" style="font-size:.78rem;margin-top:8px;display:none"></div>
       </div>
 
-      <!-- Integração n8n (registro automático via WhatsApp) -->
-      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
-        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('workflow', 13)} Integração n8n — registro automático via WhatsApp</div>
-        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
-          Quando o usuário envia uma mensagem no WhatsApp, o sistema repassa a mensagem para o <strong>webhook do n8n</strong>.
-          O fluxo do n8n interpreta e chama de volta o endpoint abaixo para registrar o lançamento.
-          Deixe a URL em branco para desativar o repasse.
-        </div>
+      <!-- ══ GRUPO: Integração n8n ══ -->
+      <div style="${groupWrap}">
+        ${groupHead('workflow', 'Integração n8n — registro automático', 'Quando o usuário envia uma mensagem no WhatsApp, o sistema repassa para o <strong>webhook do n8n</strong>, que interpreta e chama de volta o endpoint abaixo. Deixe a URL em branco para desativar o repasse.')}
 
         <label class="form-label" style="font-size:.78rem">URL do webhook do n8n</label>
         <input id="n8n-url-input" type="text" class="form-input"
@@ -2013,9 +1976,8 @@ const _AI_MODEL_OPTIONS = {
     { v: 'gpt-4o-transcribe',     label: 'gpt-4o-transcribe — transcrição de áudio, alta qualidade' },
   ],
   gemini: [
-    { v: 'gemini-2.0-flash', label: 'gemini-2.0-flash — multimodal (áudio, imagem, PDF)' },
-    { v: 'gemini-2.5-flash', label: 'gemini-2.5-flash — multimodal, mais recente' },
-    { v: 'gemini-1.5-flash', label: 'gemini-1.5-flash — multimodal (legado)' },
+    { v: 'gemini-3.6-flash', label: 'gemini-3.6-flash — multimodal (áudio, imagem, PDF) (recomendado)' },
+    { v: 'gemini-2.5-flash', label: 'gemini-2.5-flash — multimodal' },
   ],
 };
 

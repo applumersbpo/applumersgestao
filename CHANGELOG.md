@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.44.1] — 2026-09-14
+
+### Melhorado
+- **Reorganização da seção "WhatsApp — Instâncias Evolution" (Admin→Sistema)** — a seção tinha crescido de forma orgânica: linha de instância com 7 botões espremidos e 8 blocos de configuração empilhados sem hierarquia. Reorganizado em **grupos claros** com cabeçalhos consistentes: **Instâncias** (cartões com status em bolinha colorida, número e URL do servidor; ações primárias com rótulo e secundárias/destrutivas compactas), **Adicionar instância** (Vincular + Criar agrupados em caixas), **Servidor Evolution** (URL global + chave global juntas), **Número do assistente**, e os blocos de **cron** e **n8n** padronizados no mesmo estilo. Nenhuma mudança de comportamento — todos os IDs e ações preservados.
+
+### Corrigido
+- **Dropdown de modelo Gemini desatualizado** — listava `gemini-2.0-flash` (descontinuado, 404) e não tinha o `gemini-3.6-flash`. Atualizado para `gemini-3.6-flash` (recomendado) + `gemini-2.5-flash`.
+
+---
+
 ## [v1.44.0] — 2026-09-14
 
 ### Adicionado
