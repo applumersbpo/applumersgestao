@@ -665,6 +665,12 @@ export async function initDb() {
   if (!eiColNames.includes('last_status_at')) {
     await db.execute("ALTER TABLE evolution_instances ADD COLUMN last_status_at TEXT DEFAULT ''");
   }
+  // base_url — URL do servidor Evolution POR instância (permite instâncias em
+  // servidores diferentes). Vazio → usa a URL global do painel (evolution_url) e,
+  // por fim, a env EVOLUTION_URL. Ver resolveBase() em _lib/evolution.js.
+  if (!eiColNames.includes('base_url')) {
+    await db.execute("ALTER TABLE evolution_instances ADD COLUMN base_url TEXT DEFAULT ''");
+  }
 
   // email_dispatch — force_send permite que o admin envie manualmente para
   // usuários com notificações desabilitadas (override confirmado no painel).
@@ -761,6 +767,10 @@ export async function initDb() {
   // Número WhatsApp da instância padrão (só dígitos, com DDI). Usado no popup de
   // onboarding para montar o link wa.me de teste. Vazio até o admin configurar no painel.
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('wa_assistant_number', '')", args: [] });
+  // URL global do servidor Evolution, editável no painel. Vazio → usa a env
+  // EVOLUTION_URL. Cada instância pode ter a sua própria (coluna base_url), que
+  // tem prioridade sobre esta. Ver resolveBase() em _lib/evolution.js.
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('evolution_url', '')", args: [] });
 
   // Seed e-mail system settings (INSERT OR IGNORE keeps existing values)
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('email_enabled', '0')", args: [] });

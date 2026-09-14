@@ -5,6 +5,19 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.44.0] — 2026-09-14
+
+### Adicionado
+- **URL do servidor Evolution por instância (com fallback)** — antes a URL do servidor era fixa na env `EVOLUTION_URL` (uma só, pra todas as instâncias, exigia redeploy pra trocar). Agora cada instância pode ter a **sua própria URL** de servidor Evolution, permitindo instâncias em servidores diferentes. Resolução em cascata via novo `resolveBase()` em `api/_lib/evolution.js`: **`evolution_instances.base_url` (por instância) → `evolution_url` (setting global, editável no painel) → env `EVOLUTION_URL`** (fallback legado). Enquanto nenhuma URL for setada, o comportamento é idêntico ao atual.
+  - **Schema:** coluna `base_url` em `evolution_instances` + setting `evolution_url` (migrações auto em `db.js`).
+  - **Painel (Admin→Sistema→WhatsApp):** campo de **URL global do servidor**; campo de **URL do servidor** nos fluxos *Vincular* e *Criar* instância; exibição da URL de cada instância na lista + botão **URL** para editar/limpar por instância. Nova ação `update-instance-url`.
+  - **Backend:** todos os ~15 pontos que falavam com a Evolution (`sendText`, `connectionState`, `connectQr`, `deleteInstance`, `setSettings`, `setWebhook`, `getBase64FromMediaMessage`, criação de instância, etc.) passam a resolver a URL por instância. `test-evolution-key`/vincular/criar aceitam a URL informada no painel.
+
+### Corrigido
+- **`test-whatsapp` (admin) e boas-vindas (cadastro) enviavam via env crua** (`EVOLUTION_URL` apontando para um endpoint de instância que não existe mais) — passaram a enviar pela **instância padrão** via `sendText`, respeitando a URL por instância.
+
+---
+
 ## [v1.43.5] — 2026-09-14
 
 ### Corrigido

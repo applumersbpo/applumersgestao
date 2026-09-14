@@ -1365,7 +1365,7 @@ async function renderAdminSystem() {
         </div>
         <div id="toggle-reg-feedback" style="font-size:.8rem;margin-top:10px;display:none"></div>
       </div>
-      ${await _renderEvolutionSection(evoGlobalKey, cronSecret, n8nUrl, n8nSecret, sysCfg.wa_assistant_number || '')}
+      ${await _renderEvolutionSection(evoGlobalKey, cronSecret, n8nUrl, n8nSecret, sysCfg.wa_assistant_number || '', sysCfg.evolution_url || '')}
       ${_renderChatwootSection(cwCfg)}
       ${_renderRulesSection(aiRules)}
       ${_renderAiSection(aiCfg)}`;
@@ -1734,7 +1734,7 @@ async function renderAdminTheme() {
 
 // ── Evolution API Instance Management ────────────────────────────────────────
 
-async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUrl = '', n8nSecret = '', waNumber = '') {
+async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUrl = '', n8nSecret = '', waNumber = '', evoUrl = '') {
   let instances = [];
   try { instances = await _api('GET', '/admin/users?resource=evolution-instances'); } catch {}
   const statusColor  = s => (s === 'connected' || s === 'open') ? 'var(--income-text,#16a34a)' : s === 'connecting' ? 'var(--warning,#d97706)' : 'var(--expense,#dc2626)';
@@ -1755,6 +1755,12 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUr
           <span style="color:${statusColor(inst.connectionStatus)};font-weight:600">
             ${statusLabel(inst.connectionStatus)}
           </span>
+        </div>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px;word-break:break-all"
+          title="Servidor Evolution desta instância">
+          ${icon('link', 10)} ${inst.base_url
+            ? _escHtml(inst.base_url)
+            : `<span style="opacity:.7">URL global${inst.effective_base ? ` (${_escHtml(inst.effective_base)})` : ''}</span>`}
         </div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
@@ -1777,6 +1783,10 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUr
         <button class="btn btn-sm" onclick="_evoEditKey('${_escHtml(inst.name)}')"
           style="font-size:.78rem" title="Atualizar a API key desta instância">
           ${icon('key', 12)} Chave
+        </button>
+        <button class="btn btn-sm" onclick="_evoEditUrl('${_escHtml(inst.name)}')"
+          style="font-size:.78rem" title="Definir a URL do servidor Evolution desta instância">
+          ${icon('link', 12)} URL
         </button>
         <button class="btn btn-sm" onclick="_evoUnlinkInstance('${_escHtml(inst.name)}')"
           style="font-size:.75rem;padding:4px 10px;background:var(--bg-subtle);color:var(--text-muted);border:none"
@@ -1816,6 +1826,22 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUr
         <div id="wa-number-feedback" style="font-size:.78rem;margin-top:8px;display:none"></div>
       </div>
 
+      <!-- URL global do servidor Evolution -->
+      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">${icon('link', 13)} URL do servidor Evolution (global)</div>
+        <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px;line-height:1.5">
+          Padrão para todas as instâncias que não têm URL própria. Ex.: <code>https://wpp.seuservidor.com.br</code>.
+          Cada instância pode ter a sua (botão <strong>URL</strong> na lista). Se vazio, usa a configuração do servidor (env).
+        </div>
+        <div style="display:flex;gap:8px">
+          <input id="evo-global-url" type="text" class="form-input" placeholder="https://wpp.seuservidor.com.br"
+            value="${_escHtml(evoUrl)}" style="flex:1;font-size:.85rem;font-family:monospace">
+          <button class="btn btn-primary btn-sm" onclick="_saveEvolutionUrl()" id="evo-url-btn"
+            style="white-space:nowrap">${icon('save', 14)} Salvar</button>
+        </div>
+        <div id="evo-url-feedback" style="font-size:.78rem;margin-top:8px;display:none"></div>
+      </div>
+
       <!-- Chave global -->
       <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
         <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">Chave global (para criar/excluir instâncias)</div>
@@ -1850,6 +1876,8 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUr
             style="flex:2;min-width:140px;font-size:.85rem">
           <input id="evo-link-key" type="password" class="form-input" placeholder="Chave da instância (opcional)"
             style="flex:2;min-width:140px;font-size:.85rem;font-family:monospace">
+          <input id="evo-link-url" type="text" class="form-input" placeholder="URL do servidor (opcional)"
+            style="flex:2;min-width:140px;font-size:.85rem;font-family:monospace">
           <button class="btn btn-outline" onclick="_evoLinkInstance()" id="evo-link-btn"
             style="font-size:.85rem;white-space:nowrap;flex-shrink:0">
             ${icon('link', 14)} Vincular
@@ -1864,11 +1892,13 @@ async function _renderEvolutionSection(evoGlobalKey = '', cronSecret = '', n8nUr
         <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:10px">
           Cria uma nova instância na Evolution e registra automaticamente neste sistema.
         </div>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
           <input id="evo-new-name" type="text" class="form-input" placeholder="Nome da instância (ex: app-lumers2)"
-            style="flex:1;font-size:.85rem" onkeydown="if(event.key==='Enter')_evoCreateInstance()">
+            style="flex:2;min-width:140px;font-size:.85rem" onkeydown="if(event.key==='Enter')_evoCreateInstance()">
+          <input id="evo-new-url" type="text" class="form-input" placeholder="URL do servidor (opcional)"
+            style="flex:2;min-width:140px;font-size:.85rem;font-family:monospace" onkeydown="if(event.key==='Enter')_evoCreateInstance()">
           <button class="btn btn-primary" onclick="_evoCreateInstance()" id="evo-create-btn"
-            style="font-size:.85rem;white-space:nowrap">
+            style="font-size:.85rem;white-space:nowrap;flex-shrink:0">
             ${icon('plus', 14)} Criar
           </button>
         </div>
@@ -3064,15 +3094,17 @@ async function _kbDelete(id) {
 
 async function _evoCreateInstance() {
   const nameEl = document.getElementById('evo-new-name');
+  const urlEl  = document.getElementById('evo-new-url');
   const btn    = document.getElementById('evo-create-btn');
   const fb     = document.getElementById('evo-create-feedback');
   const name   = nameEl?.value?.trim();
+  const url    = urlEl?.value?.trim();
   if (!name) { toast('Informe o nome da instância', 'error'); return; }
 
   btn.disabled = true;
   btn.innerHTML = icon('loader', 14) + ' Criando…';
   try {
-    const res = await _api('POST', '/admin/users', { action: 'create-evolution-instance', instanceName: name });
+    const res = await _api('POST', '/admin/users', { action: 'create-evolution-instance', instanceName: name, base_url: url || undefined });
     if (fb) {
       fb.innerHTML = `<div style="background:var(--income-light,#dcfce7);border-radius:var(--r-md);
         padding:8px 12px;font-size:.82rem;color:var(--income-text,#16a34a)">
@@ -3080,6 +3112,7 @@ async function _evoCreateInstance() {
       </div>`;
     }
     if (nameEl) nameEl.value = '';
+    if (urlEl)  urlEl.value  = '';
     // Aguarda a instância inicializar antes de buscar o QR Code
     await new Promise(r => setTimeout(r, 2000));
     await _evoConnectInstance(name);
@@ -3183,22 +3216,25 @@ async function _evoUnlinkInstance(name) {
 async function _evoLinkInstance() {
   const nameEl = document.getElementById('evo-link-name');
   const keyEl  = document.getElementById('evo-link-key');
+  const urlEl  = document.getElementById('evo-link-url');
   const btn    = document.getElementById('evo-link-btn');
   const fb     = document.getElementById('evo-link-feedback');
   const name   = nameEl?.value?.trim();
   const key    = keyEl?.value?.trim();
+  const url    = urlEl?.value?.trim();
   if (!name) { toast('Informe o nome da instância', 'error'); return; }
 
   btn.disabled = true;
   btn.innerHTML = icon('loader', 14) + ' Vinculando…';
   try {
-    await _api('POST', '/admin/users', { action: 'link-evolution-instance', instanceName: name, instanceKey: key || undefined });
+    await _api('POST', '/admin/users', { action: 'link-evolution-instance', instanceName: name, instanceKey: key || undefined, base_url: url || undefined });
     if (fb) fb.innerHTML = `<div style="background:var(--income-light,#dcfce7);border-radius:var(--r-md);
       padding:6px 10px;font-size:.8rem;color:var(--income-text,#16a34a)">
       ✓ Instância <strong>${_escHtml(name)}</strong> vinculada com sucesso.
     </div>`;
     if (nameEl) nameEl.value = '';
     if (keyEl)  keyEl.value  = '';
+    if (urlEl)  urlEl.value  = '';
     setTimeout(() => renderAdminSystem(), 1500);
   } catch(e) {
     if (fb) fb.innerHTML = `<div style="background:#fee2e2;border-radius:var(--r-md);
@@ -3219,6 +3255,38 @@ async function _evoEditKey(name) {
     await renderAdminSystem();
   } catch(e) {
     toast('Erro ao atualizar chave: ' + (e.message || e), 'error');
+  }
+}
+
+// Define/limpa a URL do servidor Evolution de UMA instância (base_url). Vazio
+// faz a instância voltar a usar a URL global (evolution_url) / env.
+async function _evoEditUrl(name) {
+  const url = prompt(`URL do servidor Evolution para a instância "${name}"\n(ex.: https://wpp.seuservidor.com.br — deixe vazio para usar a URL global):`);
+  if (url === null) return; // cancelou
+  try {
+    const r = await _api('POST', '/admin/users', { action: 'update-instance-url', instanceName: name, base_url: url.trim() });
+    toast(r.base_url ? 'URL da instância atualizada' : 'Instância voltou a usar a URL global', 'success');
+    await renderAdminSystem();
+  } catch(e) {
+    toast('Erro ao atualizar URL: ' + (e.message || e), 'error');
+  }
+}
+
+// Salva a URL global do servidor Evolution (system_setting evolution_url).
+async function _saveEvolutionUrl() {
+  const el  = document.getElementById('evo-global-url');
+  const fb  = document.getElementById('evo-url-feedback');
+  const btn = document.getElementById('evo-url-btn');
+  const url = String(el?.value || '').trim();
+  if (btn) btn.disabled = true;
+  try {
+    await _api('PUT', '/admin/users?resource=system-settings', { evolution_url: url });
+    if (fb) { fb.style.display = 'block'; fb.style.color = 'var(--income-text,#16a34a)'; fb.textContent = url ? '✓ URL global salva.' : '✓ URL global limpa (usando env).'; }
+    if (typeof toast === 'function') toast('URL do servidor Evolution salva.', 'success');
+  } catch (e) {
+    if (fb) { fb.style.display = 'block'; fb.style.color = 'var(--expense,#dc2626)'; fb.textContent = 'Erro: ' + e.message; }
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

@@ -3,14 +3,14 @@ import { waNotifyAskText } from '../_lib/assistant.js';
 import { requireAuth, cors, isImpersonation, signToken } from '../_lib/auth.js';
 import { logSystem } from '../_lib/audit.js';
 import {
-  evoBase, resolveKey, headers as evoHdrs, normalizeStatus, parseEvoError,
+  evoBase, resolveBase, resolveKey, headers as evoHdrs, normalizeStatus, parseEvoError,
   connectionState, connectQr, deleteInstance, setSettings, setWebhook,
   createInstance, deriveWebhookUrl, sendText,
 } from '../_lib/evolution.js';
 import { groqChat, geminiGenerate, openaiChat, getAiConfig } from '../_lib/ai.js';
 import bcrypt from 'bcryptjs';
 
-const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'cron_secret', 'n8n_webhook_url', 'n8n_secret', 'ai_enabled', 'ai_groq_key', 'ai_groq_model', 'ai_groq_vision_model', 'ai_gemini_key', 'ai_gemini_model', 'ai_openai_key', 'ai_openai_vision_model', 'ai_openai_audio_model', 'wa_assistant_number', 'wa_signup_enabled', 'ai_rules', 'chatwoot_enabled', 'chatwoot_url', 'chatwoot_token', 'chatwoot_account_id', 'chatwoot_inbox_id'];
+const SYSTEM_SETTING_KEYS = ['allow_registration', 'evolution_global_key', 'evolution_url', 'cron_secret', 'n8n_webhook_url', 'n8n_secret', 'ai_enabled', 'ai_groq_key', 'ai_groq_model', 'ai_groq_vision_model', 'ai_gemini_key', 'ai_gemini_model', 'ai_openai_key', 'ai_openai_vision_model', 'ai_openai_audio_model', 'wa_assistant_number', 'wa_signup_enabled', 'ai_rules', 'chatwoot_enabled', 'chatwoot_url', 'chatwoot_token', 'chatwoot_account_id', 'chatwoot_inbox_id'];
 
 // Normaliza um telefone BR para o formato canônico: 55 + DDD(2) + 9 + 8 dígitos (celular).
 // Insere o 9º dígito quando ausente (regra padrão: local de 10 dígitos cujo assinante
@@ -50,23 +50,25 @@ export default async function handler(req, res) {
     // ── Evolution API instance management ─────────────────────────────────────
     if (req.query.resource === 'evolution-instances') {
       const { rows } = await db.execute(
-        'SELECT id, name, api_key, is_default, connection_status, created_at FROM evolution_instances ORDER BY is_default DESC, created_at ASC'
+        'SELECT id, name, api_key, base_url, is_default, connection_status, created_at FROM evolution_instances ORDER BY is_default DESC, created_at ASC'
       );
       const registered = rowsToObjects(rows);
-      const base = evoBase();
 
       const results = await Promise.all(registered.map(async inst => {
         const isDefault = inst.is_default === 1 || inst.is_default === '1';
         const dbStatus = inst.connection_status || 'unknown';
+        const baseUrl = inst.base_url || '';
+        // URL efetiva desta instância (base_url próprio → evolution_url global → env).
+        const base = await resolveBase(inst.name);
 
         if (!base) {
-          return { name: inst.name, is_default: isDefault, connectionStatus: dbStatus, number: '' };
+          return { name: inst.name, is_default: isDefault, connectionStatus: dbStatus, number: '', base_url: baseUrl, effective_base: '' };
         }
 
         try {
           const { ok, data } = await connectionState({ name: inst.name, key: inst.api_key || null });
           if (!ok) {
-            return { name: inst.name, is_default: isDefault, connectionStatus: dbStatus, number: '' };
+            return { name: inst.name, is_default: isDefault, connectionStatus: dbStatus, number: '', base_url: baseUrl, effective_base: base };
           }
           const rawState = data?.instance?.state || data?.state || 'disconnected';
           const normalized = normalizeStatus(rawState);
@@ -76,9 +78,9 @@ export default async function handler(req, res) {
             sql: "UPDATE evolution_instances SET connection_status=?, last_status_at=datetime('now') WHERE name=?",
             args: [normalized, inst.name],
           });
-          return { name: inst.name, is_default: isDefault, connectionStatus: normalized, number };
+          return { name: inst.name, is_default: isDefault, connectionStatus: normalized, number, base_url: baseUrl, effective_base: base };
         } catch {
-          return { name: inst.name, is_default: isDefault, connectionStatus: dbStatus, number: '' };
+          return { name: inst.name, is_default: isDefault, connectionStatus: dbStatus, number: '', base_url: baseUrl, effective_base: base };
         }
       }));
 
@@ -570,8 +572,10 @@ export default async function handler(req, res) {
       }
 
       if (action === 'test-evolution-key') {
-        const base = evoBase();
-        if (!base) return res.status(500).json({ error: 'EVOLUTION_URL não configurada' });
+        // Aceita testar contra uma URL específica (base_url) informada no painel;
+        // senão usa a URL global (evolution_url) e, por fim, a env.
+        const base = await resolveBase(null, req.body?.base_url);
+        if (!base) return res.status(500).json({ error: 'URL do servidor Evolution não configurada (informe a URL ou defina EVOLUTION_URL)' });
         const hdrs = await _evoGlobalHdrs();
         const r = await fetch(`${base}/instance/fetchInstances?limit=1`, { headers: hdrs });
         if (r.status === 401) return res.status(200).json({ ok: false, error: 'Chave inválida — Evolution retornou 401' });
@@ -581,10 +585,12 @@ export default async function handler(req, res) {
 
       // Create Evolution API instance — cria na API e registra no banco local
       if (action === 'create-evolution-instance') {
-        const { instanceName } = req.body;
+        const { instanceName, base_url } = req.body;
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
-        const base = evoBase();
-        if (!base) return res.status(500).json({ error: 'Evolution API não configurada' });
+        // URL do servidor onde a instância será criada (informada no painel), com
+        // fallback para a URL global/env. A instância guarda essa URL (base_url).
+        const base = await resolveBase(null, base_url);
+        if (!base) return res.status(500).json({ error: 'URL do servidor Evolution não configurada (informe a URL ou defina EVOLUTION_URL)' });
 
         const instanceSettings = {
           rejectCall: true,
@@ -613,7 +619,7 @@ export default async function handler(req, res) {
           ...(webhookUrl ? { webhook: webhookCfg } : {}),
         };
 
-        const { ok: createOk, status: createStatus, data } = await createInstance(createBody, null);
+        const { ok: createOk, status: createStatus, data } = await createInstance(createBody, null, base_url);
         if (createStatus === 401) return res.status(400).json({ error: 'Chave global inválida ou não configurada — salve a chave correta na seção acima antes de criar.' });
         if (!createOk) return res.status(createStatus).json(data);
 
@@ -621,7 +627,7 @@ export default async function handler(req, res) {
 
         // Reforço pós-create: reaplica settings (F-207 — captura falhas em vez de engolir)
         try {
-          const sr = await setSettings(instanceName, null, instanceSettings);
+          const sr = await setSettings(instanceName, null, instanceSettings, base_url);
           _config.settings = { ok: sr.ok, status: sr.status, error: sr.ok ? null : sr.data };
           if (!sr.ok) console.error('[create-evolution-instance] settings/set falhou', instanceName, sr.status, JSON.stringify(sr.data));
         } catch (e) {
@@ -632,7 +638,7 @@ export default async function handler(req, res) {
         // Webhook com tolerância v1/v2
         if (webhookUrl) {
           try {
-            const wr = await setWebhook(instanceName, null, webhookCfg);
+            const wr = await setWebhook(instanceName, null, webhookCfg, base_url);
             _config.webhook = { ok: wr.ok, status: wr.status, form: wr.form, error: wr.ok ? null : wr.data };
             if (!wr.ok) console.error('[create-evolution-instance] webhook/set falhou', instanceName, wr.status, JSON.stringify(wr.data));
           } catch (e) {
@@ -651,23 +657,24 @@ export default async function handler(req, res) {
           return '';
         };
         const createdKey = pickKey(data?.hash) || pickKey(data?.apikey) || pickKey(data?.instance?.apikey) || pickKey(data?.instance?.hash) || '';
-        await db.execute({ sql: 'INSERT OR IGNORE INTO evolution_instances (id, name, api_key) VALUES (?, ?, ?)', args: [newId, instanceName, createdKey] });
+        await db.execute({ sql: 'INSERT OR IGNORE INTO evolution_instances (id, name, api_key, base_url) VALUES (?, ?, ?, ?)', args: [newId, instanceName, createdKey, (base_url || '').trim()] });
         await logSystem({ req, actor: user, action: 'evolution.instance_create', targetType: 'evolution_instance', targetId: newId, targetLabel: instanceName });
         return res.status(200).json({ ...data, _config });
       }
 
       // Link existing Evolution instance
       if (action === 'link-evolution-instance') {
-        const { instanceName, instanceKey } = req.body;
+        const { instanceName, instanceKey, base_url } = req.body;
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
-        const base = evoBase();
-        if (!base) return res.status(500).json({ error: 'Evolution API não configurada' });
-        const { ok, status: evoStatus } = await connectionState({ name: instanceName, key: instanceKey || null });
+        // Testa a existência da instância no servidor informado (base_url) ou no global.
+        const base = await resolveBase(null, base_url);
+        if (!base) return res.status(500).json({ error: 'URL do servidor Evolution não configurada (informe a URL ou defina EVOLUTION_URL)' });
+        const { ok, status: evoStatus } = await connectionState({ name: instanceName, key: instanceKey || null, base: base_url });
         if (evoStatus === 401) return res.status(400).json({ error: 'Credenciais inválidas para esta instância.' });
-        if (evoStatus === 404) return res.status(404).json({ error: `Instância "${instanceName}" não encontrada na Evolution.` });
+        if (evoStatus === 404) return res.status(404).json({ error: `Instância "${instanceName}" não encontrada na Evolution (verifique o nome e a URL do servidor).` });
         if (!ok) return res.status(400).json({ error: `Evolution retornou HTTP ${evoStatus}` });
         const newId = crypto.randomUUID();
-        await db.execute({ sql: 'INSERT OR IGNORE INTO evolution_instances (id, name, api_key) VALUES (?, ?, ?)', args: [newId, instanceName, instanceKey || ''] });
+        await db.execute({ sql: 'INSERT OR IGNORE INTO evolution_instances (id, name, api_key, base_url) VALUES (?, ?, ?, ?)', args: [newId, instanceName, instanceKey || '', (base_url || '').trim()] });
         await logSystem({ req, actor: user, action: 'evolution.instance_link', targetType: 'evolution_instance', targetId: newId, targetLabel: instanceName });
         return res.status(200).json({ ok: true });
       }
@@ -676,7 +683,7 @@ export default async function handler(req, res) {
       if (action === 'delete-evolution-instance') {
         const { instanceName } = req.body;
         if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
-        if (!evoBase()) return res.status(500).json({ error: 'Evolution API não configurada' });
+        if (!(await resolveBase(instanceName))) return res.status(500).json({ error: 'URL do servidor Evolution não configurada' });
         const { ok, status: evoStatus, data } = await deleteInstance(instanceName, null);
         await db.execute({ sql: 'DELETE FROM evolution_instances WHERE name = ?', args: [instanceName] });
         await logSystem({ req, actor: user, action: 'evolution.instance_delete', targetType: 'evolution_instance', targetLabel: instanceName, details: { evoStatus } });
@@ -839,6 +846,22 @@ export default async function handler(req, res) {
         await db.execute({ sql: 'UPDATE evolution_instances SET api_key = ? WHERE name = ?', args: [instanceKey, instanceName] });
         await logSystem({ req, actor: user, action: 'evolution.update_key', targetType: 'evolution_instance', targetLabel: instanceName });
         return res.status(200).json({ ok: true });
+      }
+
+      // Atualiza a URL do servidor Evolution de uma instância (base_url). Vazio =
+      // volta a usar a URL global (evolution_url) / env. Valida o formato da URL.
+      if (action === 'update-instance-url') {
+        const { instanceName } = req.body;
+        const raw = (req.body?.base_url ?? '').trim();
+        if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório' });
+        let toSave = '';
+        if (raw) {
+          try { toSave = new URL(raw).origin; }
+          catch { return res.status(400).json({ error: 'URL inválida. Use algo como https://servidor.exemplo.com' }); }
+        }
+        await db.execute({ sql: 'UPDATE evolution_instances SET base_url = ? WHERE name = ?', args: [toSave, instanceName] });
+        await logSystem({ req, actor: user, action: 'evolution.update_url', targetType: 'evolution_instance', targetLabel: instanceName, details: { base_url: toSave || '(global)' } });
+        return res.status(200).json({ ok: true, base_url: toSave });
       }
 
       // Verifica status ao vivo na Evolution e reaplica o webhook

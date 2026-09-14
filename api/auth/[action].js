@@ -1,6 +1,7 @@
 import { getDb, initDb, rowsToObjects, getSystemSetting } from '../_lib/db.js';
 import { requireAuth, cors, signToken } from '../_lib/auth.js';
 import * as email from '../_lib/email.js';
+import { sendText } from '../_lib/evolution.js';
 import bcrypt from 'bcryptjs';
 
 export default async function handler(req, res) {
@@ -182,9 +183,11 @@ function _normalizePhone(phone) {
 }
 
 async function _enviarBoasVindasWhatsApp(user) {
-  const url  = process.env.EVOLUTION_URL;
-  const key  = process.env.EVOLUTION_APIKEY;
-  if (!url || !key || !user.phone) return;
+  if (!user.phone) return;
+  // Envia pela instância padrão do painel (resolve URL por instância → global → env).
+  const { rows } = await getDb().execute("SELECT name, api_key FROM evolution_instances WHERE is_default = 1 LIMIT 1");
+  const inst = rowsToObjects(rows)[0];
+  if (!inst) return;
   const nome = (user.name || '').split(' ')[0] || 'você';
   const msg  =
     `Olá, ${nome}! 👋 Aqui é a assistente da *Lumers Flow*!\n\n` +
@@ -194,9 +197,9 @@ async function _enviarBoasVindasWhatsApp(user) {
     `💚 *Receita:* "recebi 2000 de salário"\n` +
     `🔔 *Conta:* "conta de luz 150 vence dia 20"\n\n` +
     `Pode testar agora! 🚀`;
-  await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: key },
-    body: JSON.stringify({ number: _normalizePhone(user.phone), text: msg }),
-  });
+  try {
+    await sendText({ name: inst.name, key: inst.api_key || null, number: _normalizePhone(user.phone), text: msg });
+  } catch (e) {
+    console.error('[auth] boas-vindas WhatsApp falhou', e?.message);
+  }
 }

@@ -1,8 +1,38 @@
-import { getSystemSetting } from './db.js';
+import { getSystemSetting, getDb, rowsToObjects } from './db.js';
 
+// URL (origin) do servidor Evolution vinda da env. É o último fallback.
 export function evoBase() {
   const url = process.env.EVOLUTION_URL || '';
   try { return new URL(url).origin; } catch { return ''; }
+}
+
+// Normaliza qualquer URL para só o origin (protocolo+host). Vazio se inválida.
+function toOrigin(url) {
+  try { return new URL(String(url || '').trim()).origin; } catch { return ''; }
+}
+
+// Resolve a URL base do servidor Evolution para uma instância, na ordem:
+//   1) coluna base_url da própria instância (permite instâncias em servidores diferentes);
+//   2) system_setting `evolution_url` (URL global editável no painel);
+//   3) env EVOLUTION_URL (fallback legado — comportamento atual).
+// Aceita o nome da instância (faz o lookup) OU já a URL/instância resolvida via `explicitBase`.
+export async function resolveBase(name, explicitBase) {
+  const fromExplicit = toOrigin(explicitBase);
+  if (fromExplicit) return fromExplicit;
+  if (name) {
+    try {
+      const { rows } = await getDb().execute({ sql: 'SELECT base_url FROM evolution_instances WHERE name=?', args: [name] });
+      const u = rowsToObjects(rows)[0]?.base_url;
+      const o = toOrigin(u);
+      if (o) return o;
+    } catch { /* tabela/coluna ausente → cai no fallback */ }
+  }
+  try {
+    const g = await getSystemSetting('evolution_url');
+    const o = toOrigin(g);
+    if (o) return o;
+  } catch { /* ignore */ }
+  return evoBase();
 }
 
 export async function resolveKey(instanceKey) {
@@ -122,16 +152,16 @@ export function deriveWebhookUrl(req) {
   return '';
 }
 
-export async function connectionState({ name, key }) {
-  const base = evoBase();
+export async function connectionState({ name, key, base: baseUrl }) {
+  const base = await resolveBase(name, baseUrl);
   const k = await resolveKey(key);
   const r = await fetch(`${base}/instance/connectionState/${encodeURIComponent(name)}`, { headers: headers(k) });
   const data = await r.json().catch(() => ({}));
   return { ok: r.ok, status: r.status, data };
 }
 
-export async function sendText({ name, key, number, text }) {
-  const base = evoBase();
+export async function sendText({ name, key, number, text, base: baseUrl }) {
+  const base = await resolveBase(name, baseUrl);
   const k = await resolveKey(key);
   return withRetry(async () => {
     const r = await fetch(`${base}/message/sendText/${encodeURIComponent(name)}`, {
@@ -150,8 +180,8 @@ export async function sendText({ name, key, number, text }) {
   });
 }
 
-export async function sendMedia({ name, key, number, mediatype, media, caption, mimetype, fileName }) {
-  const base = evoBase();
+export async function sendMedia({ name, key, number, mediatype, media, caption, mimetype, fileName, base: baseUrl }) {
+  const base = await resolveBase(name, baseUrl);
   const k = await resolveKey(key);
   const rawMedia = media && media.startsWith('data:') ? media.split(',')[1] : media;
   const mime = mimetype || inferMimetype(media, fileName);
@@ -179,8 +209,8 @@ export async function sendMedia({ name, key, number, mediatype, media, caption, 
   });
 }
 
-export async function verifyNumbers({ name, key, numbers }) {
-  const base = evoBase();
+export async function verifyNumbers({ name, key, numbers, base: baseUrl }) {
+  const base = await resolveBase(name, baseUrl);
   const k = await resolveKey(key);
   const r = await fetch(`${base}/chat/whatsappNumbers/${encodeURIComponent(name)}`, {
     method: 'POST',
@@ -191,8 +221,9 @@ export async function verifyNumbers({ name, key, numbers }) {
   return { ok: r.ok, status: r.status, data };
 }
 
-export async function createInstance(body, globalKey) {
-  const base = evoBase();
+export async function createInstance(body, globalKey, baseUrl) {
+  // Criação bate no servidor informado (a instância ainda não existe no DB).
+  const base = await resolveBase(null, baseUrl);
   const k = await resolveKey(globalKey || null);
   const r = await fetch(`${base}/instance/create`, {
     method: 'POST',
@@ -203,16 +234,16 @@ export async function createInstance(body, globalKey) {
   return { ok: r.ok, status: r.status, data };
 }
 
-export async function connectQr(name, key) {
-  const base = evoBase();
+export async function connectQr(name, key, baseUrl) {
+  const base = await resolveBase(name, baseUrl);
   const k = await resolveKey(key);
   const r = await fetch(`${base}/instance/connect/${encodeURIComponent(name)}`, { headers: headers(k) });
   const data = await r.json().catch(() => ({}));
   return { ok: r.ok, status: r.status, data };
 }
 
-export async function deleteInstance(name, key) {
-  const base = evoBase();
+export async function deleteInstance(name, key, baseUrl) {
+  const base = await resolveBase(name, baseUrl);
   const k = await resolveKey(key);
   const r = await fetch(`${base}/instance/delete/${encodeURIComponent(name)}`, {
     method: 'DELETE',
@@ -222,8 +253,8 @@ export async function deleteInstance(name, key) {
   return { ok: r.ok, status: r.status, data };
 }
 
-export async function setSettings(name, key, settings) {
-  const base = evoBase();
+export async function setSettings(name, key, settings, baseUrl) {
+  const base = await resolveBase(name, baseUrl);
   const k = await resolveKey(key);
   const r = await fetch(`${base}/settings/set/${encodeURIComponent(name)}`, {
     method: 'POST',
@@ -235,8 +266,8 @@ export async function setSettings(name, key, settings) {
 }
 
 // Tenta forma aninhada (v2) e, se falhar, forma flat (v1)
-export async function setWebhook(name, key, webhookCfg) {
-  const base = evoBase();
+export async function setWebhook(name, key, webhookCfg, baseUrl) {
+  const base = await resolveBase(name, baseUrl);
   const k = await resolveKey(key);
 
   const r1 = await fetch(`${base}/webhook/set/${encodeURIComponent(name)}`, {

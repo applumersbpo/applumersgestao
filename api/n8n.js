@@ -1,6 +1,6 @@
 import { getDb, initDb, rowsToObjects, getSystemSetting, setSystemSetting, findUserByPhone } from './_lib/db.js';
 import { cors } from './_lib/auth.js';
-import { sendText, evoBase, resolveKey, headers, setWebhook, deriveWebhookUrl } from './_lib/evolution.js';
+import { sendText, evoBase, resolveBase, resolveKey, headers, setWebhook, deriveWebhookUrl } from './_lib/evolution.js';
 import { getAiConfig, openaiReadDocument, openaiReadImage, geminiReadImage, groqReadImage } from './_lib/ai.js';
 
 const N8N_SECRET = process.env.N8N_SECRET || 'lumers-n8n-2025';
@@ -83,7 +83,7 @@ export default async function handler(req, res) {
     if (op === 'evoWiring') {
       const inst = await getDefaultInstance();
       if (!inst) return res.status(400).json({ error: 'Nenhuma instância padrão definida' });
-      const base = evoBase();
+      const base = await resolveBase(inst.name);
       const k = await resolveKey(inst.api_key || null);
       let currentWebhook = null;
       try {
@@ -140,7 +140,7 @@ export default async function handler(req, res) {
       if (!messageKey) return res.status(400).json({ error: 'messageKey required' });
       const inst = await getDefaultInstance();
       if (!inst) return res.status(400).json({ error: 'Nenhuma instância padrão definida' });
-      const base = evoBase();
+      const base = await resolveBase(inst.name);
       const k = await resolveKey(inst.api_key || null);
       const r = await fetch(`${base}/chat/getBase64FromMediaMessage/${encodeURIComponent(inst.name)}`, {
         method: 'POST',
@@ -327,7 +327,7 @@ export default async function handler(req, res) {
         evolution: inst ? {
           instance: inst.name,
           api_key: inst.api_key || '',
-          base: evoBase(),
+          base: await resolveBase(inst.name),
           connection_status: inst.connection_status || null,
         } : null,
         ai: {
@@ -440,7 +440,7 @@ export default async function handler(req, res) {
       if (!messageKey) return res.status(400).json({ error: 'messageKey required' });
       const inst = await getDefaultInstance();
       if (!inst) return res.status(400).json({ error: 'Nenhuma instância padrão definida' });
-      const base = evoBase();
+      const base = await resolveBase(inst.name);
       const k = await resolveKey(inst.api_key || null);
       const r = await fetch(`${base}/chat/getBase64FromMediaMessage/${encodeURIComponent(inst.name)}`, {
         method: 'POST',

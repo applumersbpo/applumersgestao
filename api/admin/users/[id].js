@@ -1,6 +1,7 @@
 import { getDb, initDb, rowsToObjects } from '../../_lib/db.js';
 import { requireAuth, cors, isImpersonation } from '../../_lib/auth.js';
 import { logSystem } from '../../_lib/audit.js';
+import { sendText } from '../../_lib/evolution.js';
 import bcrypt from 'bcryptjs';
 
 export default async function handler(req, res) {
@@ -131,20 +132,19 @@ export default async function handler(req, res) {
         const target = rowsToObjects(rows)[0];
         if (!target?.phone) return res.status(400).json({ error: 'Usuário sem número de WhatsApp' });
 
-        const url = process.env.EVOLUTION_URL;
-        const key = process.env.EVOLUTION_APIKEY;
-        if (!url || !key) return res.status(500).json({ error: 'Evolution API não configurada' });
+        // Envia pela instância padrão (resolve a URL por instância → global → env).
+        const { rows: instRows } = await db.execute("SELECT name, api_key FROM evolution_instances WHERE is_default = 1 LIMIT 1");
+        const inst = rowsToObjects(instRows)[0];
+        if (!inst) return res.status(500).json({ error: 'Nenhuma instância padrão definida' });
 
         const nome = (target.name || '').split(' ')[0] || 'você';
         const msg = `✅ Conexão confirmada, ${nome}! Sua conta Lumers Flow está ativa e integrada ao WhatsApp.`;
 
-        const resp = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', apikey: key },
-          body: JSON.stringify({ number: target.phone, text: msg }),
-        });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) return res.status(502).json({ error: 'Falha ao enviar', detail: data });
+        try {
+          await sendText({ name: inst.name, key: inst.api_key || null, number: target.phone, text: msg });
+        } catch (e) {
+          return res.status(502).json({ error: 'Falha ao enviar', detail: String(e?.message || e) });
+        }
         await logSystem({
           req, actor: user, action: 'user.test_whatsapp',
           targetType: 'user', targetId: id, targetLabel: target.name || id,

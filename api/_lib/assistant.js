@@ -1,6 +1,6 @@
 import { getDb, rowsToObjects, getWaNotifyAsk, setWaNotifyMode, clearWaNotifyAsk } from './db.js';
 import { getAiConfig, groqChat, groqTranscribeAudio, groqReadImage, geminiTranscribeAudio, geminiReadImage, openaiReadImage, openaiReadDocument, openaiTranscribeAudio } from './ai.js';
-import { sendText, evoBase, resolveKey, headers } from './evolution.js';
+import { sendText, evoBase, resolveBase, resolveKey, headers } from './evolution.js';
 import { sendTemplateEmail } from './email.js';
 import bcrypt from 'bcryptjs';
 
@@ -16,7 +16,7 @@ async function getDefaultInstance() {
 
 // Baixa a mídia (base64) de uma mensagem via Evolution.
 async function getMediaBase64(instanceName, key, messageKey) {
-  const base = evoBase();
+  const base = await resolveBase(instanceName);
   const k = await resolveKey(key || null);
   const r = await fetch(`${base}/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`, {
     method: 'POST',
