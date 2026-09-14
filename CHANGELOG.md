@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.43.4] — 2026-09-14
+
+### Corrigido
+- **Conversas em duplicidade no WhatsApp (conflito entre os dois cérebros)** — o app tinha *dois* assistentes ativos ao mesmo tempo sobre a mesma instância Evolution (`lumers-flow`): o assistente do app (`assistant2.js`, com `ai_enabled=1`) **e** o assistente do n8n/Chatwoot (inbox 5). Como o workflow do n8n responde e grava chamando de volta o próprio `/api/n8n` (`op:sendMessage`, `op:addTransaction`, etc.), cada mensagem do cliente era respondida e registrada **duas vezes**, causando respostas conflitantes, lançamentos duplicados e travas no fluxo conversacional. A trava anterior (`ai_enabled` em `webhooks/evolution.js`) não cobria o caminho Chatwoot→n8n, que roda por fora dela.
+
+### Adicionado
+- **Botão-mestre de cérebro do WhatsApp (`wa_n8n_brain`)** em `api/n8n.js` — as operações do bridge que respondem ao cliente ou gravam dados (`sendMessage`, `sendChatwoot`, `addTransaction`, `addInstallment`, `createCategory`, `createAccount`, `markBillPaid`, `addImprovement`) só executam quando `wa_n8n_brain='1'` (n8n é o cérebro dono). Padrão (ausente): **cérebro do app manda e o n8n fica em silêncio** — elimina a duplicidade na origem, do lado que controlamos. Totalmente reversível pelo painel/bridge (`setConfig` agora aceita `wa_n8n_brain`). Ops de leitura e `notifyAdmins` seguem funcionando normalmente.
+
+---
+
 ## [v1.43.3] — 2026-08-18
 
 ### Melhorado

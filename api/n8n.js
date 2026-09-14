@@ -22,6 +22,28 @@ export default async function handler(req, res) {
     const { op, phone, userId, record } = req.body || {};
     const db = getDb();
 
+    // ── Botão-mestre: quem é o "cérebro" do WhatsApp ──────────────────────────
+    // O app tem DOIS cérebros possíveis para o WhatsApp: o assistente do app
+    // (assistant2.js, quando ai_enabled=1) e o assistente do n8n/Chatwoot (este
+    // bridge). Se os dois ficarem ativos ao mesmo tempo, o cliente recebe resposta
+    // E lançamento EM DUPLICIDADE (o n8n responde via op:sendMessage e grava via
+    // op:addTransaction, tudo por aqui). Para evitar o conflito, as ops que geram
+    // efeito visível ao cliente (responder) ou gravam dados ficam bloqueadas a
+    // menos que o n8n seja explicitamente o cérebro dono: system_setting
+    // `wa_n8n_brain` = '1'. Padrão (ausente/≠'1'): cérebro do app manda, n8n cala.
+    // Reversível a qualquer momento pelo painel/bridge (setConfig).
+    const N8N_BRAIN_OPS = new Set([
+      'sendMessage', 'sendChatwoot',
+      'addTransaction', 'addInstallment', 'createCategory', 'createAccount',
+      'markBillPaid', 'addImprovement',
+    ]);
+    if (N8N_BRAIN_OPS.has(op)) {
+      const brain = await getSystemSetting('wa_n8n_brain').catch(() => null);
+      if (brain !== '1') {
+        return res.status(200).json({ ok: true, skipped: 'n8n-brain-disabled', op });
+      }
+    }
+
     // Resolve a instância padrão do painel (nome + apikey). Mantém a Evolution
     // server-side: o n8n nunca precisa saber instância/apikey.
     async function getDefaultInstance() {
@@ -96,7 +118,7 @@ export default async function handler(req, res) {
     // Configurar as chaves da integração n8n (restrito a essas duas chaves)
     if (op === 'setConfig') {
       const { key, value } = req.body || {};
-      const ALLOWED = ['n8n_webhook_url', 'n8n_secret', 'ai_groq_model', 'admin_alert_phones'];
+      const ALLOWED = ['n8n_webhook_url', 'n8n_secret', 'ai_groq_model', 'admin_alert_phones', 'wa_n8n_brain'];
       if (!ALLOWED.includes(key)) return res.status(400).json({ error: 'key não permitida' });
       await setSystemSetting(key, value == null ? '' : String(value));
       return res.status(200).json({ ok: true, key });
