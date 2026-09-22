@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.48.0] — 2026-09-22
+
+### Adicionado
+- **Corrigir/editar lançamentos pelo WhatsApp (ação `edit_tx`)** — o assistente agora entende pedidos de *correção* de um lançamento já registrado (mudar **vencimento, data, valor, categoria, conta/cartão, descrição ou status**) e aplica de fato no lançamento certo. Ex.: *"altera o vencimento pra 15/10"*, *"corrige o valor pra 50"*, *"troca a categoria pra Mercado"*, *"esse foi no cartão PDA"*. Casa o alvo pelo nome citado ou pelo **lote mais recente** (quando a pessoa se refere ao que acabou de registrar).
+
+### Corrigido
+- **Pedidos de correção viravam ação errada com confirmação falsa** (auditoria de conversas): *"Alterar vencimento para 15/10"* caía em **`pay_bill`** ("qual conta você pagou?") e *"Ajustar as categorias…"* caía em **`manage_user`** (editava o CADASTRO do usuário e confirmava "Dados atualizados ✅" sem mexer em categoria alguma). Reforçadas as fronteiras no classificador (pay_bill só quando JÁ PAGOU; manage_user só para usuários do sistema) e adicionada a regra explícita: **nunca confirmar sucesso de algo que não foi executado** — na dúvida, perguntar.
+
+---
+
 ## [v1.47.2] — 2026-09-22
 
 ### Adicionado

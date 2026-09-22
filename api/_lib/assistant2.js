@@ -439,6 +439,93 @@ async function markBillPaid(txId, paidDateISO) {
   });
 }
 
+// ── Edição/correção de lançamentos já registrados (ação edit_tx) ──────────────
+// Busca os lançamentos mais recentes do usuário (para casar o alvo da correção).
+async function getRecentTransactions(userId, limit = 20) {
+  const db = getDb();
+  const { rows } = await db.execute({
+    sql: `SELECT t.id, t.name, t.amount, t.transaction_type, t.status, t.due_date, t.competence_date,
+                 t.category_id, t.account_id, t.created_at,
+                 c.name AS category_name, a.name AS account_name
+          FROM transactions t
+          LEFT JOIN categories c ON c.id = t.category_id
+          LEFT JOIN accounts a ON a.id = t.account_id
+          WHERE t.user_id = ? ORDER BY t.created_at DESC LIMIT ?`,
+    args: [userId, limit],
+  });
+  return rowsToObjects(rows);
+}
+
+// Aplica uma correção a lançamento(s) recente(s). target = nome citado ("mercado")
+// ou "último"/vazio (usa o lote mais recente, ~2 min do lançamento mais novo).
+// Só altera os campos que a pessoa pediu. Nunca confirma se nada foi alterado.
+async function runEditTx(user, edit) {
+  const db = getDb();
+  const changes = (edit && edit.changes) || {};
+  const recent = await getRecentTransactions(user.id, 25);
+  if (!recent.length) return { answer: `Não encontrei nenhum lançamento recente pra corrigir, ${firstName(user.name)}. Me diga qual é que eu ajusto. 🙂`, pending: null };
+
+  // Seleciona o(s) alvo(s)
+  const tname = String((edit && edit.target) || '').trim().toLowerCase();
+  const isLast = !tname || /^(ultimo|último|ultimos|últimos|esse|este|essa|esta|isso|aquele|o de cima|acima|agora)$/i.test(tname);
+  let targets = [];
+  if (!isLast) {
+    targets = recent.filter((t) => {
+      const n = String(t.name || '').toLowerCase();
+      return n && (n.includes(tname) || tname.includes(n));
+    });
+  }
+  if (!targets.length) {
+    // Lote mais recente: transações criadas até 2 min depois da mais nova.
+    const newest = Date.parse((recent[0].created_at || '').replace(' ', 'T') + 'Z') || 0;
+    targets = recent.filter((t) => {
+      const ts = Date.parse((t.created_at || '').replace(' ', 'T') + 'Z') || 0;
+      return newest && ts && (newest - ts) <= 120000;
+    });
+    if (!targets.length) targets = [recent[0]];
+  }
+
+  // Monta os campos a alterar (só o que veio em changes)
+  const today = new Date().toISOString().slice(0, 10);
+  const accounts = await getUserAccounts(user.id);
+  const categories = await getUserCategories(user.id);
+  const sets = {}; const applied = [];
+  if (changes.amount != null && Number(changes.amount) > 0) { sets.amount = Number(changes.amount); applied.push(`valor → ${brl(changes.amount)}`); }
+  if (changes.name && String(changes.name).trim()) { sets.name = String(changes.name).trim(); applied.push(`descrição → ${sets.name}`); }
+  const due = _normalizeDate(changes.due_date);
+  if (due) { sets.due_date = due; applied.push(`vencimento → ${_fmtDate(due)}`); }
+  const comp = _normalizeDate(changes.competence_date);
+  if (comp) { sets.competence_date = comp; sets.month = parseInt(comp.slice(5, 7), 10); sets.year = parseInt(comp.slice(0, 4), 10); applied.push(`data → ${_fmtDate(comp)}`); }
+  if (changes.status) {
+    const st = /pag/i.test(changes.status) ? 'paid' : /pend|pagar|vencer|abert/i.test(changes.status) ? 'pending' : null;
+    if (st) { sets.status = st; if (st === 'paid') { sets.paid_date = today; sets.cash_date = today; } applied.push(`status → ${st === 'paid' ? 'pago' : 'a pagar'}`); }
+  }
+  if (changes.account_name) {
+    const acc = findAccountByName(accounts, changes.account_name);
+    if (acc) { sets.account_id = acc.id; applied.push(`conta → ${acc.name}`); }
+  }
+  if (changes.category_name) {
+    const type = targets[0].transaction_type === 'income' ? 'income' : 'expense';
+    let cat = findCategoryByName(categories.filter((c) => !c.type || c.type === type), changes.category_name);
+    if (!cat) {
+      const id = await insertCategory(user.id, { name: String(changes.category_name).trim(), type });
+      cat = { id, name: String(changes.category_name).trim() };
+    }
+    if (cat) { sets.category_id = cat.id; applied.push(`categoria → ${cat.name}`); }
+  }
+
+  const cols = Object.keys(sets);
+  if (!cols.length) {
+    return { answer: `Entendi que você quer corrigir um lançamento, mas não peguei *o que* mudar. Me diga assim: *"muda o vencimento pra 15/10"*, *"corrige o valor pra 50"* ou *"troca a categoria pra Mercado"*. 🙂`, pending: null };
+  }
+  for (const t of targets) {
+    await db.execute({ sql: `UPDATE transactions SET ${cols.map((c) => c + '=?').join(', ')} WHERE id=? AND user_id=?`, args: [...cols.map((c) => sets[c]), t.id, user.id] });
+  }
+  const nomes = [...new Set(targets.map((t) => t.name))].slice(0, 4).join(', ');
+  const alvo = targets.length > 1 ? `*${targets.length}* lançamentos (${nomes})` : `*${targets[0].name}*`;
+  return { answer: `Pronto, ${firstName(user.name)}! ✅ Atualizei ${alvo}: ${applied.join(' · ')}.`, pending: null };
+}
+
 // Continuação quando há mais de uma conta pendente com o mesmo nome: o usuário
 // escolhe pelo número qual pagou (ou cancela).
 async function runPayBillSelect(user, pending, raw) {
@@ -1881,13 +1968,14 @@ Primeiro ENTENDA o que a pessoa realmente quer — como um amigo atento que cuid
 
 AS ROTAS (escolha a que corresponde à INTENÇÃO, não a palavras-chave):
 - register — a pessoa contou que GANHOU ou GASTOU dinheiro, ou COMPROU algo (à vista ou parcelado). type "income" (entrou) ou "expense" (saiu). Infira o que der: name (descrição curta), amount, kind ("fixed" p/ recorrente como salário/aluguel; "variable" p/ avulso; senão null), account_name (se citou "no Nubank", "pelo Itaú"…), category_name (pelo contexto: "almoço/ifood"→Alimentação, "uber/99"→Transporte, "salário"→Salário; na dúvida null). PARCELADO: installments = nº de parcelas (≥2) e amount = valor TOTAL da compra (se disser "10x de 300", total = 3000; "TV 3500 em 8x" → amount 3500, installments 8). À vista NÃO leva installments. NÃO pergunte sobre conta/categoria/cartão no reply — o sistema conduz isso depois.
-- pay_bill — a pessoa avisou que JÁ PAGOU/QUITOU uma conta que estava a pagar (dar baixa em algo que já existia, não um gasto novo). pay_bill = { name (a conta paga), date ("YYYY-MM-DD"; "hoje"/"ontem"/uma data → converta; senão null), amount (se citou, senão null) }.
+- pay_bill — a pessoa avisou que JÁ PAGOU/QUITOU uma conta que estava a pagar (dar baixa em algo que já existia, não um gasto novo). Use SOMENTE quando ela disser que pagou/quitou. pay_bill = { name (a conta paga), date ("YYYY-MM-DD"; "hoje"/"ontem"/uma data → converta; senão null), amount (se citou, senão null) }.
+- edit_tx — a pessoa quer CORRIGIR/ALTERAR um lançamento que JÁ FOI REGISTRADO: mudar o *vencimento*, a *data*, o *valor*, a *categoria*, a *conta/cartão*, a *descrição* ou o *status* (pago/a pagar). Gatilhos: "altera/muda/corrige/ajusta o vencimento|valor|categoria|conta|data", "na verdade foi no cartão X", "esse foi ontem", "troca a categoria pra Y", "ajustar as categorias conforme abaixo". Isso NÃO é pay_bill (só quando JÁ PAGOU) e NUNCA é manage_user (que é só usuários do SISTEMA). edit_tx = { target: "nome/descrição do lançamento a corrigir, OU 'último' quando ela se referir ao que acabou de registrar", changes: { amount?, due_date?"YYYY-MM-DD", competence_date?"YYYY-MM-DD", category_name?, account_name?, status?"paid"|"pending", name? } }. Preencha em changes SOMENTE o que ela pediu para mudar.
 - create_account — quer criar/abrir uma CONTA, CARTEIRA ou CARTÃO (Nubank, Itaú, PicPay, dinheiro…). Um saldo citado é o SALDO INICIAL, jamais uma receita. account = { name, bank_name (se banco conhecido), initial_balance, type: "checking" padrão | "savings" | "wallet" }.
 - create_category — quer criar uma CATEGORIA de receita/despesa (Pets, Academia, Freelance…). category = { name, type: "expense" padrão | "income", icon: 1 emoji que combine; na dúvida "📦" }. Não confunda com conta/carteira.
 - query — quer SABER algo dos próprios números (saldo, quanto gastou/recebeu, resumo, "tô gastando muito?"). Defina query_scope; deixe reply vazio (o sistema responde com os dados).
 - clarify — só quando você entendeu que é um lançamento mas está REALMENTE ambíguo se entrou ou saiu dinheiro. Pergunte de forma leve.
 - answer — conversa, saudação, dúvida de uso, agradecimento, ou quando nada acima se aplica. Responda com calor humano.${isAdmin ? `
-- manage_user (SÓ admin) — criar/editar/excluir usuários DO SISTEMA (não confunda com conta/carteira bancária). user_op = { op: "create"|"edit"|"delete", name, email, phone, password, target, generate_password }. Criar: colete nome completo, e-mail, telefone com DDD (OBRIGATÓRIO) e senha (mín. 8); "gere a senha" → generate_password=true. Extraia só o que o admin informou; o que faltar é pedido depois. Editar/excluir: target = e-mail ou nome. Admin pode usar query_scope "all_users" em consultas sobre a base.` : ''}
+- manage_user (SÓ admin) — criar/editar/excluir usuários DO SISTEMA (contas de login/pessoas que usam o app). NUNCA use manage_user para corrigir lançamentos, categorias, contas/carteiras ou dados financeiros do próprio usuário — para isso use edit_tx / create_category / create_account. user_op = { op: "create"|"edit"|"delete", name, email, phone, password, target, generate_password }. Criar: colete nome completo, e-mail, telefone com DDD (OBRIGATÓRIO) e senha (mín. 8); "gere a senha" → generate_password=true. Extraia só o que o admin informou; o que faltar é pedido depois. Editar/excluir: target = e-mail ou nome. Admin pode usar query_scope "all_users" em consultas sobre a base.` : ''}
 
 EXEMPLOS (a intenção importa, não as palavras exatas):
 - "gastei 50 no ifood agora" → register, expense, name "iFood", amount 50, category_name "Alimentação"
@@ -1898,12 +1986,18 @@ EXEMPLOS (a intenção importa, não as palavras exatas):
 - "abre uma carteira nubank, tenho 200 lá" → create_account, name "Nubank", bank_name "Nubank", initial_balance 200, type "wallet"
 - "queria uma categoria pra academia" → create_category, name "Academia", type "expense", icon "🏋️"
 - "coloca 100 aí" (não diz se entrou ou saiu) → clarify
+- "altera o vencimento pra 15/10" / "muda o venc do último pra 15/10" → edit_tx, target "último", changes { due_date: "2026-10-15" }
+- "corrige o valor pra 50" → edit_tx, target "último", changes { amount: 50 }
+- "esse foi no cartão PDA" / "troca a conta pro Nubank" → edit_tx, changes { account_name: "..." }
+- "ajusta a categoria do mercado pra Alimentação" → edit_tx, target "mercado", changes { category_name: "Alimentação" }
+- "na verdade essa compra foi ontem" → edit_tx, target "último", changes { competence_date: <ontem> }
 - "e aí, blz? esse app é bom?" → answer (converse, leve e humano)
 
 Responda SEMPRE em JSON válido com este formato exato:
 {
-  "action": "register" | "create_account" | "create_category" | "pay_bill" | "manage_user" | "clarify" | "query" | "answer",
+  "action": "register" | "edit_tx" | "create_account" | "create_category" | "pay_bill" | "manage_user" | "clarify" | "query" | "answer",
   "transaction": { "name": "string curta do lançamento", "amount": number, "type": "income" | "expense" | null, "kind": "fixed" | "variable" | null, "installments": number | null, "account_name": "string" | null, "category_name": "string" | null },
+  "edit_tx": { "target": "string (nome do lançamento ou 'último')", "changes": { "amount": number | null, "due_date": "YYYY-MM-DD" | null, "competence_date": "YYYY-MM-DD" | null, "category_name": "string" | null, "account_name": "string" | null, "status": "paid" | "pending" | null, "name": "string" | null } },
   "account": { "name": "string", "bank_name": "string", "initial_balance": number, "type": "checking" | "savings" | "wallet" | null },
   "category": { "name": "string", "type": "income" | "expense", "icon": "string (1 emoji)" },
   "pay_bill": { "name": "string" | null, "date": "YYYY-MM-DD" | null, "amount": number | null },
@@ -1917,7 +2011,9 @@ TOM DAS SUAS RESPOSTAS (campo "reply"):
 - register: confirme o lançamento de forma natural — NÃO pergunte sobre conta/categoria (o sistema cuida disso na sequência).
 - create_account / create_category: confirme a criação com naturalidade.
 - pay_bill: o sistema encontra a conta e dá baixa; um "reply" curto confirmando já basta.
+- edit_tx: o sistema aplica a correção e confirma o que mudou; um "reply" curto já basta.
 - clarify: "reply" = a pergunta leve (ex.: "esse valor entrou ou saiu?").
+- NUNCA confirme como "feito/atualizado/registrado" algo que você NÃO executou de fato. Se você não tem certeza de qual lançamento corrigir ou o pedido é ambíguo, use clarify/answer e PERGUNTE — não invente uma confirmação de sucesso.
 - query: "reply" pode ficar vazio (o sistema responde depois com os dados).
 - answer: "reply" com a resposta, no tom acima.${isAdmin ? `
 - manage_user (apenas admin): o sistema conduz a coleta e responde.` : ''}`;
@@ -2302,6 +2398,10 @@ export async function handleAssistantMessage(msg, instanceName) {
         answer = step.answer;
         newPending = step.pending;
       }
+    } else if (intent.action === 'edit_tx') {
+      const r = await runEditTx(user, intent.edit_tx);
+      answer = r.answer;
+      newPending = r.pending;
     } else if (intent.action === 'query') {
       const scope = intent.query_scope === 'all_users' && isAdmin ? 'all_users' : 'self';
       const data = scope === 'all_users' ? await getAdminSnapshot() : await getSelfSnapshot(user.id);
