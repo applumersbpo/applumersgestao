@@ -684,12 +684,13 @@ function _fmtDate(iso) {
 async function extractLineItems(cfg, contextText) {
   if (!cfg.openaiKey || !contextText) return { items: [], dueDate: null, accountName: null };
   try {
+    const today = new Date().toISOString().slice(0, 10);
     const raw = await openaiChat({
       key: cfg.openaiKey,
       model: _chatModel(cfg),
       jsonMode: true,
       messages: [
-        { role: 'system', content: 'Você extrai lançamentos financeiros de um texto que descreve um print/fatura/comprovante enviado por um usuário. Responda SOMENTE JSON no formato {"items":[{"name":"descrição curta (use o NOME DO ESTABELECIMENTO quando houver)","amount":number,"type":"income"|"expense","category_name":"categoria sugerida para o item (ex.: Alimentação, Transporte, Compras)"|null,"date":"YYYY-MM-DD"|null}],"due_date":"YYYY-MM-DD"|null,"account_name":"nome do cartão/banco da fatura, se identificável (ex.: Nubank, PicPay, PDA)"|null}. Liste CADA despesa/compra/recebimento individual como um item separado, com o valor em reais (apenas número, sem "R$"). Em "name" prefira o NOME DO ESTABELECIMENTO/loja. Em "category_name" SEMPRE sugira a categoria mais provável do item (não deixe null se der pra inferir pelo estabelecimento: mercado/restaurante→Alimentação, uber/posto→Transporte, loja/varejo→Compras, farmácia→Saúde). Em "date" coloque a DATA DA COMPRA/lançamento do item (competência) se aparecer. Em "due_date" (raiz) a DATA DE VENCIMENTO da fatura, se for fatura de cartão. Em "account_name" (raiz) o cartão/banco. NÃO invente valores/datas que não estejam no texto. IGNORE totais, subtotais, saldos, limites, pagamentos de fatura e juros. Se houver só um lançamento, retorne um único item. Sem lançamento claro, items vazio.' },
+        { role: 'system', content: `Você extrai lançamentos financeiros de um texto que descreve um print/fatura/comprovante enviado por um usuário. HOJE é ${today}. Responda SOMENTE JSON no formato {"items":[{"name":"descrição curta (use o NOME DO ESTABELECIMENTO quando houver)","amount":number,"type":"income"|"expense","category_name":"categoria do item"|null,"date":"YYYY-MM-DD"|null}],"due_date":"YYYY-MM-DD"|null,"account_name":"nome do cartão/banco da fatura, se identificável (ex.: Nubank, PicPay, PDA)"|null}. Liste CADA despesa/compra/recebimento individual como um item separado, com o valor em reais (apenas número, sem "R$"). Em "name" prefira o NOME DO ESTABELECIMENTO/loja. CATEGORIA: sugira a mais provável pelo estabelecimento (mercado/restaurante→Alimentação, uber/posto/combustível→Transporte, loja/varejo→Compras, farmácia/drogaria→Saúde); mas se NÃO houver estabelecimento claro (ex.: "Pix enviado/recebido", "TED", "transferência", "saque", "tarifa"), use category_name=null — NUNCA invente uma categoria estranha. DATAS — regra rígida: use a data que aparecer no texto; converta datas relativas ("hoje"→${today}, "ontem"→dia anterior, "anteontem", "dd/mm") para YYYY-MM-DD usando HOJE=${today}; se a data do item NÃO estiver no texto, use null. NUNCA invente, chute ou use anos antigos/aleatórios (ex.: não coloque 2023 se não estiver escrito). due_date (raiz) = vencimento da fatura, se for fatura de cartão. account_name (raiz) = cartão/banco. NÃO invente valores. IGNORE totais, subtotais, saldos, limites, pagamentos de fatura e juros. Um único lançamento → um item. Sem lançamento claro → items vazio.` },
         { role: 'user', content: contextText },
       ],
     });
@@ -812,10 +813,24 @@ async function startInvoiceFlow(user, rawItems, invoiceDue, accountHint) {
 
 // Resolve categoria (marcando as que serão criadas), competência e vencimento de
 // cada item, e monta o texto de confirmação detalhado (step 'confirm').
-async function buildInvoiceConfirm(user, rawItems, acc, categories, invoiceDue) {
+// Heurística: a conta parece um CARTÃO de crédito (fatura com fechamento/vencimento)?
+function isCardLike(acc) {
+  const s = `${acc?.name || ''} ${acc?.bank_name || ''} ${acc?.type || ''}`.toLowerCase();
+  return /cart[ãa]o|cr[eé]dito|credit|\bcard\b|fatura/.test(s) || Number(acc?.closing_day) > 0 || Number(acc?.due_day) > 0;
+}
+
+async function buildInvoiceConfirm(user, rawItems, acc, categories, invoiceDue, skipCardDays) {
   const today = new Date().toISOString().slice(0, 10);
   const closingDay = Number(acc.closing_day) || null;
   const dueDay = Number(acc.due_day) || null;
+  // Cartão sem fechamento/vencimento configurado → pergunta UMA vez (salva na conta)
+  // pra jogar as compras na fatura correta, em vez de marcar "pago hoje".
+  if (!skipCardDays && isCardLike(acc) && (!closingDay || !dueDay)) {
+    return {
+      answer: `Esse é o cartão *${acc.name}* — pra eu jogar esses *${rawItems.length}* lançamento(s) na *fatura certa*, me diga o *dia de fechamento* e o *dia de vencimento* da fatura.\n\nEx.: _"fecha dia 10, vence dia 15"_ — ou responde *à vista* se já foram pagos e não são de fatura.`,
+      pending: { type: 'multi_tx', step: 'card_days', items: rawItems, accountId: acc.id, accountName: acc.name, dueDate: invoiceDue },
+    };
+  }
   const toCreate = [];
   const items = rawItems.map((it) => {
     const type = it.type === 'income' ? 'income' : 'expense';
@@ -864,6 +879,24 @@ function _invoiceDetailText(user, items, acc, toCreate) {
 async function runMultiTxFlow(user, pending, raw) {
   const text = String(raw || '').trim();
   const low = text.toLowerCase();
+
+  // Passo: dia de fechamento/vencimento do cartão (pra calcular a fatura correta).
+  if (pending.step === 'card_days') {
+    const reloadAcc = async () => (await getUserAccounts(user.id)).find((a) => a.id === pending.accountId) || { id: pending.accountId, name: pending.accountName };
+    // "à vista"/"não é fatura" → registra na data, sem fatura futura.
+    if (/^(a\s*vista|à\s*vista|avista|pago|paguei|j[áa]\s*paguei|n[ãa]o\s*[ée]?\s*fatura|sem\s*fatura|d[ée]bito)/i.test(low)) {
+      const acc = await reloadAcc();
+      return await buildInvoiceConfirm(user, pending.items, acc, await getUserCategories(user.id), pending.dueDate, true);
+    }
+    const nums = (text.match(/\d{1,2}/g) || []).map((n) => parseInt(n, 10)).filter((n) => n >= 1 && n <= 31);
+    if (nums.length < 2) {
+      return { answer: 'Preciso dos *dois dias*: o de *fechamento* e o de *vencimento* da fatura. Ex.: *"fecha 10, vence 15"* — ou responde *à vista* se não for de fatura. 🙂', pending };
+    }
+    const [closing_day, due_day] = nums;
+    await setAccountCardDays(pending.accountId, { closing_day, due_day });
+    const acc = await reloadAcc();
+    return await buildInvoiceConfirm(user, pending.items, acc, await getUserCategories(user.id), pending.dueDate);
+  }
 
   // Passo: escolher o cartão (só quando não deu para inferir). "novo Nome" cria.
   if (pending.step === 'account') {

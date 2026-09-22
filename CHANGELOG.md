@@ -5,6 +5,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.49.0] — 2026-09-22
+
+### Corrigido
+- **Vencimento de fatura de cartão (nº2 da auditoria)** — compras de cartão sem o *dia de fechamento/vencimento* configurado eram lançadas com **vencimento = data da compra e status "pago"**, em vez de cair na **fatura futura**. Agora, ao registrar uma fatura num cartão sem esses dias, o assistente **pergunta uma vez** o dia de fechamento e vencimento (*"fecha 10, vence 15"*), **salva no cartão** e passa a calcular a fatura correta (`computeCardDueDate`) — daí em diante já usa os dias salvos. Contas correntes/extratos (Pix, etc.) não são afetados (só cartões).
+- **Datas e categorias inventadas na leitura de imagem (nº3 da auditoria)** — o extrator (`extractLineItems`) recebe a **data de hoje**, converte datas relativas (*hoje/ontem/dd-mm*) e foi instruído a **NUNCA inventar data** (fim de casos como "30/10/2023" numa compra de ontem): sem data no documento → fica em branco. Categorias também: itens sem estabelecimento claro (*Pix, TED, transferência, saque, tarifa*) ficam **sem categoria** em vez de receber uma categoria estranha ("utensílios de cozinha").
+
+---
+
 ## [v1.48.0] — 2026-09-22
 
 ### Adicionado
