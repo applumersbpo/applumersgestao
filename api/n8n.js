@@ -568,6 +568,26 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, id: data.id || null });
     }
 
+    // Diagnóstico (somente leitura): interações e estado de conversa de um número.
+    // Casa pelos últimos 8 dígitos (ignora DDI/DDD/9º dígito e formatação).
+    if (op === 'waInteractions' || op === 'waConversation') {
+      const core = String(phone || '').replace(/\D/g, '').slice(-8);
+      if (!core) return res.status(400).json({ error: 'phone obrigatório' });
+      const norm = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'(',''),')',''),'-',''),'+',''),'.','')";
+      if (op === 'waInteractions') {
+        const { rows } = await db.execute({
+          sql: `SELECT created_at, in_type, in_text, out_text, action FROM wa_interactions WHERE ${norm} LIKE ? ORDER BY created_at ASC LIMIT 80`,
+          args: [`%${core}%`],
+        });
+        return res.status(200).json({ phone_core: core, interactions: rowsToObjects(rows) });
+      }
+      const { rows } = await db.execute({
+        sql: `SELECT phone, user_id, pending, history, guard, updated_at FROM wa_conversations WHERE ${norm} LIKE ? LIMIT 5`,
+        args: [`%${core}%`],
+      });
+      return res.status(200).json({ phone_core: core, conversations: rowsToObjects(rows) });
+    }
+
     return res.status(400).json({ error: 'op inválido' });
   } catch (err) {
     console.error(err);

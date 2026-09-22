@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.47.2] — 2026-09-22
+
+### Adicionado
+- **Diagnóstico de conversas (somente leitura) no bridge `/api/n8n`** — novas ops `waInteractions` e `waConversation` (protegidas pelo secret) que retornam as interações (`in_text`/`out_text`/`action`/data) e o estado (`pending`/`history`/`guard`) de um número, casando pelos últimos 8 dígitos. Usado para auditar inconsistências em conversas do assistente.
+
+---
+
 ## [v1.47.1] — 2026-09-14
 
 ### Adicionado
