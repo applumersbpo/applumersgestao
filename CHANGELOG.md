@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.49.1] — 2026-09-27
+
+### Corrigido
+- **Lista de lançamentos colada como TEXTO virava "não peguei o valor"** — quando o usuário colava o detalhamento de vários itens em texto (em vez de imagem), caía em `register` de 1 gasto só e falhava por ter vários valores. Agora texto com ≥2 valores entra no mesmo fluxo de fatura (`startInvoiceFlow`) da imagem.
+
+---
+
 ## [v1.49.0] — 2026-09-22
 
 ### Corrigido

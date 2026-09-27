@@ -2274,18 +2274,21 @@ export async function handleAssistantMessage(msg, instanceName) {
   const cmd = await handleWaCommands({ user, isAdmin, phone, userText, inType, reply, inst, conv, cfg });
   if (cmd?.handled) return cmd;
 
-  // Imagem/documento com VÁRIOS lançamentos (ex.: fatura de cartão): em vez de
-  // registrar direto um único gasto, conduz um fluxo de seleção + confirmação.
-  if (imageContext && (m.imageMessage || m.documentMessage || m.documentWithCaptionMessage)) {
-    const { items, dueDate, accountName } = await extractLineItems(cfg, imageContext);
-    if (items.length >= 1) {
+  // Fatura/lista com VÁRIOS lançamentos — de imagem/documento OU colada como TEXTO
+  // (≥2 valores). Em vez de tratar como 1 gasto, usa o fluxo de fatura + confirmação.
+  const isImgDoc = imageContext && (m.imageMessage || m.documentMessage || m.documentWithCaptionMessage);
+  const multiInText = !imageContext && userText && (userText.match(/valor[:\s]*R?\$?\s*[\d.,]+/gi) || []).length >= 2;
+  const invoiceSrc = isImgDoc ? imageContext : (multiInText ? userText : null);
+  if (invoiceSrc) {
+    const { items, dueDate, accountName } = await extractLineItems(cfg, invoiceSrc);
+    if (items.length >= (multiInText ? 2 : 1)) {
       // Fluxo autônomo de fatura: infere cartão, categorias e datas, e mostra o
       // detalhamento por item para o usuário confirmar antes de gravar.
       const { answer, pending } = await startInvoiceFlow(user, items, dueDate, accountName);
       await reply(answer);
       const history = [...(conv.history || []), { role: 'user', content: `[${items.length} lançamento(s) extraído(s) de ${inType === 'image' ? 'imagem' : 'documento'}]` }, { role: 'assistant', content: answer }];
       await saveConversation(phone, user.id, pending, history);
-      await logInteraction({ phone, user, inType, inText: imageContext, outText: answer, action: 'invoice_flow_start' });
+      await logInteraction({ phone, user, inType, inText: invoiceSrc, outText: answer, action: 'invoice_flow_start' });
       return { handled: true, action: 'invoice_flow_start' };
     }
   }
