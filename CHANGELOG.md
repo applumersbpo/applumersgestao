@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.49.2] — 2026-09-27
+
+### Corrigido
+- **Categoria informada na mensagem era ignorada** — quando o texto colado já trazia `categoria: X` por item, o extrator reinferia pelo estabelecimento e descartava a categoria dada. Agora usa a categoria explícita quando presente.
+
+---
+
 ## [v1.49.1] — 2026-09-27
 
 ### Corrigido
