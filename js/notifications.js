@@ -7,16 +7,20 @@ async function getUpcomingBills() {
   const now = Date.now();
   if (_upcomingCache !== null && now - _upcomingTs < 120000) return _upcomingCache;
 
-  const todayStr     = today();
-  const monthPrefix  = todayStr.slice(0, 7);
+  const todayStr = today();
+  // Janela rolante: de hoje até 30 dias à frente (cobre "este mês" e vencimentos
+  // que caem no mês seguinte dentro de ~2 semanas — antes só olhava o mês-calendário).
+  const cutoff = new Date(todayStr + 'T00:00:00');
+  cutoff.setDate(cutoff.getDate() + 30);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
 
   try {
     const pending = await db.transactions
       .filter(`transaction_type = 'expense' && status = 'pending'`)
       .toArray();
-    // Despesas pendentes que vencem no mês vigente e ainda não venceram.
+    // Despesas pendentes que vencem nos próximos 30 dias e ainda não venceram.
     _upcomingCache = pending
-      .filter(t => t.due_date && t.due_date.slice(0, 7) === monthPrefix && t.due_date >= todayStr)
+      .filter(t => t.due_date && t.due_date >= todayStr && t.due_date <= cutoffStr)
       .sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0));
     _upcomingTs = now;
     return _upcomingCache;
@@ -58,16 +62,28 @@ async function requestAndNotify() {
   }
 }
 
+// Marca o lembrete como visto/fechado hoje: não reabre até o dia seguinte.
+function dismissUpcomingAlert() {
+  try { localStorage.setItem('upcoming_alert_dismissed', today()); } catch {}
+  const el = document.getElementById('upcoming-alert');
+  if (el) el.remove();
+}
+
 async function injectUpcomingAlert() {
   const existing = document.getElementById('upcoming-alert');
   if (existing) existing.remove();
 
+  // Uma vez por dia: se já foi visto/fechado hoje, só reabre amanhã.
+  try { if (localStorage.getItem('upcoming_alert_dismissed') === today()) return; } catch {}
+
   const bills = await getUpcomingBills();
   if (bills.length === 0) return;
 
+  const MAX = 6;
   const lines = [
-    `<strong>${bills.length} conta(s) a vencer este mês:</strong>`,
-    ...bills.map(b => `${b.name} — ${labelVencimento(b.due_date)}`),
+    `<strong>${bills.length} conta(s) a vencer nos próximos 30 dias:</strong>`,
+    ...bills.slice(0, MAX).map(b => `${b.name} — ${labelVencimento(b.due_date)}`),
+    ...(bills.length > MAX ? [`<em>…e mais ${bills.length - MAX}</em>`] : []),
   ];
 
   const alert = document.createElement('div');
@@ -82,10 +98,10 @@ async function injectUpcomingAlert() {
       <span style="font-size:1.1rem;flex-shrink:0">⚠️</span>
       <div style="font-size:.85rem;color:var(--text);line-height:1.5">
         ${lines.join('<br>')}
-        <a href="#/expenses" style="color:var(--warning);margin-left:8px;font-weight:600">Ver contas →</a>
+        <a href="#/expenses" onclick="dismissUpcomingAlert()" style="color:var(--warning);margin-left:8px;font-weight:600">Ver contas →</a>
       </div>
     </div>
-    <button onclick="document.getElementById('upcoming-alert').remove()"
+    <button onclick="dismissUpcomingAlert()"
       style="flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:1rem;padding:0;line-height:1">✕</button>
   `;
 

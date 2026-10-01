@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.49.3] — 2026-10-01
+
+### Corrigido
+- **Lembrete de contas a vencer (na conta do usuário):** (1) o link *"Ver contas"* não levava a lugar nenhum e o aviso reaparecia a cada navegação — agora o link navega e marca como visto; (2) o aviso reaparecia mesmo depois de fechado — agora, uma vez visto/fechado, só reabre **no dia seguinte** (1× por dia, via `upcoming_alert_dismissed`); (3) contas que vencem em ~14 dias mas caem no **mês seguinte** não apareciam (o filtro olhava só o mês-calendário) — passou a usar uma **janela rolante de 30 dias**. Lista limitada a 6 itens + "e mais N".
+
+---
+
 ## [v1.49.2] — 2026-09-27
 
 ### Corrigido
