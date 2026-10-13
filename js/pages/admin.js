@@ -92,6 +92,7 @@ function _adminNavBar(active) {
     { id: 'dashboard', href: '#/admin',        lucide: 'layout-dashboard', label: 'Visão Geral' },
     { id: 'users',     href: '#/admin-users',  lucide: 'users',            label: 'Usuários'    },
     { id: 'plans',     href: '#/admin-plans',  lucide: 'credit-card',      label: 'Planos'      },
+    { id: 'charges',   href: '#/admin-charges', lucide: 'receipt',         label: 'Cobranças'   },
     { id: 'banks',     href: '#/banks',        lucide: 'landmark',         label: 'Bancos'      },
   ];
   tabs.push({ id: 'improvements', href: '#/admin-improvements', lucide: 'lightbulb', label: 'Melhorias' });
@@ -3602,6 +3603,102 @@ function _renderAdminPlansHtml(templates) {
 }
 
 let _planTemplatesCache = [];
+
+// ── Cobranças ────────────────────────────────────────────────────────────────
+// Uma linha por plano ativo: cliente, serviço, valor, vencimento, data prevista
+// do lembrete e se já foi enviado neste ciclo. Botão dispara o e-mail na hora.
+let _chargesCache = [];
+let _chargesFilter = 'all';
+
+async function renderAdminCharges() {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading-screen"><div class="spinner"></div></div>';
+  try {
+    _chargesCache = await _api('GET', '/admin/user-plans?resource=charges');
+    _renderAdminChargesHtml();
+  } catch (e) {
+    content.innerHTML = `<p style="color:var(--expense);padding:16px">Erro: ${e.message}</p>`;
+  }
+}
+
+function _chargesSetFilter(v) { _chargesFilter = v; _renderAdminChargesHtml(); }
+
+function _chargeStatusBadge(c) {
+  const map = {
+    sent:    ['Enviado ' + fmtDate(String(c.last_sent_at).slice(0, 10)), '#dcfce7', '#166534'],
+    failed:  ['Falhou' + (c.last_error ? ' · ' + _escHtml(c.last_error) : ''), '#fee2e2', '#991b1b'],
+    pending: ['Não enviado', 'var(--bg-subtle)', 'var(--text-muted)'],
+  };
+  const [label, bg, color] = map[c.status] || map.pending;
+  return `<span style="font-size:.74rem;padding:3px 9px;border-radius:10px;background:${bg};color:${color};white-space:nowrap">${label}</span>`;
+}
+
+function _renderAdminChargesHtml() {
+  const content = document.getElementById('content');
+  const all = _chargesCache;
+  const list = _chargesFilter === 'all' ? all : all.filter(c => c.status === _chargesFilter);
+  const pending = all.filter(c => c.status !== 'sent').length;
+  const total = all.reduce((s, c) => s + (c.amount || 0), 0);
+  const td = 'padding:8px 10px;vertical-align:middle';
+  const rows = list.map(c => `
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="${td}">
+        ${c.user_id ? `<a href="#" onclick="event.preventDefault();renderAdminUserProfile('${c.user_id}')" style="font-weight:600;color:var(--primary-600)">${_escHtml(c.customer)}</a>` : `<span style="font-weight:600">${_escHtml(c.customer)}</span>`}
+        <div style="font-size:.72rem;color:var(--text-muted)">${_escHtml(c.email || c.phone || '—')}</div>
+      </td>
+      <td style="${td}">${_escHtml(c.service)}</td>
+      <td style="${td};text-align:right;font-weight:600">${fmt(c.amount || 0)}</td>
+      <td style="${td};white-space:nowrap">${c.due_date ? fmtDate(c.due_date) : '—'}</td>
+      <td style="${td};white-space:nowrap">${c.send_date ? fmtDate(c.send_date) : '—'}</td>
+      <td style="${td}">${_chargeStatusBadge(c)}</td>
+      <td style="${td};text-align:right;white-space:nowrap">
+        <button class="btn btn-sm ${c.status === 'sent' ? 'btn-ghost' : 'btn-primary'}" onclick="_sendCharge('${c.id}', this)" ${c.email ? '' : 'disabled title="Cliente sem e-mail"'}>
+          ${icon('send',13)} ${c.status === 'sent' ? 'Reenviar' : 'Enviar agora'}
+        </button>
+      </td>
+    </tr>`).join('');
+
+  const filterBtn = (v, label) => `<button class="btn btn-sm ${_chargesFilter === v ? 'btn-primary' : 'btn-ghost'}" onclick="_chargesSetFilter('${v}')">${label}</button>`;
+  content.innerHTML = `
+    ${_adminNavBar('charges')}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:.82rem;color:var(--text-muted)">${icon('receipt',13)} <strong>${all.length}</strong> cobrança(s) · <strong>${pending}</strong> a enviar · ${fmt(total)}/mês</div>
+      <div style="display:flex;gap:6px">${filterBtn('all','Todas')}${filterBtn('pending','Não enviadas')}${filterBtn('sent','Enviadas')}</div>
+    </div>
+    ${all.length === 0
+      ? `<div class="empty-state">${icon('receipt',36)}<p>Nenhum plano ativo — as cobranças nascem dos planos vinculados aos clientes.</p></div>`
+      : `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:760px">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border);color:var(--text-muted);font-size:.75rem;text-align:left">
+                <th style="padding:8px 10px;font-weight:600">Cliente</th>
+                <th style="padding:8px 10px;font-weight:600">Serviço</th>
+                <th style="padding:8px 10px;font-weight:600;text-align:right">Valor</th>
+                <th style="padding:8px 10px;font-weight:600">Vencimento</th>
+                <th style="padding:8px 10px;font-weight:600">Envio previsto</th>
+                <th style="padding:8px 10px;font-weight:600">Status</th>
+                <th style="padding:8px 10px"></th>
+              </tr>
+            </thead>
+            <tbody>${rows || `<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--text-muted)">Nada neste filtro.</td></tr>`}</tbody>
+          </table>
+        </div>
+        <p style="font-size:.74rem;color:var(--text-muted);margin-top:8px">O envio automático sai por e-mail 3 dias antes do vencimento (dia do mês em que o plano foi criado). "Enviar agora" dispara o mesmo e-mail imediatamente.</p>`}`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function _sendCharge(id, btn) {
+  if (!confirm('Enviar a cobrança por e-mail agora?')) return;
+  btn.disabled = true;
+  try {
+    await _api('POST', '/admin/user-plans', { action: 'send-charge', id });
+    toast('Cobrança enviada', 'success');
+    await renderAdminCharges();
+  } catch (e) {
+    toast('Falha ao enviar: ' + (e.response?.error || e.message), 'error');
+    btn.disabled = false;
+  }
+}
 
 function _openEditTemplateModal(templateId) {
   const tpl = templateId ? (_planTemplatesCache.find(t => t.id === templateId) || {}) : {};

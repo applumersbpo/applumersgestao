@@ -5,6 +5,11 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.50.0] — 2026-10-13
+
+### Adicionado
+- **Painel Admin → Cobranças:** nova aba listando todas as cobranças (um item por plano ativo) com cliente (link para o perfil), serviço, valor mensal, vencimento, data prevista do envio automático e status (enviado neste ciclo / não enviado / falhou). Filtros rápidos e botão **Enviar agora** que dispara o e-mail de cobrança (`plan_expiry`) na hora. API: `GET /api/admin/user-plans?resource=charges` e `POST { action: 'send-charge', id }`.
+
 ## [v1.49.4] — 2026-10-13
 
 ### Adicionado
