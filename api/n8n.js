@@ -588,6 +588,22 @@ export default async function handler(req, res) {
       return res.status(200).json({ phone_core: core, conversations: rowsToObjects(rows) });
     }
 
+    // Esquece um telefone sem usuário: apaga a conversa pendente do assistente
+    // (ex.: cadastro travado na etapa do e-mail), o histórico de interações e
+    // solicitações de acesso pendentes. Só para números SEM usuário vinculado —
+    // dados de clientes ficam intactos.
+    if (op === 'waForget') {
+      const core = String(phone || '').replace(/\D/g, '').slice(-8);
+      if (core.length < 8) return res.status(400).json({ error: 'phone obrigatório' });
+      if (await findUserByPhone(phone)) return res.status(409).json({ error: 'telefone pertence a um usuário cadastrado' });
+      const norm = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'(',''),')',''),'-',''),'+',''),'.','')";
+      const like = `%${core}`;
+      const r1 = await db.execute({ sql: `DELETE FROM wa_conversations WHERE ${norm} LIKE ?`, args: [like] });
+      const r2 = await db.execute({ sql: `DELETE FROM wa_interactions WHERE ${norm} LIKE ?`, args: [like] });
+      const r3 = await db.execute({ sql: `DELETE FROM signup_requests WHERE status='pending' AND ${norm} LIKE ?`, args: [like] });
+      return res.status(200).json({ ok: true, phone_core: core, deleted: { conversations: r1.rowsAffected, interactions: r2.rowsAffected, signup_requests: r3.rowsAffected } });
+    }
+
     return res.status(400).json({ error: 'op inválido' });
   } catch (err) {
     console.error(err);

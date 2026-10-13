@@ -5,6 +5,11 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.49.4] — 2026-10-13
+
+### Adicionado
+- **Ponte n8n — `op: waForget`:** apaga a conversa pendente do assistente, o histórico de interações e solicitações de acesso pendentes de um telefone **sem usuário cadastrado** (ex.: cadastro via WhatsApp travado na etapa do e-mail). Recusa números que pertencem a um usuário.
+
 ## [v1.49.3] — 2026-10-01
 
 ### Corrigido
