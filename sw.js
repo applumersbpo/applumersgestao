@@ -1,4 +1,4 @@
-const CACHE_STATIC = 'lumers-v90';
+const CACHE_STATIC = 'lumers-v91';
 
 const SHELL_ASSETS = [
   './',
@@ -24,6 +24,7 @@ const SHELL_ASSETS = [
   './js/pages/import.js',
   './js/pages/settings.js',
   './js/pages/admin.js',
+  './js/qrcode.min.js',
   './js/pages/onboarding.js',
   './js/pages/accounts.js',
   './js/pages/banks-admin.js',

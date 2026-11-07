@@ -1996,3 +1996,8 @@ body.em-fullscreen-open { overflow: hidden; }
   border-radius: 0 0 8px 8px; background: #fff; display: block;
 }
 
+
+/* Captação (admin landing): empilha o QR abaixo das métricas no mobile */
+@media (max-width: 720px) {
+  .landing-cols { grid-template-columns: 1fr !important; }
+}

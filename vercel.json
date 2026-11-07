@@ -1,5 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/email/:action", "destination": "/api/user/:action?__email=1" }
+    { "source": "/api/email/:action", "destination": "/api/user/:action?__email=1" },
+    { "source": "/comecar", "destination": "/cadastro.html" }
   ]
 }

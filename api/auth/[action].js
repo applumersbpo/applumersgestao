@@ -107,6 +107,77 @@ export default async function handler(req, res) {
       }
     }
 
+    // GET /api/auth/trial-visit  →  contabiliza um acesso à landing page pública.
+    // Público (sem auth). Incremento atômico do contador em system_settings.
+    if (action === 'trial-visit' && req.method === 'GET') {
+      try {
+        await db.execute("UPDATE system_settings SET value = CAST(COALESCE(NULLIF(value,''),'0') AS INTEGER) + 1, updated_at = datetime('now') WHERE key = 'landing_visits'");
+      } catch (_) {}
+      return res.status(200).json({ ok: true });
+    }
+
+    // POST /api/auth/trial-signup  →  cadastro vindo da landing page de 30 dias grátis.
+    // Público. Independente de allow_registration (tem o próprio kill-switch landing_enabled).
+    // Cria a conta, marca source='landing' e dispara boas-vindas (e-mail + WhatsApp).
+    if (action === 'trial-signup') {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+      try {
+        const enabled = await getSystemSetting('landing_enabled');
+        if (enabled === '0') {
+          return res.status(403).json({ error: 'Os cadastros estão temporariamente pausados. Tente novamente mais tarde.' });
+        }
+
+        const { email: reqEmail, password, passwordConfirm, name } = req.body || {};
+        const phoneDigits = req.body?.phone ? String(req.body.phone).replace(/\D/g, '') : '';
+        const normalizedPhone = phoneDigits ? (phoneDigits.startsWith('55') ? phoneDigits : '55' + phoneDigits) : '';
+        if (!reqEmail || !password || !name) return res.status(400).json({ error: 'Preencha nome, e-mail e senha.', fields: {} });
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(reqEmail))) return res.status(400).json({ error: 'E-mail inválido.', fields: { email: 'E-mail inválido' } });
+        if (password !== passwordConfirm) return res.status(400).json({ error: 'As senhas não coincidem.', fields: {} });
+        if (password.length < 8) return res.status(400).json({ error: 'A senha precisa ter no mínimo 8 caracteres.', fields: {} });
+
+        const cleanEmail = reqEmail.toLowerCase().trim();
+        const { rows: existing } = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [cleanEmail] });
+        if (rowsToObjects(existing).length > 0) {
+          return res.status(400).json({ error: 'Este e-mail já tem conta. Faça login.', fields: { email: 'E-mail já cadastrado' } });
+        }
+
+        const hash = await bcrypt.hash(password, 10);
+        const id = crypto.randomUUID();
+        const now = new Date().toISOString();
+        await db.execute({
+          sql: 'INSERT INTO users (id, email, password_hash, name, phone, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          args: [id, cleanEmail, hash, name.trim(), normalizedPhone, 'landing', now]
+        });
+        await db.execute({
+          sql: 'INSERT INTO user_plans (id, user_id, email, name, monthly_fee, active) VALUES (?, ?, ?, ?, 0, 1)',
+          args: [crypto.randomUUID(), id, cleanEmail, name.trim()]
+        });
+
+        const { rows } = await db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [id] });
+        const user = rowsToObjects(rows)[0];
+        const { password_hash: _, ...safeUser } = user;
+
+        // Boas-vindas (best-effort, não bloqueiam o cadastro)
+        if (normalizedPhone) _enviarBoasVindasWhatsApp(safeUser).catch(() => {});
+        if (safeUser.email) {
+          email.sendTemplateEmail({
+            to: safeUser.email,
+            toName: safeUser.name,
+            systemKey: 'welcome',
+            vars: {
+              name: (safeUser.name || '').split(' ')[0] || '',
+              app_url: (process.env.APP_URL || 'https://app.lumersbpo.com.br')
+            }
+          }).catch(() => {});
+        }
+
+        return res.status(201).json({ ok: true, user: safeUser });
+      } catch (err) {
+        console.error('TRIAL-SIGNUP ERROR', err);
+        return res.status(500).json({ error: 'Erro ao criar conta. Tente novamente.' });
+      }
+    }
+
     // GET /api/auth/me
     if (action === 'me') {
       const payload = await requireAuth(req);

@@ -623,6 +623,11 @@ export async function initDb() {
   if (!uColNames.includes('wa_blocked')) {
     await db.execute("ALTER TABLE users ADD COLUMN wa_blocked INTEGER DEFAULT 0");
   }
+  // Origem do cadastro: '' (painel/app) ou 'landing' (veio da página pública de
+  // trial /comecar). Usado nas métricas de captação do painel admin.
+  if (!uColNames.includes('source')) {
+    await db.execute("ALTER TABLE users ADD COLUMN source TEXT DEFAULT ''");
+  }
 
   // Garante que o super admin sempre tenha role e is_admin corretos
   await db.execute({
@@ -728,6 +733,10 @@ export async function initDb() {
 
   // Seed default system settings (INSERT OR IGNORE keeps existing values)
   await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('allow_registration', '0')", args: [] });
+  // Landing page pública de trial (/comecar): kill-switch e contador de acessos.
+  // landing_enabled '1' = página aceita cadastros (padrão). landing_visits = total de hits.
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('landing_enabled', '1')", args: [] });
+  await db.execute({ sql: "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('landing_visits', '0')", args: [] });
 
   // ===== E-mail subsystem =====
   // Indexes for dispatch queue processing and per-user notification prefs uniqueness

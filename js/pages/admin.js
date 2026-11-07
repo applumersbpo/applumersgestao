@@ -96,6 +96,7 @@ function _adminNavBar(active) {
     { id: 'banks',     href: '#/banks',        lucide: 'landmark',         label: 'Bancos'      },
   ];
   tabs.push({ id: 'improvements', href: '#/admin-improvements', lucide: 'lightbulb', label: 'Melhorias' });
+  tabs.push({ id: 'landing', href: '#/admin-landing', lucide: 'rocket', label: 'Captação' });
   if (isSuperAdmin) {
     tabs.push({ id: 'email',  href: '#/admin-email',  lucide: 'megaphone',  label: 'Comunicação' });
     tabs.push({ id: 'theme',  href: '#/admin-theme',  lucide: 'palette',    label: 'Tema'    });
@@ -7462,4 +7463,184 @@ async function _adminEmailLog(body) {
         </table>
       </div>
     </div>`;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Captação — métricas e divulgação da landing page pública de trial (/comecar)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// URL pública da landing. Derivada do próprio domínio do painel (funciona em
+// produção e em preview). É o que vira QR Code e link de divulgação.
+function _landingUrl() {
+  return location.origin + '/comecar';
+}
+
+async function renderAdminLanding() {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading-screen"><div class="spinner"></div></div>';
+
+  let data;
+  try {
+    data = await _api('GET', '/admin/users?resource=landing-stats');
+  } catch (e) {
+    content.innerHTML = `${_adminNavBar('landing')}<p style="color:var(--expense);padding:16px">Erro: ${escapeHtml(e.message)}</p>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+
+  const visits    = data.visits    || 0;
+  const signups   = data.signups   || 0;
+  const converted = data.converted || 0;
+  const enabled   = data.enabled !== false;
+  const users     = data.users || [];
+  const convRate  = visits > 0 ? Math.round((signups / visits) * 100) : 0;
+  const url       = _landingUrl();
+
+  const kpi = (lucideName, label, value, sub, color) => `
+    <div class="admin-kpi-card">
+      <div class="admin-kpi-label">${icon(lucideName, 12)} ${label}</div>
+      <div class="admin-kpi-value"${color ? ` style="color:${color}"` : ''}>${value}</div>
+      <div class="admin-kpi-sub">${sub}</div>
+    </div>`;
+
+  const rows = users.length ? users.map(u => {
+    const acessou = u.last_login && String(u.last_login).trim();
+    return `<tr>
+      <td style="padding:10px 12px;font-weight:600">${escapeHtml(u.name || '—')}</td>
+      <td style="padding:10px 12px;color:var(--text-muted)">${escapeHtml(u.email || '—')}</td>
+      <td style="padding:10px 12px;color:var(--text-muted)">${escapeHtml(u.phone || '—')}</td>
+      <td style="padding:10px 12px;color:var(--text-muted);white-space:nowrap">${fmtDateTime(u.created_at)}</td>
+      <td style="padding:10px 12px;white-space:nowrap">${acessou
+        ? `<span style="color:var(--income-text);font-weight:600">${icon('check-circle', 13)} ${fmtDateTime(u.last_login)}</span>`
+        : `<span style="color:var(--text-muted)">${icon('clock', 13)} ainda não</span>`}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--text-muted)">Nenhum cadastro pela landing ainda.</td></tr>`;
+
+  content.innerHTML = `
+    ${_adminNavBar('landing')}
+    <div class="admin-kpi-row" style="margin-top:4px">
+      ${kpi('mouse-pointer-click', 'Acessos', visits, 'visitas à página')}
+      ${kpi('user-plus', 'Cadastros', signups, 'contas criadas', 'var(--income-text)')}
+      ${kpi('log-in', 'Já acessaram', converted, `de ${signups} cadastro${signups !== 1 ? 's' : ''}`)}
+      ${kpi('percent', 'Conversão', convRate + '%', 'acesso → cadastro')}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;margin-top:16px;align-items:start" class="landing-cols">
+      <div class="card" style="padding:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+          <h3 style="font-size:1.05rem;margin:0">${icon('link', 16)} Link de divulgação</h3>
+          <label style="display:inline-flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer;user-select:none">
+            <input type="checkbox" id="landing-enabled-toggle" ${enabled ? 'checked' : ''} onchange="_toggleLandingEnabled(this)">
+            <span id="landing-enabled-label" style="font-weight:600;color:${enabled ? 'var(--income-text)' : 'var(--expense)'}">
+              ${enabled ? 'Cadastros ativos' : 'Cadastros pausados'}
+            </span>
+          </label>
+        </div>
+        <p style="font-size:.85rem;color:var(--text-muted);margin:0 0 10px">
+          Divulgue este link (ou o QR Code ao lado) para captar novos usuários. Cada acesso e cada cadastro é contabilizado acima.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input type="text" id="landing-url-field" value="${escapeHtml(url)}" readonly
+            style="flex:1;min-width:200px;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;background:var(--bg-subtle);font-size:.9rem;color:var(--text)">
+          <button class="btn btn-sm" style="font-weight:600" onclick="_copyLandingUrl()">${icon('copy', 14)} Copiar</button>
+          <a class="btn btn-sm" href="${escapeHtml(url)}" target="_blank" rel="noopener" style="font-weight:600;text-decoration:none">${icon('external-link', 14)} Abrir</a>
+        </div>
+        <div style="margin-top:18px;overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:.88rem">
+            <thead><tr style="text-align:left;border-bottom:2px solid var(--border)">
+              <th style="padding:8px 12px">Nome</th>
+              <th style="padding:8px 12px">E-mail</th>
+              <th style="padding:8px 12px">WhatsApp</th>
+              <th style="padding:8px 12px">Cadastro</th>
+              <th style="padding:8px 12px">Acessou a conta</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="padding:20px;text-align:center">
+        <h3 style="font-size:1.05rem;margin:0 0 12px">${icon('qr-code', 16)} QR Code</h3>
+        <div id="landing-qr" style="display:flex;align-items:center;justify-content:center;min-height:200px;background:#fff;border-radius:12px;padding:12px;border:1px solid var(--border)">
+          <span style="color:var(--text-muted);font-size:.85rem">Gerando…</span>
+        </div>
+        <button class="btn btn-primary btn-sm" style="margin-top:14px;width:100%;font-weight:600" onclick="_downloadLandingQr()">${icon('download', 14)} Baixar QR Code (PNG)</button>
+        <p style="font-size:.76rem;color:var(--text-muted);margin:10px 0 0">Imprima, cole ou compartilhe — aponta para a página de cadastro.</p>
+      </div>
+    </div>`;
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  _renderLandingQr(url);
+}
+
+// Gera o QR Code (lib qrcode-generator, global `qrcode`) e injeta como <img>.
+function _renderLandingQr(url) {
+  const box = document.getElementById('landing-qr');
+  if (!box) return;
+  if (typeof qrcode === 'undefined') {
+    box.innerHTML = '<span style="color:var(--expense);font-size:.82rem">Biblioteca de QR não carregada.</span>';
+    return;
+  }
+  try {
+    const qr = qrcode(0, 'M');       // tipo auto, correção média
+    qr.addData(url);
+    qr.make();
+    const dataUrl = qr.createDataURL(8, 4); // cellSize 8px, margem 4 módulos
+    box.innerHTML = `<img id="landing-qr-img" src="${dataUrl}" alt="QR Code do link de cadastro" style="width:100%;max-width:200px;height:auto;image-rendering:pixelated">`;
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--expense);font-size:.82rem">Erro ao gerar QR: ${escapeHtml(e.message)}</span>`;
+  }
+}
+
+function _copyLandingUrl() {
+  const field = document.getElementById('landing-url-field');
+  const url = field ? field.value : _landingUrl();
+  const done = () => toast('Link copiado!', 'success');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(done).catch(() => { if (field) { field.select(); document.execCommand('copy'); done(); } });
+  } else if (field) {
+    field.select(); document.execCommand('copy'); done();
+  }
+}
+
+// Converte o QR (GIF) para PNG via canvas e dispara o download.
+function _downloadLandingQr() {
+  const img = document.getElementById('landing-qr-img');
+  if (!img) { toast('QR ainda não gerado.', 'error'); return; }
+  const render = () => {
+    const size = 720; // PNG nítido para impressão
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.drawImage(img, 0, 0, size, size);
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = 'lumersflow-cadastro-qrcode.png';
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  if (img.complete && img.naturalWidth) render();
+  else img.onload = render;
+}
+
+async function _toggleLandingEnabled(el) {
+  const enabled = el.checked;
+  const label = document.getElementById('landing-enabled-label');
+  el.disabled = true;
+  try {
+    await _api('POST', '/admin/users', { action: 'landing-toggle', enabled });
+    if (label) {
+      label.textContent = enabled ? 'Cadastros ativos' : 'Cadastros pausados';
+      label.style.color = enabled ? 'var(--income-text)' : 'var(--expense)';
+    }
+    toast(enabled ? 'Cadastros ativados.' : 'Cadastros pausados.', 'success');
+  } catch (e) {
+    el.checked = !enabled;
+    toast('Erro: ' + e.message, 'error');
+  } finally {
+    el.disabled = false;
+  }
 }

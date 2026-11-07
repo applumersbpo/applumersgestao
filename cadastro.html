@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3A5A40">
+  <title>Lumers Flow — 30 dias grátis</title>
+  <meta name="description" content="Organize todas as suas finanças em um só lugar. Teste o Lumers Flow grátis por 30 dias.">
+  <meta property="og:title" content="Lumers Flow — 30 dias grátis">
+  <meta property="og:description" content="Receitas, despesas, metas, relatórios e patrimônio num só painel. Comece grátis.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="favicon-lumers-flow.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=Onest:wght@400;500;600;700&display=swap">
+  <style>
+    :root{
+      --green:#3A5A40; --green-dark:#2C4630; --green-700:#2C4630; --green-50:#F1F5EE;
+      --green-100:#DDE7D8; --green-300:#94B189; --cream:#F8F4E4; --ink:#1E3322;
+      --muted:#5b6b5e; --line:#E3E8DF; --white:#fff;
+      --sans:'Onest',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+      --serif:'Spectral',Georgia,serif;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth}
+    body{font-family:var(--sans);color:var(--ink);background:var(--cream);line-height:1.55;-webkit-font-smoothing:antialiased}
+    a{color:inherit}
+    .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+
+    /* ── Topbar ── */
+    .top{display:flex;align-items:center;justify-content:space-between;padding:18px 0}
+    .brand{display:flex;align-items:center;gap:10px;font-family:var(--serif);font-weight:500;font-size:1.25rem;color:var(--green-dark)}
+    .brand svg{display:block}
+    .top .login{font-size:.9rem;font-weight:600;color:var(--green);text-decoration:none}
+    .top .login:hover{text-decoration:underline}
+
+    /* ── Hero ── */
+    .hero{background:linear-gradient(160deg,var(--green) 0%,var(--green-dark) 100%);color:var(--cream);border-radius:0 0 32px 32px;padding-bottom:56px;position:relative;overflow:hidden}
+    .hero::after{content:"";position:absolute;right:-120px;top:-120px;width:360px;height:360px;border-radius:50%;background:rgba(248,244,228,.06)}
+    .hero .top .brand{color:var(--cream)}
+    .hero .top .brand svg rect:first-child{fill:rgba(248,244,228,.15)}
+    .hero .top .login{color:var(--cream);opacity:.9}
+    .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center;margin-top:28px}
+    .badge{display:inline-flex;align-items:center;gap:7px;background:rgba(248,244,228,.14);border:1px solid rgba(248,244,228,.25);color:var(--cream);font-size:.82rem;font-weight:600;padding:6px 14px;border-radius:100px;margin-bottom:20px}
+    .badge .dot{width:7px;height:7px;border-radius:50%;background:#9fd49a;box-shadow:0 0 0 3px rgba(159,212,154,.3)}
+    h1{font-family:var(--serif);font-weight:500;font-size:clamp(2rem,5vw,3.1rem);line-height:1.1;letter-spacing:-.5px}
+    h1 em{font-style:italic;color:#cfe0c9}
+    .lead{margin-top:18px;font-size:1.08rem;color:rgba(248,244,228,.82);max-width:30em}
+    .hero-cta{margin-top:26px;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--sans);font-weight:600;font-size:1rem;padding:14px 26px;border-radius:12px;border:0;cursor:pointer;text-decoration:none;transition:transform .12s ease,box-shadow .12s ease}
+    .btn-primary{background:var(--cream);color:var(--green-dark);box-shadow:0 8px 24px rgba(0,0,0,.18)}
+    .btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(0,0,0,.24)}
+    .hero-note{font-size:.85rem;color:rgba(248,244,228,.7)}
+
+    /* ── Form card ── */
+    .card{background:var(--white);border-radius:20px;padding:28px;box-shadow:0 24px 60px rgba(20,40,24,.28);color:var(--ink)}
+    .card h2{font-family:var(--serif);font-weight:500;font-size:1.4rem;color:var(--green-dark)}
+    .card .sub{font-size:.9rem;color:var(--muted);margin:4px 0 18px}
+    .field{margin-bottom:13px}
+    .field label{display:block;font-size:.82rem;font-weight:600;color:var(--ink);margin-bottom:6px}
+    .field input{width:100%;font-family:var(--sans);font-size:.98rem;padding:12px 14px;border:1.5px solid var(--line);border-radius:11px;background:#fafbf9;color:var(--ink);transition:border-color .12s,box-shadow .12s}
+    .field input:focus{outline:0;border-color:var(--green-300);box-shadow:0 0 0 3px rgba(148,177,137,.25);background:#fff}
+    .field .hint{font-size:.74rem;color:var(--muted);margin-top:4px}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .submit{width:100%;background:var(--green);color:var(--cream);margin-top:6px;padding:14px}
+    .submit:hover{background:var(--green-dark)}
+    .submit:disabled{opacity:.6;cursor:not-allowed}
+    .form-msg{display:none;font-size:.86rem;padding:11px 14px;border-radius:10px;margin-bottom:14px}
+    .form-msg.err{display:block;background:#fdecea;color:#b4231a;border:1px solid #f5c6c2}
+    .terms{font-size:.72rem;color:var(--muted);text-align:center;margin-top:12px}
+
+    /* ── Success ── */
+    .success{text-align:center;padding:10px 4px}
+    .success .ok-ring{width:64px;height:64px;border-radius:50%;background:var(--green-100);display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+    .success h2{margin-bottom:6px}
+    .success p{color:var(--muted);font-size:.95rem;margin-bottom:20px}
+
+    /* ── Features ── */
+    .features{padding:64px 0 24px}
+    .features .eyebrow{text-align:center;font-size:.8rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--green)}
+    .features h3{text-align:center;font-family:var(--serif);font-weight:500;font-size:clamp(1.6rem,4vw,2.3rem);color:var(--green-dark);margin:8px 0 8px}
+    .features .intro{text-align:center;color:var(--muted);max-width:34em;margin:0 auto 40px;font-size:1.02rem}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+    .feat{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:22px}
+    .feat .ico{width:42px;height:42px;border-radius:11px;background:var(--green-50);color:var(--green);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+    .feat h4{font-size:1.02rem;font-weight:600;margin-bottom:5px;color:var(--green-dark)}
+    .feat p{font-size:.9rem;color:var(--muted)}
+
+    /* ── Bottom CTA ── */
+    .cta-band{margin:48px 0 0;background:var(--green-dark);color:var(--cream);border-radius:24px;padding:44px 28px;text-align:center}
+    .cta-band h3{font-family:var(--serif);font-weight:500;font-size:clamp(1.5rem,4vw,2.1rem);margin-bottom:10px}
+    .cta-band p{color:rgba(248,244,228,.8);margin-bottom:22px}
+
+    footer{text-align:center;padding:34px 0;color:var(--muted);font-size:.82rem}
+    footer a{color:var(--green);font-weight:600;text-decoration:none}
+
+    @media(max-width:860px){
+      .hero-grid{grid-template-columns:1fr;gap:32px}
+      .grid{grid-template-columns:1fr}
+      .hero{border-radius:0 0 24px 24px}
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── HERO ── -->
+  <header class="hero">
+    <div class="wrap">
+      <div class="top">
+        <div class="brand">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+            <rect width="28" height="28" rx="8" fill="#3A5A40"/>
+            <rect x="7" y="13" width="14" height="2" rx="1" fill="#F8F4E4"/>
+            <rect x="7" y="9" width="9" height="2" rx="1" fill="rgba(248,244,228,.6)"/>
+            <rect x="7" y="17" width="11" height="2" rx="1" fill="rgba(248,244,228,.4)"/>
+          </svg>
+          Lumers Flow
+        </div>
+        <a class="login" href="https://app.lumersbpo.com.br">Já tenho conta →</a>
+      </div>
+
+      <div class="hero-grid">
+        <div>
+          <span class="badge"><span class="dot"></span> 30 dias grátis · sem cartão</span>
+          <h1>Todas as suas finanças,<br><em>num só painel.</em></h1>
+          <p class="lead">
+            Centralize receitas, despesas, contas a pagar, metas e patrimônio. Tome
+            decisões com dados reais e lance tudo até pelo WhatsApp. Comece agora,
+            de graça, por 30 dias.
+          </p>
+          <div class="hero-cta">
+            <a href="#cadastro" class="btn btn-primary">Começar grátis</a>
+            <span class="hero-note">Leva menos de 1 minuto.</span>
+          </div>
+        </div>
+
+        <!-- Form -->
+        <div class="card" id="cadastro">
+          <div id="form-view">
+            <h2>Crie sua conta</h2>
+            <p class="sub">Acesso imediato ao painel completo por 30 dias.</p>
+            <div class="form-msg err" id="form-err"></div>
+            <form id="signup-form" novalidate>
+              <div class="field">
+                <label for="f-name">Nome completo</label>
+                <input id="f-name" name="name" type="text" autocomplete="name" placeholder="Seu nome" required>
+              </div>
+              <div class="field">
+                <label for="f-phone">WhatsApp</label>
+                <input id="f-phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="(DDD) 9 0000-0000" required>
+                <div class="hint">Usamos para o assistente financeiro e avisos de contas.</div>
+              </div>
+              <div class="field">
+                <label for="f-email">E-mail</label>
+                <input id="f-email" name="email" type="email" autocomplete="email" placeholder="seu@email.com" required>
+              </div>
+              <div class="row2">
+                <div class="field">
+                  <label for="f-pass">Senha</label>
+                  <input id="f-pass" name="password" type="password" autocomplete="new-password" placeholder="Mín. 8 caracteres" required>
+                </div>
+                <div class="field">
+                  <label for="f-pass2">Confirmar</label>
+                  <input id="f-pass2" name="passwordConfirm" type="password" autocomplete="new-password" placeholder="Repita a senha" required>
+                </div>
+              </div>
+              <button type="submit" class="btn submit" id="submit-btn">Criar minha conta grátis</button>
+            </form>
+            <p class="terms">Ao criar a conta você concorda com os termos de uso e a política de privacidade do Lumers Flow.</p>
+          </div>
+
+          <div class="success" id="success-view" style="display:none">
+            <div class="ok-ring">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#3A5A40" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </div>
+            <h2>Conta criada! 🎉</h2>
+            <p id="success-msg">Enviamos uma confirmação para o seu e-mail e WhatsApp. Agora é só entrar e começar.</p>
+            <a class="btn submit" href="https://app.lumersbpo.com.br" style="text-decoration:none">Entrar no Lumers Flow</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── FEATURES ── -->
+  <main>
+    <section class="features">
+      <div class="wrap">
+        <div class="eyebrow">Tudo o que você precisa</div>
+        <h3>Gestão financeira completa, sem planilha</h3>
+        <p class="intro">Do lançamento diário ao panorama do seu patrimônio — organizado, visual e no seu bolso.</p>
+        <div class="grid">
+          <div class="feat">
+            <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg></div>
+            <h4>Receitas e despesas</h4>
+            <p>Registre entradas e saídas por categoria e veja para onde o seu dinheiro vai.</p>
+          </div>
+          <div class="feat">
+            <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></div>
+            <h4>Carteiras e contas</h4>
+            <p>Acompanhe o saldo de cada banco, cartão e carteira em tempo real.</p>
+          </div>
+          <div class="feat">
+            <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="7" width="3" height="11"/><rect x="17" y="13" width="3" height="5"/></svg></div>
+            <h4>Relatórios claros</h4>
+            <p>Gráficos mensais e fluxo anual para enxergar tendências e cortar gastos.</p>
+          </div>
+          <div class="feat">
+            <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
+            <h4>Metas financeiras</h4>
+            <p>Defina objetivos e acompanhe o progresso de cada meta mês a mês.</p>
+          </div>
+          <div class="feat">
+            <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></div>
+            <h4>Patrimônio e investimentos</h4>
+            <p>Some investimentos e bens físicos e acompanhe a evolução do seu patrimônio.</p>
+          </div>
+          <div class="feat">
+            <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg></div>
+            <h4>Lançar pelo WhatsApp</h4>
+            <p>“Gastei 35 no almoço” — o assistente registra tudo direto na sua conta.</p>
+          </div>
+        </div>
+
+        <div class="cta-band">
+          <h3>Comece a organizar hoje</h3>
+          <p>30 dias grátis, acesso completo, sem compromisso.</p>
+          <a href="#cadastro" class="btn btn-primary">Criar conta grátis</a>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      © 2026 Lumers Flow Financeiro · <a href="https://app.lumersbpo.com.br">Acessar o sistema</a>
+    </footer>
+  </main>
+
+  <script>
+    // Contabiliza o acesso à página (best-effort, não bloqueia nada).
+    try { fetch('/api/auth/trial-visit').catch(function(){}); } catch (e) {}
+
+    var form = document.getElementById('signup-form');
+    var btn = document.getElementById('submit-btn');
+    var errBox = document.getElementById('form-err');
+
+    function showErr(msg){ errBox.textContent = msg; errBox.style.display = 'block'; errBox.scrollIntoView({block:'center',behavior:'smooth'}); }
+    function clearErr(){ errBox.style.display = 'none'; }
+
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      clearErr();
+      var data = {
+        name: document.getElementById('f-name').value.trim(),
+        phone: document.getElementById('f-phone').value.trim(),
+        email: document.getElementById('f-email').value.trim(),
+        password: document.getElementById('f-pass').value,
+        passwordConfirm: document.getElementById('f-pass2').value,
+      };
+      if (!data.name || !data.email || !data.password) return showErr('Preencha nome, e-mail e senha.');
+      if (data.password.length < 8) return showErr('A senha precisa ter no mínimo 8 caracteres.');
+      if (data.password !== data.passwordConfirm) return showErr('As senhas não coincidem.');
+
+      btn.disabled = true;
+      var original = btn.textContent;
+      btn.textContent = 'Criando sua conta...';
+      try {
+        var res = await fetch('/api/auth/trial-signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        var out = await res.json().catch(function(){ return {}; });
+        if (!res.ok) throw new Error(out.error || 'Não foi possível criar a conta. Tente novamente.');
+        // Sucesso
+        document.getElementById('form-view').style.display = 'none';
+        document.getElementById('success-view').style.display = 'block';
+        document.getElementById('cadastro').scrollIntoView({ block: 'center', behavior: 'smooth' });
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = original;
+        showErr(err.message || 'Erro ao criar conta.');
+      }
+    });
+  </script>
+</body>
+</html>

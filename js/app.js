@@ -287,6 +287,7 @@ case 'accounts':   await renderAccounts();       break;
         case 'admin-charges': await renderAdminCharges(); break;
         case 'admin-logs':   await renderAdminLogs();   break;
         case 'admin-improvements': await renderAdminImprovements(); break;
+        case 'admin-landing': await renderAdminLanding(); break;
         default:           await renderDashboard(m, y);
       }
       if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -309,7 +310,7 @@ case 'accounts':   await renderAccounts();       break;
 
   updateNav() {
     // Subpáginas do painel admin mantêm o item único "Painel Admin" destacado
-    const adminPages = ['admin', 'admin-users', 'admin-system', 'admin-email', 'admin-theme', 'admin-plans', 'admin-charges', 'admin-logs', 'admin-improvements', 'banks'];
+    const adminPages = ['admin', 'admin-users', 'admin-system', 'admin-email', 'admin-theme', 'admin-plans', 'admin-charges', 'admin-logs', 'admin-improvements', 'admin-landing', 'banks'];
     const inAdmin = adminPages.includes(this.currentPage);
     document.querySelectorAll('[data-page]').forEach(el => {
       const isActive = el.dataset.page === this.currentPage
@@ -344,6 +345,7 @@ import:     'Importar Dados',
       'admin-charges': 'Cobranças',
       'admin-logs':   'Logs do Sistema',
       'admin-improvements': 'Melhorias',
+      'admin-landing': 'Captação — Trial 30 dias',
     };
     document.getElementById('pageTitle').textContent = titles[this.currentPage] || 'Dashboard';
   },

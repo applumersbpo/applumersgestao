@@ -331,6 +331,26 @@ export default async function handler(req, res) {
       }
     }
 
+    // ── GET /api/admin/users?resource=landing-stats  →  métricas da landing de trial
+    // Acessos (contador), cadastros (source='landing') e quem já acessou a conta
+    // (last_login preenchido). Lista os usuários captados pela página pública.
+    if (req.query.resource === 'landing-stats' && req.method === 'GET') {
+      const [{ rows: visitRows }, { rows: aggRows }, { rows: userRows }, { rows: enRows }] = await Promise.all([
+        db.execute("SELECT value FROM system_settings WHERE key = 'landing_visits'"),
+        db.execute("SELECT COUNT(*) AS signups, SUM(CASE WHEN last_login IS NOT NULL AND last_login != '' THEN 1 ELSE 0 END) AS converted FROM users WHERE source = 'landing'"),
+        db.execute("SELECT id, name, email, phone, created_at, last_login FROM users WHERE source = 'landing' ORDER BY created_at DESC LIMIT 500"),
+        db.execute("SELECT value FROM system_settings WHERE key = 'landing_enabled'"),
+      ]);
+      const agg = rowsToObjects(aggRows)[0] || {};
+      return res.status(200).json({
+        enabled: (rowsToObjects(enRows)[0]?.value ?? '1') !== '0',
+        visits: Number(rowsToObjects(visitRows)[0]?.value || 0),
+        signups: Number(agg.signups || 0),
+        converted: Number(agg.converted || 0),
+        users: rowsToObjects(userRows),
+      });
+    }
+
     // ── GET /api/admin/users?stats=true  →  aggregate dashboard stats
     if (req.method === 'GET' && req.query.stats === 'true') {
       const [
@@ -443,6 +463,14 @@ export default async function handler(req, res) {
     // ── POST /api/admin/users  →  bulk actions
     if (req.method === 'POST') {
       const { action } = req.body || {};
+
+      // Liga/desliga os cadastros da landing page pública de trial (kill-switch).
+      if (action === 'landing-toggle') {
+        const enabled = req.body?.enabled === true || req.body?.enabled === 1 || req.body?.enabled === '1';
+        await setSystemSetting('landing_enabled', enabled ? '1' : '0');
+        await logSystem({ req, actor: user, action: 'landing.toggle', targetType: 'system_setting', targetLabel: 'landing_enabled', details: { enabled } });
+        return res.status(200).json({ ok: true, enabled });
+      }
 
       // Testa as chaves de IA (Groq e/ou Gemini) com uma chamada mínima real.
       // Usa as chaves enviadas no corpo (permite testar antes de salvar).

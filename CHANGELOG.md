@@ -5,6 +5,12 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.51.0] — 2026-11-07
+
+### Adicionado
+- **Landing page pública de trial (`/comecar`):** página de captação para o usuário final, na identidade do Lumers Flow, resumindo os recursos (receitas/despesas, carteiras, metas, relatórios, patrimônio, lançamento por WhatsApp) com formulário de cadastro de **30 dias grátis**. Ao cadastrar, cria a conta (utilizável na hora) e dispara boas-vindas por **e-mail** e **WhatsApp**. Cada acesso é contabilizado; cada cadastro é marcado com `source='landing'`. API pública: `GET /api/auth/trial-visit` e `POST /api/auth/trial-signup` (ambas em funções já existentes — sem nova serverless function). Kill-switch `landing_enabled`.
+- **Painel Admin → Captação:** nova aba com métricas da landing — **Acessos**, **Cadastros**, **Já acessaram a conta** (last_login) e **taxa de conversão** — além da lista dos usuários captados. Inclui o **link de divulgação** (copiar/abrir), um **QR Code** gerado no navegador com **download em PNG**, e um interruptor para pausar/ativar os cadastros. QR via lib vendorizada `js/qrcode.min.js` (qrcode-generator, MIT). API: `GET /api/admin/users?resource=landing-stats` e `POST { action: 'landing-toggle', enabled }`.
+
 ## [v1.50.0] — 2026-10-13
 
 ### Adicionado
