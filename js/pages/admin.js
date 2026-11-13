@@ -922,6 +922,9 @@ function _adminUserRow(u) {
           ${phone ? `<button class="btn btn-sm btn-icon btn-ghost" style="color:var(--primary)"
             onclick="_adminMsgOpenFor('${u.id}')"
             title="Enviar mensagem">${icon('send',14)}</button>` : ''}
+          <button class="btn btn-sm btn-icon btn-ghost" style="color:var(--text-muted)"
+            onclick="sendAdminResetEmail('${u.id}','${_escHtml(u.email)}',this)"
+            title="Enviar reset de senha">${icon('key',14)}</button>
           <button class="btn btn-sm btn-icon btn-danger"
             onclick="deleteAdminUser('${u.id}','${_escHtml(u.email)}')"
             title="Excluir usuário">${icon('trash-2',14)}</button>

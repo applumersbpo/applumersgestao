@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.52.1] — 2026-11-13
+
+### Melhorado
+- **Admin → lista de usuários:** botão de chave (“Enviar reset de senha”) direto em cada linha, além do perfil.
+
+---
+
 ## [v1.52.0] — 2026-11-13
 
 ### Adicionado
