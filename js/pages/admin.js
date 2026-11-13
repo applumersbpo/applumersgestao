@@ -1020,6 +1020,9 @@ async function renderAdminUserProfile(userId) {
             <button class="btn btn-sm btn-outline" style="color:var(--primary)" onclick="impersonateUser('${user.id}',this)">
               ${icon('eye',13)} Acessar conta
             </button>
+            <button class="btn btn-sm btn-outline" onclick="sendAdminResetEmail('${user.id}','${_escHtml(user.email)}',this)">
+              ${icon('key',13)} Enviar reset de senha
+            </button>
             ${phone ? `<button class="btn btn-primary btn-sm" onclick="_adminMsgOpenFor('${user.id}')">
               ${icon('send',13)} Mensagem
             </button>` : ''}
@@ -5648,6 +5651,24 @@ async function deleteAdminUser(userId, email) {
     renderAdminUsers();
   } catch(e) {
     toast('Erro ao deletar: ' + e.message, 'error');
+  }
+}
+
+async function sendAdminResetEmail(userId, email, btn) {
+  if (!confirm(`Enviar e-mail de redefinição de senha para ${email}?
+
+O link vale por 1 hora.`)) return;
+  const original = btn.innerHTML;
+  btn.innerHTML = icon('loader', 14);
+  btn.disabled = true;
+  try {
+    const res = await _api('POST', `/admin/users/${userId}`, { action: 'send-reset' });
+    toast(`E-mail de redefinição enviado para ${res.email}`, 'success');
+  } catch(e) {
+    toast('Erro ao enviar reset: ' + (e.message || 'falha'), 'error');
+  } finally {
+    btn.innerHTML = original;
+    btn.disabled = false;
   }
 }
 

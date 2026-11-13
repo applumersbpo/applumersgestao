@@ -3,6 +3,8 @@ import { requireAuth, cors, isImpersonation } from '../../_lib/auth.js';
 import { logSystem } from '../../_lib/audit.js';
 import { sendText } from '../../_lib/evolution.js';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+import { sendTemplateEmail } from '../../_lib/email.js';
 
 export default async function handler(req, res) {
   cors(res);
@@ -151,6 +153,29 @@ export default async function handler(req, res) {
           details: { phone: target.phone },
         });
         return res.status(200).json({ ok: true, phone: target.phone });
+      }
+      if (action === 'send-reset') {
+        const { rows } = await db.execute({ sql: 'SELECT id, name, email FROM users WHERE id = ?', args: [id] });
+        const target = rowsToObjects(rows)[0];
+        if (!target?.email) return res.status(400).json({ error: 'Usuário sem e-mail' });
+        const token = crypto.randomUUID();
+        await db.execute({
+          sql: 'INSERT INTO password_resets (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)',
+          args: [crypto.randomUUID(), target.id, token, new Date(Date.now() + 3600000).toISOString()],
+        });
+        const APP_URL = process.env.APP_URL || 'https://app.lumersbpo.com.br';
+        const r = await sendTemplateEmail({
+          to: target.email, toName: target.name || '', systemKey: 'reset_password',
+          vars: { name: target.name || '', reset_link: `${APP_URL}/#/reset/${token}`, app_url: APP_URL },
+          force: true,
+        });
+        if (!r.ok) return res.status(502).json({ error: r.error || 'Falha ao enviar e-mail' });
+        await logSystem({
+          req, actor: user, action: 'user.send_reset',
+          targetType: 'user', targetId: id, targetLabel: target.name || target.email,
+          details: { email: target.email },
+        });
+        return res.status(200).json({ ok: true, email: target.email });
       }
       return res.status(400).json({ error: 'Ação inválida' });
     }

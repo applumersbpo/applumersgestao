@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.52.0] — 2026-11-13
+
+### Adicionado
+- **Admin → perfil do usuário: botão "Enviar reset de senha".** Gera um link de redefinição (válido por 1 hora) e envia pelo template `reset_password`, mesmo se o usuário desativou notificações. Pede confirmação, mostra erro real da Resend se falhar e registra a ação no log do sistema (`user.send_reset`). API: `POST /api/admin/users/:id { action: "send-reset" }` (função existente, sem nova serverless function).
+
+---
+
 ## [v1.51.1] — 2026-11-13
 
 ### Corrigido
