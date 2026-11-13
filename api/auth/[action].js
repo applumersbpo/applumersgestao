@@ -89,7 +89,7 @@ export default async function handler(req, res) {
 
         // Enviar boas-vindas por e-mail (respeita opt-in; recém-criado não tem pref → default_on=1 → envia)
         if (safeUser.email) {
-          email.sendTemplateEmail({
+          await email.sendTemplateEmail({
             to: safeUser.email,
             toName: safeUser.name,
             systemKey: 'welcome',
@@ -160,7 +160,7 @@ export default async function handler(req, res) {
         // Boas-vindas (best-effort, não bloqueiam o cadastro)
         if (normalizedPhone) _enviarBoasVindasWhatsApp(safeUser).catch(() => {});
         if (safeUser.email) {
-          email.sendTemplateEmail({
+          await email.sendTemplateEmail({
             to: safeUser.email,
             toName: safeUser.name,
             systemKey: 'welcome',
@@ -207,7 +207,7 @@ export default async function handler(req, res) {
       const userName = users[0].name || '';
       const userEmail = users[0].email;
       const reset_link = `${APP_URL}/#/reset/${token}`;
-      email.sendTemplateEmail({
+      await email.sendTemplateEmail({
         to: userEmail,
         toName: userName,
         systemKey: 'reset_password',

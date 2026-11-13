@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.51.1] — 2026-11-13
+
+### Corrigido
+- **E-mail de redefinição de senha não chegava:** o envio em `/api/auth/forgot` era disparado sem `await`; a função respondia e a Vercel congelava o processo antes da chamada à Resend sair. Agora o envio é aguardado (resposta continua idêntica, anti-enumeração). Mesmo ajuste nos e-mails de boas-vindas do cadastro.
+
+---
+
 ## [v1.51.0] — 2026-11-07
 
 ### Adicionado
