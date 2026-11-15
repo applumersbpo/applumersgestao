@@ -5,6 +5,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.53.0] — 2026-11-15
+
+### Adicionado
+- **WhatsApp: reconhecimento de usuários em LID.** Quando a mensagem chega só como `<n>@lid` (sem telefone), o app consulta a nova tabela `wa_lid_map` (LID → telefone). O par é aprendido automaticamente sempre que a mensagem traz LID e telefone. Se o LID for desconhecido, a IA pede o **e-mail da conta** e envia um **código de 6 dígitos ao WhatsApp cadastrado**; o vínculo só é feito com o código correto (bloqueia quem só sabe o e-mail de outra pessoa; 5 tentativas). Pedido de e-mail no máximo 1x a cada 12h por LID. Teste: `node tests/wa-lid-flow.test.mjs`.
+
+### Corrigido
+- **Conexão do WhatsApp caída desde 13/11 20h:** a instância `lumersflow` reportava "open" mas estava com a conexão fechada (envio e recebimento parados). Criada a instância `lumersflow2` (padrão), com webhook configurado e número reconectado por QR.
+
+---
+
 ## [v1.52.2] — 2026-11-15
 
 ### Corrigido

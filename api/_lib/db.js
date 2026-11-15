@@ -472,6 +472,17 @@ export async function initDb() {
       history TEXT DEFAULT '',
       updated_at TEXT DEFAULT (datetime('now'))
     )`,
+    // LID do WhatsApp (id de privacidade "<n>@lid") → telefone real do usuário.
+    // Aprendido quando a mensagem traz os dois, ou pela verificação e-mail + código.
+    `CREATE TABLE IF NOT EXISTS wa_lid_map (
+      lid TEXT PRIMARY KEY,
+      phone TEXT DEFAULT '',
+      pending_user_id TEXT DEFAULT '',
+      code TEXT DEFAULT '',
+      attempts INTEGER DEFAULT 0,
+      asked_at TEXT DEFAULT '',
+      updated_at TEXT DEFAULT (datetime('now'))
+    )`,
     `CREATE TABLE IF NOT EXISTS wa_interactions (
       id TEXT PRIMARY KEY,
       phone TEXT DEFAULT '',

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { getDb, rowsToObjects, getWaNotifyAsk, setWaNotifyMode, clearWaNotifyAsk, getSystemSetting } from './db.js';
 import { getAiConfig, openaiChat, openaiReadImage, openaiReadDocument, openaiTranscribeAudio } from './ai.js';
 
@@ -2054,14 +2055,102 @@ TOM DAS SUAS RESPOSTAS (campo "reply"):
 
 // ── Ponto de entrada: processa UMA mensagem recebida ─────────────────────────
 
+// ── LID do WhatsApp → telefone ───────────────────────────────────────────────
+// Com o LID, a mensagem pode chegar só como "<n>@lid", sem o telefone. O app guarda
+// o par LID↔telefone (wa_lid_map) quando a mensagem traz os dois; se não traz e o
+// LID é desconhecido, pede o e-mail da conta e confirma com um código enviado ao
+// telefone CADASTRADO (quem só sabe o e-mail de outra pessoa não recebe o código).
+function senderLid(msg) {
+  const j = (msg && msg.key && msg.key.remoteJid) || '';
+  return j.endsWith('@lid') ? j.split('@')[0] : '';
+}
+
+async function lidRow(lid) {
+  const { rows } = await getDb().execute({ sql: 'SELECT * FROM wa_lid_map WHERE lid = ?', args: [lid] });
+  return rowsToObjects(rows)[0] || null;
+}
+
+async function lidSave(lid, f) {
+  await getDb().execute({
+    sql: `INSERT INTO wa_lid_map (lid, phone, pending_user_id, code, attempts, asked_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(lid) DO UPDATE SET phone=excluded.phone, pending_user_id=excluded.pending_user_id,
+            code=excluded.code, attempts=excluded.attempts, asked_at=excluded.asked_at, updated_at=datetime('now')`,
+    args: [lid, f.phone || '', f.pending_user_id || '', f.code || '', f.attempts || 0, f.asked_at || ''],
+  });
+}
+
+async function handleUnknownLid({ lid, row, msg, inst }) {
+  const m = msg.message || {};
+  const text = String(m.conversation || m.extendedTextMessage?.text || '').trim();
+  if (!text) return { handled: true, reason: 'lid_unknown_nontext' };
+  const say = (t, number) => sendText({ name: inst.name, key: inst.api_key || null, number: number || (lid + '@lid'), text: t })
+    .catch((e) => console.error('[assistant] lid reply falhou', e?.message));
+  const r = row || {};
+
+  // 1) Código de verificação
+  const digits = text.replace(/\s/g, '');
+  if (r.code && r.pending_user_id && /^\d{6}$/.test(digits)) {
+    if (digits === r.code) {
+      const { rows } = await getDb().execute({ sql: 'SELECT id, name, phone FROM users WHERE id = ?', args: [r.pending_user_id] });
+      const u = rowsToObjects(rows)[0];
+      const ph = u ? canonicalBrazilPhone(u.phone) : '';
+      if (ph) {
+        await lidSave(lid, { phone: ph });
+        await say(`Pronto, ${(u.name || '').split(' ')[0] || 'tudo certo'}! Reconheci seu WhatsApp. Pode mandar sua mensagem. 🙂`);
+        return { handled: true, reason: 'lid_linked' };
+      }
+    }
+    const attempts = (Number(r.attempts) || 0) + 1;
+    await lidSave(lid, { ...r, attempts, ...(attempts >= 5 ? { code: '', pending_user_id: '' } : {}) });
+    await say(attempts >= 5 ? 'Código incorreto muitas vezes. Envie o *e-mail* da sua conta para receber um novo código.' : 'Código incorreto. Confira e envie de novo.');
+    return { handled: true, reason: 'lid_bad_code' };
+  }
+
+  // 2) E-mail da conta → envia código ao telefone cadastrado
+  const em = (text.match(/[^\s@]+@[^\s@]+\.[^\s@]+/) || [])[0];
+  if (em) {
+    const { rows } = await getDb().execute({ sql: 'SELECT id, name, phone FROM users WHERE email = ? LIMIT 1', args: [em.toLowerCase()] });
+    const u = rowsToObjects(rows)[0];
+    const ph = u ? canonicalBrazilPhone(u.phone) : '';
+    if (ph) {
+      const code = String(crypto.randomInt(100000, 1000000));
+      await lidSave(lid, { pending_user_id: u.id, code, attempts: 0, asked_at: new Date().toISOString() });
+      await say(`🔐 Seu código de verificação do Lumers Flow é *${code}*. Responda com ele nesta conversa.`, ph);
+    }
+    await say('Se esse e-mail tiver conta no Lumers Flow, enviei um código de 6 dígitos para o WhatsApp cadastrado nela. Responda aqui com o código.');
+    return { handled: true, reason: 'lid_code_sent' };
+  }
+
+  // 3) Primeiro contato: pede o e-mail (no máximo 1x a cada 12h por LID)
+  const last = r.asked_at ? Date.parse(r.asked_at) : 0;
+  if (!last || Date.now() - last > 12 * 3600 * 1000) {
+    await lidSave(lid, { ...r, asked_at: new Date().toISOString() });
+    await say('Oi! Não consegui identificar seu número por aqui. Responda com o *e-mail* da sua conta Lumers Flow para eu te reconhecer. 🙂');
+  }
+  return { handled: true, reason: 'lid_unknown' };
+}
+
 export async function handleAssistantMessage(msg, instanceName) {
   const cfg = await getAiConfig();
   if (!cfg.enabled) return { handled: false, reason: 'ai_disabled' };
 
-  const phone = senderPhone(msg);
+  const inst = (await getDefaultInstance()) || { name: instanceName, api_key: null };
+
+  let phone = senderPhone(msg);
+  const lid = senderLid(msg);
+  if (lid) {
+    const row = await lidRow(lid).catch(() => null);
+    if (phone) {
+      if (!row || row.phone !== phone) await lidSave(lid, { phone }).catch(() => {});
+    } else if (row && row.phone) {
+      phone = row.phone;
+    } else {
+      return handleUnknownLid({ lid, row, msg, inst });
+    }
+  }
   if (!phone) return { handled: false, reason: 'no_phone' };
 
-  const inst = (await getDefaultInstance()) || { name: instanceName, api_key: null };
   const reply = (text) => sendText({ name: inst.name, key: inst.api_key || null, number: phone, text }).catch((e) => console.error('[assistant] reply falhou', e?.message));
 
   const user = await userByPhone(phone);
