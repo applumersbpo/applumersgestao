@@ -4,7 +4,7 @@ import { getAiConfig, openaiChat, openaiReadImage, openaiReadDocument, openaiTra
 // Modelo de chat/texto da OpenAI para TODA a interação do WhatsApp (classificação,
 // extração de itens, respostas). Groq/Gemini não são usados aqui.
 function _chatModel(cfg) { return cfg.openaiVisionModel || 'gpt-4o-mini'; }
-import { sendText, evoBase, resolveBase, resolveKey, headers } from './evolution.js';
+import { sendText, senderPhone, evoBase, resolveBase, resolveKey, headers } from './evolution.js';
 import { sendTemplateEmail } from './email.js';
 import bcrypt from 'bcryptjs';
 
@@ -2058,8 +2058,7 @@ export async function handleAssistantMessage(msg, instanceName) {
   const cfg = await getAiConfig();
   if (!cfg.enabled) return { handled: false, reason: 'ai_disabled' };
 
-  const remoteJid = msg.key?.remoteJid || '';
-  const phone = remoteJid.split('@')[0].replace(/\D/g, '');
+  const phone = senderPhone(msg);
   if (!phone) return { handled: false, reason: 'no_phone' };
 
   const inst = (await getDefaultInstance()) || { name: instanceName, api_key: null };
@@ -2082,6 +2081,7 @@ export async function handleAssistantMessage(msg, instanceName) {
     if (cfg.signupEnabled) {
       return handleUnknownUser({ phone, text: quickText, inType, reply, inst });
     }
+    console.warn('[assistant] número não cadastrado ignorado', phone, msg.key?.remoteJid || '', msg.key?.remoteJidAlt || msg.key?.senderPn || '');
     return { handled: true, reason: 'unregistered_ignored' };
   }
 

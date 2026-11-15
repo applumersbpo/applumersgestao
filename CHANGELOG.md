@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [v1.52.2] — 2026-11-15
+
+### Corrigido
+- **IA do WhatsApp não respondia alguns usuários cadastrados:** com o novo identificador de privacidade do WhatsApp (LID), a mensagem chega com `remoteJid = "<id>@lid"`, que não é o telefone. O app usava esse valor, não encontrava o usuário e ignorava a mensagem em silêncio. Agora o telefone real vem de `remoteJidAlt`/`senderPn` quando o remetente está em LID (`senderPhone()` em `api/_lib/evolution.js`), e a resposta vai para o número certo. Números não cadastrados ignorados passam a aparecer no log para diagnóstico.
+
+---
+
 ## [v1.52.1] — 2026-11-13
 
 ### Melhorado

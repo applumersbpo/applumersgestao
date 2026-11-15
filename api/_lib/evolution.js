@@ -1,6 +1,15 @@
 import { getSystemSetting, getDb, rowsToObjects } from './db.js';
 
 // URL (origin) do servidor Evolution vinda da env. É o último fallback.
+// Telefone real de quem enviou. Com o "LID" do WhatsApp, key.remoteJid pode vir como
+// "<id>@lid" (não é telefone); o número fica em remoteJidAlt/senderPn.
+export function senderPhone(msg) {
+  const k = (msg && msg.key) || {};
+  const cands = [k.remoteJid, k.remoteJidAlt, k.senderPn, msg && msg.senderPn, k.participantAlt];
+  const pn = cands.find((j) => typeof j === 'string' && j && !j.includes('@lid') && !j.includes('@g.us'));
+  return String(pn || '').split('@')[0].replace(/D/g, '');
+}
+
 export function evoBase() {
   const url = process.env.EVOLUTION_URL || '';
   try { return new URL(url).origin; } catch { return ''; }

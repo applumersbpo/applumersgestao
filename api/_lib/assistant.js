@@ -1,6 +1,6 @@
 import { getDb, rowsToObjects, getWaNotifyAsk, setWaNotifyMode, clearWaNotifyAsk } from './db.js';
 import { getAiConfig, groqChat, groqTranscribeAudio, groqReadImage, geminiTranscribeAudio, geminiReadImage, openaiReadImage, openaiReadDocument, openaiTranscribeAudio } from './ai.js';
-import { sendText, evoBase, resolveBase, resolveKey, headers } from './evolution.js';
+import { sendText, senderPhone, evoBase, resolveBase, resolveKey, headers } from './evolution.js';
 import { sendTemplateEmail } from './email.js';
 import bcrypt from 'bcryptjs';
 
@@ -1825,8 +1825,7 @@ export async function handleAssistantMessage(msg, instanceName) {
   const cfg = await getAiConfig();
   if (!cfg.enabled) return { handled: false, reason: 'ai_disabled' };
 
-  const remoteJid = msg.key?.remoteJid || '';
-  const phone = remoteJid.split('@')[0].replace(/\D/g, '');
+  const phone = senderPhone(msg);
   if (!phone) return { handled: false, reason: 'no_phone' };
 
   const inst = (await getDefaultInstance()) || { name: instanceName, api_key: null };
